@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
 use lellostore_backend::api::AppState;
+use lellostore_backend::auth;
 use lellostore_backend::config::Config;
 use lellostore_backend::{api, db, metrics};
 
@@ -40,10 +41,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.database_path.clone(),
     );
 
+    // Initialize authentication (optional - skip if issuer URL is placeholder)
+    let auth_state = if config.oidc.issuer_url != "https://example.com" {
+        match auth::init_auth(
+            &config.oidc.issuer_url,
+            &config.oidc.audience,
+            &config.oidc.role_claim_path,
+            &config.oidc.admin_role,
+        )
+        .await
+        {
+            Ok(auth) => {
+                tracing::info!("Authentication initialized with issuer: {}", config.oidc.issuer_url);
+                Some(auth)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize authentication: {}. Protected routes will be disabled.", e);
+                None
+            }
+        }
+    } else {
+        tracing::info!("OIDC not configured (using default issuer). Protected routes disabled.");
+        None
+    };
+
     // Build application state
     let state = AppState {
         db,
         config: Arc::new(config.clone()),
+        auth: auth_state,
     };
 
     // Create router

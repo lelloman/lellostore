@@ -34,6 +34,8 @@ pub struct OidcConfig {
     pub issuer_url: String,
     pub audience: String,
     pub admin_role: String,
+    /// Dot-separated path to roles claim in JWT (e.g., "realm_access.roles" for Keycloak)
+    pub role_claim_path: String,
 }
 
 impl Config {
@@ -62,6 +64,8 @@ impl Config {
                 .unwrap_or_else(|_| "https://example.com".to_string()),
             audience: std::env::var("OIDC_AUDIENCE").unwrap_or_else(|_| "lellostore".to_string()),
             admin_role: std::env::var("OIDC_ADMIN_ROLE").unwrap_or_else(|_| "admin".to_string()),
+            role_claim_path: std::env::var("OIDC_ROLE_CLAIM_PATH")
+                .unwrap_or_else(|_| "realm_access.roles".to_string()),
         };
 
         let aapt2_path = std::env::var("AAPT2_PATH").ok().map(PathBuf::from);

@@ -633,22 +633,22 @@ Allow 60 seconds of clock skew for `iat` and `exp` validation to handle minor ti
 
 | Task | Status | Notes |
 |------|--------|-------|
-| 1.1 Add dependencies | Not Started | |
-| 2.1 OIDC discovery client | Not Started | |
-| 2.2 JWKS fetching and caching | Not Started | |
-| 2.3 Error types | Not Started | |
-| 3.1 Token validator | Not Started | |
-| 3.2 Validation logic | Not Started | |
-| 4.1 User context | Not Started | |
-| 4.2 Role extraction | Not Started | |
-| 5.1 Auth state | Not Started | |
-| 5.2 Auth middleware | Not Started | |
-| 5.3 User extractors | Not Started | |
-| 5.4 Error responses | Not Started | |
-| 6.1 Config updates | Not Started | |
-| 7.1 Router integration | Not Started | |
-| 8.1 Module organization | Not Started | |
-| 9.1 Unit tests | Not Started | |
-| 9.2 Integration tests | Not Started | |
-| 9.3 Mock OIDC server | Not Started | |
-| Verification | Not Started | |
+| 1.1 Add dependencies | Done | jsonwebtoken, reqwest, async-trait |
+| 2.1 OIDC discovery client | Done | src/auth/discovery.rs |
+| 2.2 JWKS fetching and caching | Done | src/auth/jwks.rs with RwLock |
+| 2.3 Error types | Done | src/auth/error.rs with IntoResponse |
+| 3.1 Token validator | Done | src/auth/validator.rs |
+| 3.2 Validation logic | Done | With clock skew handling |
+| 4.1 User context | Done | src/auth/user.rs |
+| 4.2 Role extraction | Done | Supports nested claim paths |
+| 5.1 Auth state | Done | src/auth/mod.rs |
+| 5.2 Auth middleware | Done | src/auth/middleware.rs |
+| 5.3 User extractors | Done | AuthenticatedUser, AdminUser |
+| 5.4 Error responses | Done | JSON error responses |
+| 6.1 Config updates | Done | Added role_claim_path |
+| 7.1 Router integration | Done | Admin routes with auth middleware |
+| 8.1 Module organization | Done | All modules in src/auth/ |
+| 9.1 Unit tests | Done | 25+ auth unit tests |
+| 9.2 Integration tests | Partial | Auth disabled for existing tests |
+| 9.3 Mock OIDC server | Not Started | For full integration tests |
+| Verification | Done | Build, tests, clippy pass |

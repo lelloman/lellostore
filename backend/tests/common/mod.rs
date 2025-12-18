@@ -41,6 +41,7 @@ pub async fn create_test_app() -> (TempDir, Router) {
             issuer_url: "https://example.com".to_string(),
             audience: "test".to_string(),
             admin_role: "admin".to_string(),
+            role_claim_path: "roles".to_string(),
         },
         aapt2_path: None,
         bundletool_path: None,
@@ -51,6 +52,7 @@ pub async fn create_test_app() -> (TempDir, Router) {
     let state = AppState {
         db: pool,
         config: Arc::new(config),
+        auth: None, // No auth for tests by default
     };
 
     let app = create_router(state);
