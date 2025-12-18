@@ -8,8 +8,8 @@ When an epic is started, a dedicated implementation plan file (`EPIC_XX_PLAN.md`
 
 | # | Epic | Status | Description | Dependencies |
 |---|------|--------|-------------|--------------|
-| 1 | Backend Foundation | Not Started | Rust/Axum project setup, database, basic API structure | None |
-| 2 | APK Processing | Not Started | APK metadata extraction, file storage, AAB conversion | Epic 1 |
+| 1 | Backend Foundation | Done | Rust/Axum project setup, database, basic API structure | None |
+| 2 | APK Processing | Done | APK metadata extraction, file storage, AAB conversion | Epic 1 |
 | 3 | Backend Authentication | Not Started | OIDC token validation, role-based access control | Epic 1 |
 | 4 | Backend API Complete | Not Started | All REST endpoints fully functional | Epics 2, 3 |
 | 5 | Frontend Foundation | Not Started | Vue 3 project setup, Vuetify, OIDC login | Epic 4 |
