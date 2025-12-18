@@ -7,6 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::auth::AdminUser;
 use crate::db;
 use crate::error::AppError;
 
@@ -111,6 +112,7 @@ pub struct UploadResponse {
 
 /// Upload a new app or version (multipart form)
 pub async fn upload_app(
+    _admin: AdminUser,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
@@ -218,6 +220,7 @@ pub struct UpdateAppRequest {
 
 /// Update app metadata
 pub async fn update_app(
+    _admin: AdminUser,
     State(state): State<AppState>,
     Path(package_name): Path<String>,
     Json(request): Json<UpdateAppRequest>,
@@ -249,6 +252,7 @@ pub async fn update_app(
 
 /// Delete an app and all its versions
 pub async fn delete_app(
+    _admin: AdminUser,
     State(state): State<AppState>,
     Path(package_name): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -278,6 +282,7 @@ pub struct DeleteVersionResponse {
 
 /// Delete a specific version of an app
 pub async fn delete_version(
+    _admin: AdminUser,
     State(state): State<AppState>,
     Path((package_name, version_code)): Path<(String, i64)>,
 ) -> Result<Json<DeleteVersionResponse>, AppError> {
