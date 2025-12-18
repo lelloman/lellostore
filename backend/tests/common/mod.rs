@@ -36,12 +36,16 @@ pub async fn create_test_app() -> (TempDir, Router) {
         metrics_addr: "127.0.0.1:0".parse().unwrap(),
         database_url,
         database_path: db_path,
-        storage_path,
+        storage_path: storage_path.clone(),
         oidc: OidcConfig {
             issuer_url: "https://example.com".to_string(),
             audience: "test".to_string(),
             admin_role: "admin".to_string(),
         },
+        aapt2_path: None,
+        bundletool_path: None,
+        java_path: None,
+        max_upload_size: 100 * 1024 * 1024, // 100MB for tests
     };
 
     let state = AppState {

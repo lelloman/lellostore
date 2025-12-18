@@ -22,6 +22,11 @@ pub struct Config {
     pub database_path: PathBuf,
     pub storage_path: PathBuf,
     pub oidc: OidcConfig,
+    // APK processing
+    pub aapt2_path: Option<PathBuf>,
+    pub bundletool_path: Option<PathBuf>,
+    pub java_path: Option<PathBuf>,
+    pub max_upload_size: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +64,14 @@ impl Config {
             admin_role: std::env::var("OIDC_ADMIN_ROLE").unwrap_or_else(|_| "admin".to_string()),
         };
 
+        let aapt2_path = std::env::var("AAPT2_PATH").ok().map(PathBuf::from);
+        let bundletool_path = std::env::var("BUNDLETOOL_PATH").ok().map(PathBuf::from);
+        let java_path = std::env::var("JAVA_PATH").ok().map(PathBuf::from);
+        let max_upload_size = std::env::var("MAX_UPLOAD_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(500 * 1024 * 1024); // 500MB default
+
         Ok(Config {
             listen_addr,
             metrics_addr,
@@ -66,6 +79,10 @@ impl Config {
             database_path,
             storage_path,
             oidc,
+            aapt2_path,
+            bundletool_path,
+            java_path,
+            max_upload_size,
         })
     }
 }

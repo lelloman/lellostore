@@ -73,3 +73,165 @@ pub async fn get_latest_version(
     .await
     .map_err(AppError::Database)
 }
+
+/// Insert a new app
+pub async fn insert_app(
+    pool: &SqlitePool,
+    package_name: &str,
+    name: &str,
+    description: Option<&str>,
+    icon_path: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"
+        INSERT INTO apps (package_name, name, description, icon_path, created_at, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        "#,
+    )
+    .bind(package_name)
+    .bind(name)
+    .bind(description)
+    .bind(icon_path)
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Update app metadata
+pub async fn update_app(
+    pool: &SqlitePool,
+    package_name: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+    icon_path: Option<&str>,
+) -> Result<(), AppError> {
+    // Build dynamic query based on which fields are provided
+    let mut updates = Vec::new();
+
+    if name.is_some() {
+        updates.push("name = ?");
+    }
+    if description.is_some() {
+        updates.push("description = ?");
+    }
+    if icon_path.is_some() {
+        updates.push("icon_path = ?");
+    }
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    updates.push("updated_at = datetime('now')");
+
+    let query = format!(
+        "UPDATE apps SET {} WHERE package_name = ?",
+        updates.join(", ")
+    );
+
+    let mut q = sqlx::query(&query);
+
+    if let Some(n) = name {
+        q = q.bind(n);
+    }
+    if let Some(d) = description {
+        q = q.bind(d);
+    }
+    if let Some(i) = icon_path {
+        q = q.bind(i);
+    }
+    q = q.bind(package_name);
+
+    q.execute(pool).await.map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Insert a new app version
+pub async fn insert_app_version(
+    pool: &SqlitePool,
+    package_name: &str,
+    version_code: i64,
+    version_name: &str,
+    apk_path: &str,
+    size: i64,
+    sha256: &str,
+    min_sdk: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"
+        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        "#,
+    )
+    .bind(package_name)
+    .bind(version_code)
+    .bind(version_name)
+    .bind(apk_path)
+    .bind(size)
+    .bind(sha256)
+    .bind(min_sdk)
+    .execute(pool)
+    .await
+    .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Delete an app version
+pub async fn delete_app_version(
+    pool: &SqlitePool,
+    package_name: &str,
+    version_code: i64,
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ?")
+        .bind(package_name)
+        .bind(version_code)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Delete an app and all its versions
+pub async fn delete_app(pool: &SqlitePool, package_name: &str) -> Result<(), AppError> {
+    // Versions will be deleted by CASCADE
+    sqlx::query("DELETE FROM apps WHERE package_name = ?")
+        .bind(package_name)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Check if a version exists
+pub async fn version_exists(
+    pool: &SqlitePool,
+    package_name: &str,
+    version_code: i64,
+) -> Result<bool, AppError> {
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM app_versions WHERE package_name = ? AND version_code = ?")
+            .bind(package_name)
+            .bind(version_code)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
+
+    Ok(count > 0)
+}
+
+/// Count versions for an app
+pub async fn count_versions(pool: &SqlitePool, package_name: &str) -> Result<i64, AppError> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM app_versions WHERE package_name = ?")
+        .bind(package_name)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+    Ok(count)
+}
