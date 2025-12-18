@@ -150,6 +150,7 @@ pub async fn update_app(
 }
 
 /// Insert a new app version
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_app_version(
     pool: &SqlitePool,
     package_name: &str,
@@ -214,13 +215,14 @@ pub async fn version_exists(
     package_name: &str,
     version_code: i64,
 ) -> Result<bool, AppError> {
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM app_versions WHERE package_name = ? AND version_code = ?")
-            .bind(package_name)
-            .bind(version_code)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::Database)?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM app_versions WHERE package_name = ? AND version_code = ?",
+    )
+    .bind(package_name)
+    .bind(version_code)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
 
     Ok(count > 0)
 }

@@ -148,11 +148,9 @@ impl UploadService {
         let is_new_app = existing_app.is_none();
 
         // 10. Save APK file
-        let apk_path = self.storage.save_apk(
-            &metadata.package_name,
-            metadata.version_code,
-            &apk_data,
-        )?;
+        let apk_path =
+            self.storage
+                .save_apk(&metadata.package_name, metadata.version_code, &apk_data)?;
 
         // 11. Save icon if available
         let icon_path = if let Some(icon_data) = &metadata.icon_data {
@@ -249,7 +247,9 @@ fn detect_file_type(data: &[u8], filename: &str) -> FileType {
     let has_bundle_config = archive.file_names().any(|name| name == "BundleConfig.pb");
 
     // APK contains AndroidManifest.xml
-    let has_manifest = archive.file_names().any(|name| name == "AndroidManifest.xml");
+    let has_manifest = archive
+        .file_names()
+        .any(|name| name == "AndroidManifest.xml");
 
     if has_bundle_config {
         FileType::Aab
@@ -315,7 +315,10 @@ mod tests {
 
     #[test]
     fn test_detect_file_type_unknown() {
-        assert_eq!(detect_file_type(b"not a zip", "test.txt"), FileType::Unknown);
+        assert_eq!(
+            detect_file_type(b"not a zip", "test.txt"),
+            FileType::Unknown
+        );
         assert_eq!(detect_file_type(b"", "empty"), FileType::Unknown);
     }
 

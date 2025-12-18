@@ -644,7 +644,7 @@ apt install openjdk-17-jre-headless
 | 5.3 Upload error types | Done | |
 | 6.1 Database functions | Done | |
 | 7.1 Services module structure | Done | |
-| 8.1 Unit tests | Not Started | |
-| 8.2 Integration tests | Not Started | |
-| 8.3 Test fixtures | Not Started | |
-| Verification | Not Started | |
+| 8.1 Unit tests | Done | Already included in service modules |
+| 8.2 Integration tests | Done | tests/upload_service.rs |
+| 8.3 Test fixtures | Done | Placeholders for real APKs |
+| Verification | Done | All checks pass |

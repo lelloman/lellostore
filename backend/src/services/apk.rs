@@ -81,7 +81,7 @@ impl ApkParser {
                         .filter_map(|e| e.ok())
                         .filter(|e| e.path().is_dir())
                         .collect();
-                    versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                    versions.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
 
                     for version in versions {
                         let aapt2 = version.path().join("aapt2");
@@ -94,10 +94,7 @@ impl ApkParser {
         }
 
         // Check PATH
-        if let Ok(output) = std::process::Command::new("which")
-            .arg("aapt2")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new("which").arg("aapt2").output() {
             if output.status.success() {
                 let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !path.is_empty() {
@@ -312,8 +309,8 @@ fn parse_icon_line(line: &str) -> Option<(i32, String)> {
 /// Process icon: convert to PNG and resize to 192x192
 fn process_icon(data: &[u8]) -> Result<Vec<u8>, ApkError> {
     // Try to load the image (supports PNG, WebP, etc.)
-    let img =
-        image::load_from_memory(data).map_err(|e| ApkError::IconError(format!("Invalid image: {}", e)))?;
+    let img = image::load_from_memory(data)
+        .map_err(|e| ApkError::IconError(format!("Invalid image: {}", e)))?;
 
     // Resize to 192x192 (standard launcher icon size)
     let resized = img.resize_exact(192, 192, FilterType::Lanczos3);

@@ -192,7 +192,9 @@ mod tests {
         let fake_aab = temp.path().join("fake.aab");
 
         // Write a fake file that's not a ZIP
-        tokio::fs::write(&fake_aab, b"not a zip file").await.unwrap();
+        tokio::fs::write(&fake_aab, b"not a zip file")
+            .await
+            .unwrap();
 
         let result = is_valid_aab(&fake_aab).await.unwrap();
         assert!(!result);
