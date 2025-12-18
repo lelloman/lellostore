@@ -1,6 +1,8 @@
 use axum::routing::get;
 use axum::Router;
 use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::SqlitePool;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -9,7 +11,20 @@ use lellostore_backend::config::{Config, OidcConfig};
 use lellostore_backend::metrics::{metrics_handler, register_metrics};
 use lellostore_backend::services::{ApkParser, StorageService, UploadService};
 
+/// Test context with all resources needed for integration tests
+pub struct TestContext {
+    pub temp_dir: TempDir,
+    pub router: Router,
+    pub pool: SqlitePool,
+    pub storage_path: PathBuf,
+}
+
 pub async fn create_test_app() -> (TempDir, Router) {
+    let ctx = create_test_context().await;
+    (ctx.temp_dir, ctx.router)
+}
+
+pub async fn create_test_context() -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let storage_path = temp_dir.path().join("storage");
@@ -18,7 +33,8 @@ pub async fn create_test_app() -> (TempDir, Router) {
     std::fs::create_dir_all(storage_path.join("apks")).unwrap();
     std::fs::create_dir_all(storage_path.join("icons")).unwrap();
 
-    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    // Use shared cache mode to ensure all connections see the same data
+    let database_url = format!("sqlite:{}?mode=rwc&cache=shared", db_path.display());
 
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -62,16 +78,21 @@ pub async fn create_test_app() -> (TempDir, Router) {
     ));
 
     let state = AppState {
-        db: pool,
+        db: pool.clone(),
         config: Arc::new(config),
         auth: None, // No auth for tests by default
         upload_service,
         storage,
     };
 
-    let app = create_router(state);
+    let router = create_router(state);
 
-    (temp_dir, app)
+    TestContext {
+        temp_dir,
+        router,
+        pool,
+        storage_path,
+    }
 }
 
 pub fn create_test_metrics_app() -> Router {

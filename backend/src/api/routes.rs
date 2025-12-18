@@ -35,10 +35,10 @@ pub fn create_router(state: AppState) -> Router {
 fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
-        .route("/apps/{package_name}", get(handlers::get_app))
-        .route("/apps/{package_name}/icon", get(handlers::get_icon))
+        .route("/apps/:package_name", get(handlers::get_app))
+        .route("/apps/:package_name/icon", get(handlers::get_icon))
         .route(
-            "/apps/{package_name}/versions/{version_code}/apk",
+            "/apps/:package_name/versions/:version_code/apk",
             get(handlers::download_apk),
         )
 }
@@ -47,10 +47,10 @@ fn public_routes() -> Router<AppState> {
 fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
-        .route("/apps/{package_name}", get(handlers::get_app))
-        .route("/apps/{package_name}/icon", get(handlers::get_icon))
+        .route("/apps/:package_name", get(handlers::get_app))
+        .route("/apps/:package_name/icon", get(handlers::get_icon))
         .route(
-            "/apps/{package_name}/versions/{version_code}/apk",
+            "/apps/:package_name/versions/:version_code/apk",
             get(handlers::download_apk),
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
@@ -60,10 +60,10 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 fn admin_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
         .route("/apps", post(handlers::upload_app))
-        .route("/apps/{package_name}", put(handlers::update_app))
-        .route("/apps/{package_name}", delete(handlers::delete_app))
+        .route("/apps/:package_name", put(handlers::update_app))
+        .route("/apps/:package_name", delete(handlers::delete_app))
         .route(
-            "/apps/{package_name}/versions/{version_code}",
+            "/apps/:package_name/versions/:version_code",
             delete(handlers::delete_version),
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
