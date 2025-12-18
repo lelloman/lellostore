@@ -7,12 +7,17 @@ use crate::metrics::track_metrics;
 
 pub fn create_router(state: AppState) -> Router {
     let mut router = Router::new()
-        .route("/health", get(handlers::health_check))
-        .nest("/api", api_routes());
+        .route("/health", get(handlers::health_check));
 
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {
+        // User routes require authentication (any valid user)
+        router = router.nest("/api", user_routes(auth_state.clone()));
+        // Admin routes require authentication AND admin role
         router = router.nest("/api/admin", admin_routes(auth_state.clone()));
+    } else {
+        // No auth configured - make user routes public (dev/testing mode)
+        router = router.nest("/api", public_routes());
     }
 
     router
@@ -22,11 +27,19 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Public API routes (no authentication required)
-fn api_routes() -> Router<AppState> {
+/// Public API routes (used when auth is disabled)
+fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
         .route("/apps/{package_name}", get(handlers::get_app))
+}
+
+/// User API routes (requires authentication, any valid user)
+fn user_routes(auth_state: AuthState) -> Router<AppState> {
+    Router::new()
+        .route("/apps", get(handlers::list_apps))
+        .route("/apps/{package_name}", get(handlers::get_app))
+        .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
 /// Admin routes (requires authentication and admin role)

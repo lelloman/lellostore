@@ -3,6 +3,7 @@ use axum::{
     extract::FromRequestParts,
     http::request::Parts,
 };
+use tracing::warn;
 
 use super::error::AuthError;
 use super::user::User;
@@ -63,6 +64,11 @@ where
         if user.is_admin {
             Ok(AdminUser(user))
         } else {
+            warn!(
+                user = %user.subject,
+                path = %parts.uri.path(),
+                "Authorization denied: user is not admin"
+            );
             Err(AuthError::Forbidden)
         }
     }

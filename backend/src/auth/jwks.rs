@@ -1,7 +1,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, warn};
 
 use super::error::AuthError;
@@ -28,6 +28,8 @@ pub struct JwksResponse {
 /// Cached JWKS with automatic refresh capability
 pub struct JwksCache {
     keys: RwLock<HashMap<String, CachedKey>>,
+    /// Mutex to prevent concurrent JWKS refreshes (avoids thundering herd)
+    refresh_lock: Mutex<()>,
     jwks_uri: String,
     client: reqwest::Client,
 }
@@ -43,11 +45,12 @@ impl JwksCache {
     pub async fn new(jwks_uri: String, client: reqwest::Client) -> Result<Self, AuthError> {
         let cache = Self {
             keys: RwLock::new(HashMap::new()),
+            refresh_lock: Mutex::new(()),
             jwks_uri,
             client,
         };
 
-        cache.refresh().await?;
+        cache.refresh_internal().await?;
         Ok(cache)
     }
 
@@ -61,9 +64,22 @@ impl JwksCache {
             }
         }
 
-        // Key not found, try refreshing once
-        debug!("Key '{}' not found in cache, refreshing JWKS", kid);
-        self.refresh().await?;
+        // Key not found, acquire refresh lock to prevent thundering herd
+        debug!("Key '{}' not found in cache, acquiring refresh lock", kid);
+        let _lock = self.refresh_lock.lock().await;
+
+        // Check again - another request may have refreshed while we waited
+        {
+            let keys = self.keys.read().await;
+            if let Some(cached) = keys.get(kid) {
+                debug!("Key '{}' found after acquiring lock (refreshed by another request)", kid);
+                return Ok((cached.decoding_key.clone(), cached.algorithm));
+            }
+        }
+
+        // Still not found, actually refresh
+        debug!("Key '{}' still not found, refreshing JWKS", kid);
+        self.refresh_internal().await?;
 
         // Try again after refresh
         let keys = self.keys.read().await;
@@ -72,8 +88,14 @@ impl JwksCache {
             .ok_or_else(|| AuthError::KeyNotFound(kid.to_string()))
     }
 
-    /// Force refresh of JWKS from the provider
+    /// Force refresh of JWKS from the provider (public, acquires lock)
     pub async fn refresh(&self) -> Result<(), AuthError> {
+        let _lock = self.refresh_lock.lock().await;
+        self.refresh_internal().await
+    }
+
+    /// Internal refresh without lock (caller must hold refresh_lock)
+    async fn refresh_internal(&self) -> Result<(), AuthError> {
         debug!("Fetching JWKS from {}", self.jwks_uri);
 
         let response = self

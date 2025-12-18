@@ -5,7 +5,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::error::AuthError;
 use super::user::User;
@@ -38,16 +38,35 @@ pub async fn auth_middleware(
     mut request: Request<Body>,
     next: Next,
 ) -> Result<Response, AuthError> {
+    let path = request.uri().path().to_string();
+
     // Extract Bearer token
-    let token = extract_bearer_token(&request)?;
+    let token = match extract_bearer_token(&request) {
+        Ok(t) => t,
+        Err(e) => {
+            warn!(path = %path, error = %e, "Authentication failed: missing or invalid token");
+            return Err(e);
+        }
+    };
 
     // Validate token
-    let claims = auth.validator.validate(token).await?;
+    let claims = match auth.validator.validate(token).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!(path = %path, error = %e, "Authentication failed: token validation error");
+            return Err(e);
+        }
+    };
 
     // Create user from claims
     let user = User::from_claims(&claims, &auth.role_claim_path, &auth.admin_role);
 
-    debug!("Authenticated user: {} (admin: {})", user.subject, user.is_admin);
+    debug!(
+        user = %user.subject,
+        is_admin = user.is_admin,
+        path = %path,
+        "User authenticated"
+    );
 
     // Attach user to request extensions
     request.extensions_mut().insert(user);
