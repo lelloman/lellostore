@@ -1,6 +1,6 @@
 pub mod models;
 
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnection, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 
 use crate::error::AppError;
@@ -236,4 +236,116 @@ pub async fn count_versions(pool: &SqlitePool, package_name: &str) -> Result<i64
         .map_err(AppError::Database)?;
 
     Ok(count)
+}
+
+// ============================================================================
+// Transaction-aware versions of database functions
+// These accept a mutable reference to a connection (from a transaction)
+// ============================================================================
+
+/// Insert a new app (transaction version)
+pub async fn insert_app_tx(
+    conn: &mut SqliteConnection,
+    package_name: &str,
+    name: &str,
+    description: Option<&str>,
+    icon_path: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"
+        INSERT INTO apps (package_name, name, description, icon_path, created_at, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        "#,
+    )
+    .bind(package_name)
+    .bind(name)
+    .bind(description)
+    .bind(icon_path)
+    .execute(conn)
+    .await
+    .map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Update app metadata (transaction version)
+pub async fn update_app_tx(
+    conn: &mut SqliteConnection,
+    package_name: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+    icon_path: Option<&str>,
+) -> Result<(), AppError> {
+    // Build dynamic query based on which fields are provided
+    let mut updates = Vec::new();
+
+    if name.is_some() {
+        updates.push("name = ?");
+    }
+    if description.is_some() {
+        updates.push("description = ?");
+    }
+    if icon_path.is_some() {
+        updates.push("icon_path = ?");
+    }
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    updates.push("updated_at = datetime('now')");
+
+    let query = format!(
+        "UPDATE apps SET {} WHERE package_name = ?",
+        updates.join(", ")
+    );
+
+    let mut q = sqlx::query(&query);
+
+    if let Some(n) = name {
+        q = q.bind(n);
+    }
+    if let Some(d) = description {
+        q = q.bind(d);
+    }
+    if let Some(i) = icon_path {
+        q = q.bind(i);
+    }
+    q = q.bind(package_name);
+
+    q.execute(conn).await.map_err(AppError::Database)?;
+
+    Ok(())
+}
+
+/// Insert a new app version (transaction version)
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_app_version_tx(
+    conn: &mut SqliteConnection,
+    package_name: &str,
+    version_code: i64,
+    version_name: &str,
+    apk_path: &str,
+    size: i64,
+    sha256: &str,
+    min_sdk: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"
+        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        "#,
+    )
+    .bind(package_name)
+    .bind(version_code)
+    .bind(version_name)
+    .bind(apk_path)
+    .bind(size)
+    .bind(sha256)
+    .bind(min_sdk)
+    .execute(conn)
+    .await
+    .map_err(AppError::Database)?;
+
+    Ok(())
 }

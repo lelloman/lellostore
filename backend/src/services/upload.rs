@@ -1,6 +1,7 @@
 use sqlx::SqlitePool;
 use std::io::Cursor;
 use thiserror::Error;
+use tracing::warn;
 use zip::ZipArchive;
 
 use crate::db;
@@ -159,56 +160,39 @@ impl UploadService {
             None
         };
 
-        // 12. Update database
+        // 12. Update database (with cleanup on failure)
         let app_name = override_name
             .as_ref()
             .cloned()
             .unwrap_or_else(|| metadata.app_name.clone());
 
-        if is_new_app {
-            db::insert_app(
-                &self.db,
+        let db_result = self
+            .update_database(
                 &metadata.package_name,
+                metadata.version_code,
+                &metadata.version_name,
+                &apk_path,
+                apk_data.len() as i64,
+                &sha256,
+                metadata.min_sdk,
                 &app_name,
+                override_name.as_deref(),
                 override_description.as_deref(),
                 icon_path.as_deref(),
+                is_new_app,
             )
-            .await?;
-        } else {
-            // Update icon if we got a new one
-            if icon_path.is_some() {
-                db::update_app(
-                    &self.db,
-                    &metadata.package_name,
-                    override_name.as_deref(),
-                    override_description.as_deref(),
-                    icon_path.as_deref(),
-                )
-                .await?;
-            } else if override_name.is_some() || override_description.is_some() {
-                db::update_app(
-                    &self.db,
-                    &metadata.package_name,
-                    override_name.as_deref(),
-                    override_description.as_deref(),
-                    None,
-                )
-                .await?;
-            }
+            .await;
+
+        // If database update failed, clean up saved files
+        if let Err(ref e) = db_result {
+            warn!(
+                "Database update failed for {}, cleaning up files: {}",
+                metadata.package_name, e
+            );
+            self.cleanup_on_failure(&metadata.package_name, metadata.version_code, is_new_app);
         }
 
-        // Insert version
-        db::insert_app_version(
-            &self.db,
-            &metadata.package_name,
-            metadata.version_code,
-            &metadata.version_name,
-            &apk_path,
-            apk_data.len() as i64,
-            &sha256,
-            metadata.min_sdk,
-        )
-        .await?;
+        db_result?;
 
         // 13. Temp directory is automatically cleaned up when dropped
 
@@ -219,6 +203,93 @@ impl UploadService {
             app_name,
             is_new_app,
         })
+    }
+
+    /// Update database with all app and version information.
+    /// Uses a transaction to ensure atomicity.
+    #[allow(clippy::too_many_arguments)]
+    async fn update_database(
+        &self,
+        package_name: &str,
+        version_code: i64,
+        version_name: &str,
+        apk_path: &str,
+        size: i64,
+        sha256: &str,
+        min_sdk: i64,
+        app_name: &str,
+        override_name: Option<&str>,
+        override_description: Option<&str>,
+        icon_path: Option<&str>,
+        is_new_app: bool,
+    ) -> Result<(), UploadError> {
+        // Start a transaction
+        let mut tx = self.db.begin().await.map_err(AppError::Database)?;
+
+        if is_new_app {
+            db::insert_app_tx(
+                &mut tx,
+                package_name,
+                app_name,
+                override_description,
+                icon_path,
+            )
+            .await?;
+        } else {
+            // Update icon if we got a new one
+            if icon_path.is_some() {
+                db::update_app_tx(
+                    &mut tx,
+                    package_name,
+                    override_name,
+                    override_description,
+                    icon_path,
+                )
+                .await?;
+            } else if override_name.is_some() || override_description.is_some() {
+                db::update_app_tx(
+                    &mut tx,
+                    package_name,
+                    override_name,
+                    override_description,
+                    None,
+                )
+                .await?;
+            }
+        }
+
+        // Insert version
+        db::insert_app_version_tx(
+            &mut tx,
+            package_name,
+            version_code,
+            version_name,
+            apk_path,
+            size,
+            sha256,
+            min_sdk,
+        )
+        .await?;
+
+        // Commit transaction
+        tx.commit().await.map_err(AppError::Database)?;
+
+        Ok(())
+    }
+
+    /// Clean up files if database operation fails
+    fn cleanup_on_failure(&self, package_name: &str, version_code: i64, is_new_app: bool) {
+        // Delete the APK we just saved
+        if let Err(e) = self.storage.delete_apk(package_name, version_code) {
+            warn!("Failed to clean up APK after DB failure: {}", e);
+        }
+
+        // If this was a new app, also delete the icon we saved
+        if is_new_app {
+            if let Err(e) = self.storage.delete_icon(package_name) {
+                warn!("Failed to clean up icon after DB failure: {}", e);
+            }
+        }
     }
 }
 

@@ -10,6 +10,44 @@ pub enum StorageError {
 
     #[error("File not found: {0}")]
     NotFound(String),
+
+    #[error("Invalid package name: {0}")]
+    InvalidPackageName(String),
+}
+
+/// Validate that a package name is safe to use in file paths.
+/// Android package names follow the format: [a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+
+/// We check for path traversal characters and reasonable length.
+fn validate_package_name(name: &str) -> Result<(), StorageError> {
+    // Check for path traversal attempts
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        return Err(StorageError::InvalidPackageName(
+            "Package name contains path separators or traversal sequences".to_string(),
+        ));
+    }
+
+    // Check for null bytes (could truncate paths)
+    if name.contains('\0') {
+        return Err(StorageError::InvalidPackageName(
+            "Package name contains null bytes".to_string(),
+        ));
+    }
+
+    // Check reasonable length (Android has a limit of ~255 chars for package name)
+    if name.is_empty() || name.len() > 255 {
+        return Err(StorageError::InvalidPackageName(
+            "Package name must be 1-255 characters".to_string(),
+        ));
+    }
+
+    // Basic format check: must contain at least one dot (com.example format)
+    if !name.contains('.') {
+        return Err(StorageError::InvalidPackageName(
+            "Package name must contain at least one dot (e.g., com.example)".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 pub struct StorageService {
@@ -40,6 +78,8 @@ impl StorageService {
         version_code: i64,
         data: &[u8],
     ) -> Result<String, StorageError> {
+        validate_package_name(package_name)?;
+
         let apk_dir = self.base_path.join("apks").join(package_name);
         std::fs::create_dir_all(&apk_dir)?;
 
@@ -52,6 +92,8 @@ impl StorageService {
 
     /// Save icon to permanent storage, returns the relative path
     pub fn save_icon(&self, package_name: &str, data: &[u8]) -> Result<String, StorageError> {
+        validate_package_name(package_name)?;
+
         let icons_dir = self.base_path.join("icons");
         std::fs::create_dir_all(&icons_dir)?;
 
@@ -64,6 +106,8 @@ impl StorageService {
 
     /// Delete APK file
     pub fn delete_apk(&self, package_name: &str, version_code: i64) -> Result<(), StorageError> {
+        validate_package_name(package_name)?;
+
         let file_path = self
             .base_path
             .join("apks")
@@ -85,6 +129,8 @@ impl StorageService {
 
     /// Delete icon file
     pub fn delete_icon(&self, package_name: &str) -> Result<(), StorageError> {
+        validate_package_name(package_name)?;
+
         let file_path = self
             .base_path
             .join("icons")
@@ -99,6 +145,8 @@ impl StorageService {
 
     /// Delete all files for a package (all versions + icon)
     pub fn delete_package(&self, package_name: &str) -> Result<(), StorageError> {
+        validate_package_name(package_name)?;
+
         // Delete all APKs
         let apk_dir = self.base_path.join("apks").join(package_name);
         if apk_dir.exists() {
@@ -248,5 +296,49 @@ mod tests {
         }
         // TempDir dropped, directory should be deleted
         assert!(!temp_path.exists());
+    }
+
+    #[test]
+    fn test_validate_package_name_valid() {
+        assert!(validate_package_name("com.example.app").is_ok());
+        assert!(validate_package_name("org.test.myapp").is_ok());
+        assert!(validate_package_name("a.b").is_ok());
+    }
+
+    #[test]
+    fn test_validate_package_name_path_traversal() {
+        assert!(validate_package_name("../etc/passwd").is_err());
+        assert!(validate_package_name("com.example/../etc").is_err());
+        assert!(validate_package_name("com/example/app").is_err());
+        assert!(validate_package_name("com\\example\\app").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_empty_or_long() {
+        assert!(validate_package_name("").is_err());
+        assert!(validate_package_name(&"a".repeat(300)).is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_no_dot() {
+        assert!(validate_package_name("nodots").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_null_byte() {
+        assert!(validate_package_name("com.example\0.app").is_err());
+    }
+
+    #[test]
+    fn test_save_apk_rejects_invalid_package() {
+        let temp = tempdir().unwrap();
+        let storage = StorageService::new(temp.path().to_path_buf());
+
+        let result = storage.save_apk("../etc/passwd", 1, b"data");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            StorageError::InvalidPackageName(_)
+        ));
     }
 }
