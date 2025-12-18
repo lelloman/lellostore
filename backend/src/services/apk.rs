@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use thiserror::Error;
 use tokio::process::Command;
+use tracing::warn;
 use zip::ZipArchive;
 
 #[derive(Debug, Error)]
@@ -243,9 +244,43 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
         package_name.ok_or_else(|| ApkError::ParseError("Missing package name".to_string()))?;
     let version_code: i64 =
         version_code.ok_or_else(|| ApkError::ParseError("Missing version code".to_string()))?;
-    let version_name = version_name.unwrap_or_else(|| version_code.to_string());
-    let min_sdk = min_sdk.unwrap_or(21); // Default to Android 5.0
-    let app_name = app_name.unwrap_or_else(|| package_name.clone());
+
+    let version_name = version_name.unwrap_or_else(|| {
+        warn!(
+            "APK {} missing version_name, using version_code as fallback",
+            package_name
+        );
+        version_code.to_string()
+    });
+
+    let min_sdk = min_sdk.unwrap_or_else(|| {
+        warn!(
+            "APK {} missing minSdkVersion, defaulting to 21 (Android 5.0)",
+            package_name
+        );
+        21
+    });
+
+    let app_name = app_name.unwrap_or_else(|| {
+        warn!(
+            "APK {} missing application-label, using package name as fallback",
+            package_name
+        );
+        package_name.clone()
+    });
+
+    // Validate icon path doesn't contain path traversal
+    let icon_path = icon_path.filter(|path| {
+        if path.contains("..") || path.starts_with('/') {
+            warn!(
+                "APK {} has suspicious icon path '{}', ignoring",
+                package_name, path
+            );
+            false
+        } else {
+            true
+        }
+    });
 
     Ok(ParsedAapt2Output {
         package_name,
