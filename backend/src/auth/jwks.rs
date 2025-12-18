@@ -72,7 +72,10 @@ impl JwksCache {
         {
             let keys = self.keys.read().await;
             if let Some(cached) = keys.get(kid) {
-                debug!("Key '{}' found after acquiring lock (refreshed by another request)", kid);
+                debug!(
+                    "Key '{}' found after acquiring lock (refreshed by another request)",
+                    kid
+                );
                 return Ok((cached.decoding_key.clone(), cached.algorithm));
             }
         }

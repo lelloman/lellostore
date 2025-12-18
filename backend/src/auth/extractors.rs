@@ -1,8 +1,4 @@
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::request::Parts,
-};
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 use tracing::warn;
 
 use super::error::AuthError;

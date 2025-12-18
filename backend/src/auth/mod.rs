@@ -38,7 +38,11 @@ pub struct AuthState {
 
 impl AuthState {
     /// Create a new AuthState
-    pub fn new(validator: Arc<TokenValidator>, role_claim_path: String, admin_role: String) -> Self {
+    pub fn new(
+        validator: Arc<TokenValidator>,
+        role_claim_path: String,
+        admin_role: String,
+    ) -> Self {
         Self {
             validator,
             role_claim_path,

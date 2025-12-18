@@ -148,13 +148,23 @@ async fn is_valid_aab(path: &Path) -> Result<bool, AabError> {
 /// Extract universal.apk from the .apks archive
 async fn extract_universal_apk(apks_path: &Path, output_path: &Path) -> Result<(), AabError> {
     let data = tokio::fs::read(apks_path).await?;
+
+    // Extract APK data synchronously to avoid Send issues with ZipFile
+    let apk_data = extract_apk_from_archive(&data)?;
+
+    tokio::fs::write(output_path, &apk_data).await?;
+
+    Ok(())
+}
+
+/// Synchronously extract universal.apk from archive data
+fn extract_apk_from_archive(data: &[u8]) -> Result<Vec<u8>, AabError> {
     let cursor = Cursor::new(data);
 
     let mut archive = ZipArchive::new(cursor)
         .map_err(|e| AabError::ConversionFailed(format!("Invalid .apks file: {}", e)))?;
 
     // Find universal.apk in the archive
-    let mut found = false;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| {
             AabError::ConversionFailed(format!("Failed to read .apks archive: {}", e))
@@ -165,19 +175,13 @@ async fn extract_universal_apk(apks_path: &Path, output_path: &Path) -> Result<(
             std::io::Read::read_to_end(&mut file, &mut apk_data)
                 .map_err(|e| AabError::ConversionFailed(format!("Failed to extract APK: {}", e)))?;
 
-            tokio::fs::write(output_path, &apk_data).await?;
-            found = true;
-            break;
+            return Ok(apk_data);
         }
     }
 
-    if !found {
-        return Err(AabError::ConversionFailed(
-            "universal.apk not found in .apks archive".to_string(),
-        ));
-    }
-
-    Ok(())
+    Err(AabError::ConversionFailed(
+        "universal.apk not found in .apks archive".to_string(),
+    ))
 }
 
 #[cfg(test)]

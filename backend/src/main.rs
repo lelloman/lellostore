@@ -46,9 +46,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = Arc::new(StorageService::new(config.storage_path.clone()));
 
     // APK parser - use configured path or auto-detect
-    let aapt2_path = config.aapt2_path.clone().or_else(|| {
-        ApkParser::detect_aapt2().ok()
-    });
+    let aapt2_path = config
+        .aapt2_path
+        .clone()
+        .or_else(|| ApkParser::detect_aapt2().ok());
     let apk_parser = match aapt2_path {
         Some(path) => {
             tracing::info!("Using aapt2 at {:?}", path);
@@ -93,11 +94,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         {
             Ok(auth) => {
-                tracing::info!("Authentication initialized with issuer: {}", config.oidc.issuer_url);
+                tracing::info!(
+                    "Authentication initialized with issuer: {}",
+                    config.oidc.issuer_url
+                );
                 Some(auth)
             }
             Err(e) => {
-                tracing::warn!("Failed to initialize authentication: {}. Protected routes will be disabled.", e);
+                tracing::warn!(
+                    "Failed to initialize authentication: {}. Protected routes will be disabled.",
+                    e
+                );
                 None
             }
         }

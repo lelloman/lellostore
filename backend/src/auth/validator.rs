@@ -90,9 +90,7 @@ impl TokenValidator {
             use jsonwebtoken::errors::ErrorKind;
             match e.kind() {
                 ErrorKind::ExpiredSignature => AuthError::TokenExpired,
-                ErrorKind::InvalidIssuer => {
-                    AuthError::TokenInvalid("Invalid issuer".to_string())
-                }
+                ErrorKind::InvalidIssuer => AuthError::TokenInvalid("Invalid issuer".to_string()),
                 ErrorKind::InvalidAudience => {
                     AuthError::TokenInvalid("Invalid audience".to_string())
                 }

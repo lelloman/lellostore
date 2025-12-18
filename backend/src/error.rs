@@ -19,12 +19,35 @@ pub enum AppError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    #[error("File too large")]
+    PayloadTooLarge,
+
+    #[error("Invalid file type")]
+    InvalidFileType,
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Range not satisfiable")]
+    RangeNotSatisfiable,
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             AppError::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            AppError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, self.to_string()),
+            AppError::InvalidFileType => (StatusCode::BAD_REQUEST, self.to_string()),
+            AppError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
+            AppError::RangeNotSatisfiable => (StatusCode::RANGE_NOT_SATISFIABLE, self.to_string()),
             AppError::Database(_) => {
                 tracing::error!("Database error: {}", self);
                 (
@@ -45,6 +68,10 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal error".to_string(),
                 )
+            }
+            AppError::Io(e) => {
+                tracing::error!("IO error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "IO error".to_string())
             }
         };
 

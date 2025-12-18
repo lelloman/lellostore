@@ -1,4 +1,9 @@
-use axum::{http::Method, middleware, routing::get, Router};
+use axum::{
+    http::Method,
+    middleware,
+    routing::{delete, get, post, put},
+    Router,
+};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use super::{handlers, AppState};
@@ -6,8 +11,7 @@ use crate::auth::{auth_middleware, AuthState};
 use crate::metrics::track_metrics;
 
 pub fn create_router(state: AppState) -> Router {
-    let mut router = Router::new()
-        .route("/health", get(handlers::health_check));
+    let mut router = Router::new().route("/health", get(handlers::health_check));
 
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {
@@ -55,8 +59,13 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 /// Admin routes (requires authentication and admin role)
 fn admin_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
-        // Admin endpoints will be added here as we implement them
-        // For now, just an empty router with auth middleware
+        .route("/apps", post(handlers::upload_app))
+        .route("/apps/{package_name}", put(handlers::update_app))
+        .route("/apps/{package_name}", delete(handlers::delete_app))
+        .route(
+            "/apps/{package_name}/versions/{version_code}",
+            delete(handlers::delete_version),
+        )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
