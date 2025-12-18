@@ -4,6 +4,7 @@ use tracing_subscriber::EnvFilter;
 use lellostore_backend::api::AppState;
 use lellostore_backend::auth;
 use lellostore_backend::config::Config;
+use lellostore_backend::services::{AabConverter, ApkParser, StorageService, UploadService};
 use lellostore_backend::{api, db, metrics};
 
 #[tokio::main]
@@ -41,6 +42,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.database_path.clone(),
     );
 
+    // Initialize services
+    let storage = Arc::new(StorageService::new(config.storage_path.clone()));
+
+    // APK parser - use configured path or auto-detect
+    let aapt2_path = config.aapt2_path.clone().or_else(|| {
+        ApkParser::detect_aapt2().ok()
+    });
+    let apk_parser = match aapt2_path {
+        Some(path) => {
+            tracing::info!("Using aapt2 at {:?}", path);
+            ApkParser::new(path)
+        }
+        None => {
+            tracing::warn!("aapt2 not found - APK metadata extraction will use fallback values");
+            ApkParser::new(std::path::PathBuf::from("aapt2")) // Will fail gracefully at runtime
+        }
+    };
+
+    // AAB converter is optional - requires both bundletool and java paths
+    let aab_converter = match (&config.bundletool_path, &config.java_path) {
+        (Some(bundletool), Some(java)) => {
+            tracing::info!("AAB conversion enabled (bundletool: {:?})", bundletool);
+            Some(AabConverter::new(bundletool.clone(), java.clone()))
+        }
+        _ => {
+            tracing::info!("AAB conversion disabled (bundletool or java not configured)");
+            None
+        }
+    };
+
+    let upload_service = Arc::new(UploadService::new(
+        (*storage).clone(),
+        apk_parser,
+        aab_converter,
+        db.clone(),
+        config.max_upload_size,
+    ));
+
+    tracing::info!("Services initialized");
+
     // Initialize authentication (optional - skip if issuer URL is placeholder)
     let auth_state = if config.oidc.issuer_url != "https://example.com" {
         match auth::init_auth(
@@ -70,6 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db,
         config: Arc::new(config.clone()),
         auth: auth_state,
+        upload_service,
+        storage,
     };
 
     // Create router

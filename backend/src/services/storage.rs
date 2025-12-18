@@ -50,6 +50,7 @@ fn validate_package_name(name: &str) -> Result<(), StorageError> {
     Ok(())
 }
 
+#[derive(Clone)]
 pub struct StorageService {
     base_path: PathBuf,
 }

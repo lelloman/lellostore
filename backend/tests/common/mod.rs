@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use lellostore_backend::api::{routes::create_router, AppState};
 use lellostore_backend::config::{Config, OidcConfig};
 use lellostore_backend::metrics::{metrics_handler, register_metrics};
+use lellostore_backend::services::{ApkParser, StorageService, UploadService};
 
 pub async fn create_test_app() -> (TempDir, Router) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -49,10 +50,23 @@ pub async fn create_test_app() -> (TempDir, Router) {
         max_upload_size: 100 * 1024 * 1024, // 100MB for tests
     };
 
+    // Initialize test services
+    let storage = Arc::new(StorageService::new(storage_path.clone()));
+    let apk_parser = ApkParser::new(std::path::PathBuf::from("aapt2")); // Will fail gracefully in tests
+    let upload_service = Arc::new(UploadService::new(
+        (*storage).clone(),
+        apk_parser,
+        None, // No AAB converter for tests
+        pool.clone(),
+        config.max_upload_size,
+    ));
+
     let state = AppState {
         db: pool,
         config: Arc::new(config),
         auth: None, // No auth for tests by default
+        upload_service,
+        storage,
     };
 
     let app = create_router(state);

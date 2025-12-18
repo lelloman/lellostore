@@ -32,6 +32,11 @@ fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
         .route("/apps/{package_name}", get(handlers::get_app))
+        .route("/apps/{package_name}/icon", get(handlers::get_icon))
+        .route(
+            "/apps/{package_name}/versions/{version_code}/apk",
+            get(handlers::download_apk),
+        )
 }
 
 /// User API routes (requires authentication, any valid user)
@@ -39,6 +44,11 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
         .route("/apps/{package_name}", get(handlers::get_app))
+        .route("/apps/{package_name}/icon", get(handlers::get_icon))
+        .route(
+            "/apps/{package_name}/versions/{version_code}/apk",
+            get(handlers::download_apk),
+        )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
