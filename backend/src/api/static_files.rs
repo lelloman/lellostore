@@ -20,7 +20,10 @@ pub async fn serve_static(uri: Uri) -> impl IntoResponse {
     }
 
     // For paths without extension (likely SPA routes), serve index.html
-    if !path.contains('.') || path.is_empty() {
+    // Paths with extensions (like .js, .css) that weren't found should 404
+    let has_extension = path.rsplit_once('/').map(|(_, f)| f).unwrap_or(path).contains('.');
+
+    if !has_extension {
         if let Some(content) = Assets::get("index.html") {
             return serve_file("index.html", &content.data);
         }

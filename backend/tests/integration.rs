@@ -486,3 +486,17 @@ async fn test_api_routes_take_priority_over_static() {
     let body: serde_json::Value = response.json();
     assert!(body["apps"].is_array());
 }
+
+#[tokio::test]
+async fn test_missing_static_file_returns_404() {
+    let (_temp_dir, app) = create_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    // Request for a non-existent file with extension should return 404, not index.html
+    let response = server.get("/nonexistent.js").await;
+    assert_eq!(
+        response.status_code(),
+        StatusCode::NOT_FOUND,
+        "Missing static file with extension should return 404"
+    );
+}
