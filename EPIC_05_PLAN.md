@@ -17,11 +17,11 @@
 | 3 | Pinia State Management | done |
 | 4 | OIDC Authentication Service | done |
 | 5 | Auth Store Implementation | done |
-| 6 | Router with Auth Guards | un-done |
+| 6 | Router with Auth Guards | done |
 | 7 | API Client Service | un-done |
 | 8 | Base App Layout | un-done |
-| 9 | Login Page | un-done |
-| 10 | OIDC Callback Handler | un-done |
+| 9 | Login Page | done |
+| 10 | OIDC Callback Handler | done |
 | 11 | Environment Configuration | un-done |
 | 12 | Development Proxy Setup | un-done |
 
