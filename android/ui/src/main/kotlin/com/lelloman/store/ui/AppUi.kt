@@ -19,7 +19,6 @@ import com.lelloman.store.ui.navigation.logout
 import com.lelloman.store.ui.navigation.toAppDetail
 import com.lelloman.store.ui.screen.detail.AppDetailScreen
 import com.lelloman.store.ui.screen.login.LoginScreen
-import com.lelloman.store.domain.auth.AuthResult
 import com.lelloman.store.ui.screen.main.MainScreen
 import com.lelloman.store.ui.screen.main.ProfileBottomSheet
 import com.lelloman.store.ui.screen.splash.SplashScreen
