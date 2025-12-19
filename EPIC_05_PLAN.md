@@ -19,7 +19,7 @@
 | 5 | Auth Store Implementation | done |
 | 6 | Router with Auth Guards | done |
 | 7 | API Client Service | done |
-| 8 | Base App Layout | un-done |
+| 8 | Base App Layout | done |
 | 9 | Login Page | done |
 | 10 | OIDC Callback Handler | done |
 | 11 | Environment Configuration | un-done |
