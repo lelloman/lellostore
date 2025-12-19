@@ -35,6 +35,10 @@ android {
 dependencies {
     implementation(project(":logger"))
 
+    // Kotlin Extensions
+    api(libs.kotlinx.datetime)
+    api(libs.kotlinx.coroutines.core)
+
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.mockk)
