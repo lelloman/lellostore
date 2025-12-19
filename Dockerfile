@@ -31,8 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Cache dependencies by building with empty source first
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
-# Create dummy source file for dependency caching
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs
+# Create dummy source files for dependency caching
+RUN mkdir -p src/bin && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "fn main() {}" > src/bin/mock_oidc.rs
 
 # Build dependencies only (this layer is cached)
 RUN cargo build --release && rm -rf src
