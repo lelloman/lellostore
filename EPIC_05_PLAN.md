@@ -15,7 +15,7 @@
 | 1 | Project Initialization | done |
 | 2 | Vuetify 3 Setup | done |
 | 3 | Pinia State Management | done |
-| 4 | OIDC Authentication Service | un-done |
+| 4 | OIDC Authentication Service | done |
 | 5 | Auth Store Implementation | un-done |
 | 6 | Router with Auth Guards | un-done |
 | 7 | API Client Service | un-done |
