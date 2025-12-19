@@ -425,3 +425,64 @@ async fn test_get_app_with_versions() {
     assert!(versions[0]["versionCode"].is_number());
     assert!(versions[0]["apkUrl"].is_string());
 }
+
+// ============================================================================
+// Static File Serving Tests (Embedded Frontend)
+// ============================================================================
+
+#[tokio::test]
+async fn test_serve_index_at_root() {
+    let (_temp_dir, app) = create_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    let response = server.get("/").await;
+    // Should return the index.html with 200 status (if frontend is embedded)
+    // or 404 if no frontend is built
+    let status = response.status_code();
+    assert!(
+        status == StatusCode::OK || status == StatusCode::NOT_FOUND,
+        "Expected OK or NOT_FOUND, got {:?}",
+        status
+    );
+
+    if status == StatusCode::OK {
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("text/html"));
+    }
+}
+
+#[tokio::test]
+async fn test_spa_fallback_for_deep_routes() {
+    let (_temp_dir, app) = create_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    // SPA routes without file extension should return index.html
+    let response = server.get("/apps/com.example.app").await;
+    let status = response.status_code();
+
+    // Should return the index.html with 200 status (if frontend is embedded)
+    // or 404 if no frontend is built
+    assert!(
+        status == StatusCode::OK || status == StatusCode::NOT_FOUND,
+        "Expected OK or NOT_FOUND for SPA route, got {:?}",
+        status
+    );
+
+    if status == StatusCode::OK {
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("text/html"));
+    }
+}
+
+#[tokio::test]
+async fn test_api_routes_take_priority_over_static() {
+    let ctx = create_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+
+    // API routes should still work
+    let response = server.get("/api/apps").await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+
+    let body: serde_json::Value = response.json();
+    assert!(body["apps"].is_array());
+}

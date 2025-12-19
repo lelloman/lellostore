@@ -6,7 +6,7 @@ use axum::{
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-use super::{handlers, AppState};
+use super::{handlers, static_files, AppState};
 use crate::auth::{auth_middleware, AuthState};
 use crate::metrics::track_metrics;
 
@@ -23,6 +23,12 @@ pub fn create_router(state: AppState) -> Router {
         // No auth configured - make user routes public (dev/testing mode)
         router = router.nest("/api", public_routes());
     }
+
+    // Add static file serving for embedded frontend
+    // This must come after API routes so API takes priority
+    router = router
+        .route("/", get(static_files::serve_index))
+        .fallback(static_files::serve_static);
 
     router
         .layer(middleware::from_fn(track_metrics))

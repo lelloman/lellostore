@@ -1,6 +1,7 @@
 pub mod file_response;
 pub mod handlers;
 pub mod routes;
+pub mod static_files;
 
 use sqlx::SqlitePool;
 use std::sync::Arc;
