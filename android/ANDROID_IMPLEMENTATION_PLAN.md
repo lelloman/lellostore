@@ -2,6 +2,65 @@
 
 This document provides a detailed, step-by-step implementation plan for the lellostore Android app. Each phase builds upon the previous one, ensuring a working app at each milestone.
 
+## Testing Strategy
+
+This implementation follows a **test-as-you-build** approach:
+
+1. **Unit Tests** - Every component gets unit tests (ViewModels, Stores, Repositories)
+2. **Integration Tests** - Test components working together within each module
+3. **E2E Android Tests** - Full instrumented tests mocking only the backend (MockWebServer)
+
+### Test Infrastructure
+
+| Component | Test Approach |
+|-----------|---------------|
+| ViewModels | Unit tests with fake Interactors, Turbine for Flow testing |
+| Stores/Repositories | Unit tests with in-memory Room, fake dependencies |
+| API Client | Unit tests with Ktor MockEngine |
+| DAOs | Instrumented tests with in-memory Room |
+| UI Screens | Compose UI tests with fake ViewModels |
+| Full App | Instrumented E2E tests with MockWebServer |
+
+### Test Dependencies
+
+```toml
+[versions]
+junit = "4.13.2"
+truth = "1.4.4"
+mockk = "1.13.13"
+turbine = "1.2.0"
+coroutines-test = "1.9.0"
+mockwebserver = "4.12.0"
+robolectric = "4.14"
+androidx-test-core = "1.6.1"
+androidx-test-runner = "1.6.2"
+androidx-test-rules = "1.6.1"
+compose-ui-test = "1.7.6"
+hilt-testing = "2.53.1"
+
+[libraries]
+# Unit Testing
+junit = { module = "junit:junit", version.ref = "junit" }
+truth = { module = "com.google.truth:truth", version.ref = "truth" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines-test" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+
+# Instrumented Testing
+mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "mockwebserver" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidx-test-rules" }
+compose-ui-test = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "compose-ui-test" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "compose-ui-test" }
+hilt-testing = { module = "com.google.dagger:hilt-android-testing", version.ref = "hilt-testing" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+```
+
+---
+
 ## Overview
 
 | Phase | Name | Description | Milestone |
@@ -16,6 +75,7 @@ This document provides a detailed, step-by-step implementation plan for the lell
 | 8 | Catalog & Detail | App list and detail screens | Can browse apps |
 | 9 | Download & Install | APK download and installation | Can install apps |
 | 10 | Updates & Background | Update detection, WorkManager | Background update checks |
+| 11 | E2E Tests | Full app instrumented tests | Complete test coverage |
 
 ---
 
@@ -278,9 +338,42 @@ dependencies {
 }
 ```
 
-### 1.4 Verification
+### 1.4 Test Configuration
+
+Each module needs test dependencies configured:
+
+```kotlin
+// For all modules - in build.gradle.kts
+dependencies {
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
+}
+
+// For Android library modules - add instrumented test deps
+dependencies {
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.hilt.testing)
+    kspAndroidTest(libs.hilt.compiler)
+}
+
+// For :app module - add E2E test deps
+dependencies {
+    androidTestImplementation(libs.mockwebserver)
+    androidTestImplementation(libs.compose.ui.test)
+    debugImplementation(libs.compose.ui.test.manifest)
+}
+```
+
+### 1.5 Verification
 
 - [ ] Run `./gradlew clean build` - should succeed
+- [ ] Run `./gradlew test` - test task exists (no tests yet)
 - [ ] All modules appear in Android Studio
 - [ ] No dependency conflicts
 
@@ -351,10 +444,56 @@ class AndroidLoggerFactory : LoggerFactory {
 }
 ```
 
-### 2.5 Verification
+### 2.5 Unit Tests
+
+```kotlin
+// logger/src/test/java/com/lelloman/store/logger/ConsoleLoggerTest.kt
+class ConsoleLoggerTest {
+
+    @Test
+    fun `debug logs message with correct tag`() {
+        val output = captureStdout {
+            val logger = ConsoleLogger("TestTag")
+            logger.debug("test message")
+        }
+        assertThat(output).contains("D/TestTag: test message")
+    }
+
+    @Test
+    fun `error logs message and throwable`() {
+        val exception = RuntimeException("test error")
+        val output = captureStdout {
+            val logger = ConsoleLogger("TestTag")
+            logger.error("error occurred", exception)
+        }
+        assertThat(output).contains("E/TestTag: error occurred")
+        assertThat(output).contains("RuntimeException")
+    }
+}
+
+// logger/src/test/java/com/lelloman/store/logger/LoggerFactoryTest.kt
+class LoggerFactoryTest {
+
+    @Test
+    fun `provideDelegate creates logger with class name as tag`() {
+        val factory = ConsoleLoggerFactory()
+        val testClass = TestClass(factory)
+
+        assertThat(testClass.loggerTag).isEqualTo("TestClass")
+    }
+
+    private class TestClass(loggerFactory: LoggerFactory) {
+        private val logger: Logger by loggerFactory
+        val loggerTag: String get() = (logger as ConsoleLogger).tag
+    }
+}
+```
+
+### 2.6 Verification
 
 - [ ] Logger compiles in `:logger` module
 - [ ] Can use logger via delegation: `private val logger: Logger by loggerFactory`
+- [ ] `./gradlew :logger:test` passes
 
 ---
 
@@ -776,10 +915,273 @@ class LocalDataModule {
 }
 ```
 
-### 4.5 Verification
+### 4.5 Unit Tests - Stores
+
+```kotlin
+// localdata/src/test/java/com/lelloman/store/localdata/config/ConfigStoreImplTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class ConfigStoreImplTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+    private lateinit var dataStore: DataStore<Preferences>
+    private lateinit var configStore: ConfigStoreImpl
+
+    @Before
+    fun setup() {
+        dataStore = PreferenceDataStoreFactory.create(
+            scope = testScope.backgroundScope,
+            produceFile = { File.createTempFile("test", ".preferences_pb") }
+        )
+        configStore = ConfigStoreImpl(
+            dataStore = dataStore,
+            defaultServerUrl = "http://default.example.com",
+            scope = testScope.backgroundScope,
+        )
+    }
+
+    @Test
+    fun `serverUrl returns default when not set`() = testScope.runTest {
+        assertThat(configStore.serverUrl.value).isEqualTo("http://default.example.com")
+    }
+
+    @Test
+    fun `setServerUrl with valid URL returns Success`() = testScope.runTest {
+        val result = configStore.setServerUrl("https://new.example.com")
+
+        assertThat(result).isEqualTo(ConfigStore.SetServerUrlResult.Success)
+        assertThat(configStore.serverUrl.value).isEqualTo("https://new.example.com")
+    }
+
+    @Test
+    fun `setServerUrl with invalid URL returns InvalidUrl`() = testScope.runTest {
+        val result = configStore.setServerUrl("not-a-url")
+
+        assertThat(result).isEqualTo(ConfigStore.SetServerUrlResult.InvalidUrl)
+        assertThat(configStore.serverUrl.value).isEqualTo("http://default.example.com")
+    }
+
+    @Test
+    fun `setServerUrl with empty string returns InvalidUrl`() = testScope.runTest {
+        val result = configStore.setServerUrl("")
+
+        assertThat(result).isEqualTo(ConfigStore.SetServerUrlResult.InvalidUrl)
+    }
+
+    @Test
+    fun `setServerUrl accepts http and https`() = testScope.runTest {
+        assertThat(configStore.setServerUrl("http://example.com"))
+            .isEqualTo(ConfigStore.SetServerUrlResult.Success)
+        assertThat(configStore.setServerUrl("https://example.com"))
+            .isEqualTo(ConfigStore.SetServerUrlResult.Success)
+    }
+}
+
+// localdata/src/test/java/com/lelloman/store/localdata/prefs/UserPreferencesStoreImplTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class UserPreferencesStoreImplTest {
+
+    private val testScope = TestScope()
+    private lateinit var dataStore: DataStore<Preferences>
+    private lateinit var prefsStore: UserPreferencesStoreImpl
+
+    @Before
+    fun setup() {
+        dataStore = PreferenceDataStoreFactory.create(
+            scope = testScope.backgroundScope,
+            produceFile = { File.createTempFile("test", ".preferences_pb") }
+        )
+        prefsStore = UserPreferencesStoreImpl(dataStore, testScope.backgroundScope)
+    }
+
+    @Test
+    fun `themeMode defaults to System`() = testScope.runTest {
+        assertThat(prefsStore.themeMode.value).isEqualTo(ThemeMode.System)
+    }
+
+    @Test
+    fun `setThemeMode updates value`() = testScope.runTest {
+        prefsStore.setThemeMode(ThemeMode.Dark)
+        advanceUntilIdle()
+
+        assertThat(prefsStore.themeMode.value).isEqualTo(ThemeMode.Dark)
+    }
+
+    @Test
+    fun `updateCheckInterval defaults to Hours24`() = testScope.runTest {
+        assertThat(prefsStore.updateCheckInterval.value).isEqualTo(UpdateCheckInterval.Hours24)
+    }
+
+    @Test
+    fun `wifiOnlyDownloads defaults to false`() = testScope.runTest {
+        assertThat(prefsStore.wifiOnlyDownloads.value).isFalse()
+    }
+}
+```
+
+### 4.6 Instrumented Tests - DAOs
+
+```kotlin
+// localdata/src/androidTest/java/com/lelloman/store/localdata/db/AppsDaoTest.kt
+@RunWith(AndroidJUnit4::class)
+class AppsDaoTest {
+
+    private lateinit var database: LellostoreDatabase
+    private lateinit var appsDao: AppsDao
+
+    @Before
+    fun setup() {
+        database = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            LellostoreDatabase::class.java
+        ).allowMainThreadQueries().build()
+        appsDao = database.appsDao()
+    }
+
+    @After
+    fun teardown() {
+        database.close()
+    }
+
+    @Test
+    fun insertApps_and_watchApps_returnsInsertedApps() = runTest {
+        val apps = listOf(
+            CachedAppEntity(
+                packageName = "com.example.app1",
+                name = "App 1",
+                description = "Description 1",
+                iconUrl = "http://example.com/icon1.png",
+                latestVersionCode = 1,
+                latestVersionName = "1.0.0",
+                latestVersionSize = 1000L,
+                updatedAt = System.currentTimeMillis(),
+            ),
+            CachedAppEntity(
+                packageName = "com.example.app2",
+                name = "App 2",
+                description = null,
+                iconUrl = "http://example.com/icon2.png",
+                latestVersionCode = 2,
+                latestVersionName = "2.0.0",
+                latestVersionSize = 2000L,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+
+        appsDao.insertApps(apps)
+
+        val result = appsDao.watchApps().first()
+        assertThat(result).hasSize(2)
+        assertThat(result.map { it.packageName }).containsExactly("com.example.app1", "com.example.app2")
+    }
+
+    @Test
+    fun watchApp_returnsSpecificApp() = runTest {
+        val app = CachedAppEntity(
+            packageName = "com.example.test",
+            name = "Test App",
+            description = "Test",
+            iconUrl = "http://example.com/icon.png",
+            latestVersionCode = 1,
+            latestVersionName = "1.0.0",
+            latestVersionSize = 1000L,
+            updatedAt = System.currentTimeMillis(),
+        )
+        appsDao.insertApp(app)
+
+        val result = appsDao.watchApp("com.example.test").first()
+        assertThat(result?.name).isEqualTo("Test App")
+    }
+
+    @Test
+    fun watchApp_returnsNullForNonexistent() = runTest {
+        val result = appsDao.watchApp("com.nonexistent").first()
+        assertThat(result).isNull()
+    }
+
+    @Test
+    fun deleteAll_clearsAllApps() = runTest {
+        appsDao.insertApps(listOf(
+            createTestApp("com.example.app1"),
+            createTestApp("com.example.app2"),
+        ))
+
+        appsDao.deleteAll()
+
+        val result = appsDao.watchApps().first()
+        assertThat(result).isEmpty()
+    }
+
+    private fun createTestApp(packageName: String) = CachedAppEntity(
+        packageName = packageName,
+        name = "Test",
+        description = null,
+        iconUrl = "",
+        latestVersionCode = 1,
+        latestVersionName = "1.0",
+        latestVersionSize = 0,
+        updatedAt = 0,
+    )
+}
+
+// localdata/src/androidTest/java/com/lelloman/store/localdata/db/InstalledAppsDaoTest.kt
+@RunWith(AndroidJUnit4::class)
+class InstalledAppsDaoTest {
+
+    private lateinit var database: LellostoreDatabase
+    private lateinit var installedAppsDao: InstalledAppsDao
+
+    @Before
+    fun setup() {
+        database = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            LellostoreDatabase::class.java
+        ).allowMainThreadQueries().build()
+        installedAppsDao = database.installedAppsDao()
+    }
+
+    @After
+    fun teardown() {
+        database.close()
+    }
+
+    @Test
+    fun insert_and_watch_returnsInstalledApp() = runTest {
+        val app = InstalledAppEntity(
+            packageName = "com.example.installed",
+            versionCode = 10,
+            versionName = "1.0.0",
+            lastChecked = System.currentTimeMillis(),
+        )
+
+        installedAppsDao.insert(app)
+
+        val result = installedAppsDao.watch("com.example.installed").first()
+        assertThat(result?.versionCode).isEqualTo(10)
+    }
+
+    @Test
+    fun delete_removesApp() = runTest {
+        installedAppsDao.insert(InstalledAppEntity(
+            packageName = "com.example.toremove",
+            versionCode = 1,
+            versionName = "1.0",
+            lastChecked = 0,
+        ))
+
+        installedAppsDao.delete("com.example.toremove")
+
+        val result = installedAppsDao.watch("com.example.toremove").first()
+        assertThat(result).isNull()
+    }
+}
+```
+
+### 4.7 Verification
 
 - [ ] Room database compiles
-- [ ] DAOs work with in-memory database test
+- [ ] `./gradlew :localdata:test` passes (Store unit tests)
+- [ ] `./gradlew :localdata:connectedAndroidTest` passes (DAO tests)
 - [ ] ConfigStore reads/writes to DataStore
 
 ---
@@ -956,10 +1358,198 @@ class RemoteApiModule {
 }
 ```
 
-### 5.5 Verification
+### 5.5 Unit Tests - API Client with MockEngine
+
+```kotlin
+// remoteapi/src/test/java/com/lelloman/store/remoteapi/RemoteApiClientImplTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class RemoteApiClientImplTest {
+
+    private val testScope = TestScope()
+    private lateinit var mockEngine: MockEngine
+    private lateinit var httpClient: HttpClient
+    private lateinit var fakeConfigStore: FakeConfigStore
+    private lateinit var fakeAuthStore: FakeAuthStore
+    private lateinit var apiClient: RemoteApiClientImpl
+
+    @Before
+    fun setup() {
+        fakeConfigStore = FakeConfigStore("http://test.example.com")
+        fakeAuthStore = FakeAuthStore()
+        fakeAuthStore.setAccessToken("test-token")
+    }
+
+    private fun createClient(responseHandler: MockRequestHandler): RemoteApiClientImpl {
+        mockEngine = MockEngine(responseHandler)
+        httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        return RemoteApiClientImpl(
+            httpClient = httpClient,
+            configStore = fakeConfigStore,
+            authStore = fakeAuthStore,
+            loggerFactory = ConsoleLoggerFactory(),
+        )
+    }
+
+    @Test
+    fun `getApps returns list of apps on success`() = testScope.runTest {
+        val responseJson = """
+            {
+                "apps": [
+                    {
+                        "packageName": "com.example.app1",
+                        "name": "App 1",
+                        "description": "Description",
+                        "iconUrl": "/icon1.png",
+                        "latestVersion": {
+                            "versionCode": 1,
+                            "versionName": "1.0.0",
+                            "size": 1000,
+                            "sha256": "abc123",
+                            "minSdk": 26,
+                            "uploadedAt": "2025-01-01T00:00:00Z"
+                        }
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        apiClient = createClient { request ->
+            assertThat(request.url.toString()).isEqualTo("http://test.example.com/api/apps")
+            assertThat(request.headers["Authorization"]).isEqualTo("Bearer test-token")
+            respond(
+                content = responseJson,
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+
+        val result = apiClient.getApps()
+
+        assertThat(result.isSuccess).isTrue()
+        val apps = result.getOrThrow()
+        assertThat(apps).hasSize(1)
+        assertThat(apps[0].packageName).isEqualTo("com.example.app1")
+        assertThat(apps[0].name).isEqualTo("App 1")
+    }
+
+    @Test
+    fun `getApps returns failure when not authenticated`() = testScope.runTest {
+        fakeAuthStore.setAccessToken(null)
+        apiClient = createClient { respond("", HttpStatusCode.OK) }
+
+        val result = apiClient.getApps()
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()).isInstanceOf(NotAuthenticatedException::class.java)
+    }
+
+    @Test
+    fun `getApps returns failure on HTTP error`() = testScope.runTest {
+        apiClient = createClient {
+            respond(
+                content = """{"error": "internal_error", "message": "Server error"}""",
+                status = HttpStatusCode.InternalServerError
+            )
+        }
+
+        val result = apiClient.getApps()
+
+        assertThat(result.isFailure).isTrue()
+    }
+
+    @Test
+    fun `getApp returns app detail on success`() = testScope.runTest {
+        val responseJson = """
+            {
+                "packageName": "com.example.app1",
+                "name": "App 1",
+                "description": "Full description",
+                "iconUrl": "/icon1.png",
+                "versions": [
+                    {
+                        "versionCode": 2,
+                        "versionName": "2.0.0",
+                        "size": 2000,
+                        "sha256": "def456",
+                        "minSdk": 26,
+                        "uploadedAt": "2025-01-02T00:00:00Z"
+                    },
+                    {
+                        "versionCode": 1,
+                        "versionName": "1.0.0",
+                        "size": 1000,
+                        "sha256": "abc123",
+                        "minSdk": 26,
+                        "uploadedAt": "2025-01-01T00:00:00Z"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        apiClient = createClient { request ->
+            assertThat(request.url.toString()).isEqualTo("http://test.example.com/api/apps/com.example.app1")
+            respond(
+                content = responseJson,
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+
+        val result = apiClient.getApp("com.example.app1")
+
+        assertThat(result.isSuccess).isTrue()
+        val app = result.getOrThrow()
+        assertThat(app.packageName).isEqualTo("com.example.app1")
+        assertThat(app.versions).hasSize(2)
+    }
+
+    @Test
+    fun `getApp returns failure for 404`() = testScope.runTest {
+        apiClient = createClient {
+            respond(
+                content = """{"error": "not_found", "message": "App not found"}""",
+                status = HttpStatusCode.NotFound
+            )
+        }
+
+        val result = apiClient.getApp("com.nonexistent")
+
+        assertThat(result.isFailure).isTrue()
+    }
+}
+
+// Test doubles
+class FakeConfigStore(private val serverUrl: String) : ConfigStore {
+    override val serverUrl = MutableStateFlow(serverUrl)
+    override suspend fun setServerUrl(url: String) = ConfigStore.SetServerUrlResult.Success
+}
+
+class FakeAuthStore : AuthStore {
+    private var accessToken: String? = null
+    override val authState = MutableStateFlow<AuthState>(AuthState.NotAuthenticated)
+
+    fun setAccessToken(token: String?) {
+        accessToken = token
+        authState.value = if (token != null) AuthState.Authenticated("test@example.com") else AuthState.NotAuthenticated
+    }
+
+    override suspend fun getAccessToken() = accessToken
+    override suspend fun logout() {
+        accessToken = null
+        authState.value = AuthState.NotAuthenticated
+    }
+}
+```
+
+### 5.6 Verification
 
 - [ ] Ktor client compiles
-- [ ] Can make requests (test with mock engine or real backend)
+- [ ] `./gradlew :remoteapi:test` passes (MockEngine tests)
+- [ ] All API endpoints tested with mock responses
 
 ---
 
@@ -1410,13 +2000,110 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
-### 7.4 Verification
+### 7.4 Unit Tests - LoginViewModel
+
+```kotlin
+// ui/src/test/java/com/lelloman/store/ui/screen/login/LoginViewModelTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class LoginViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var fakeInteractor: FakeLoginInteractor
+    private lateinit var viewModel: LoginViewModel
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        fakeInteractor = FakeLoginInteractor()
+        viewModel = LoginViewModel(fakeInteractor)
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `initial state has server URL from interactor`() {
+        fakeInteractor.initialServerUrl = "http://initial.example.com"
+        viewModel = LoginViewModel(fakeInteractor)
+
+        assertThat(viewModel.state.value.serverUrl).isEqualTo("http://initial.example.com")
+    }
+
+    @Test
+    fun `onServerUrlChanged updates state`() {
+        viewModel.onServerUrlChanged("http://new.example.com")
+
+        assertThat(viewModel.state.value.serverUrl).isEqualTo("http://new.example.com")
+        assertThat(viewModel.state.value.serverUrlError).isNull()
+    }
+
+    @Test
+    fun `onLoginClick with invalid URL shows error`() = runTest {
+        fakeInteractor.setServerUrlResult = ConfigStore.SetServerUrlResult.InvalidUrl
+        viewModel.onServerUrlChanged("invalid-url")
+
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.serverUrlError).isNotNull()
+        assertThat(viewModel.state.value.isLoading).isFalse()
+    }
+
+    @Test
+    fun `onLoginClick with valid URL emits LaunchAuth event`() = runTest {
+        fakeInteractor.setServerUrlResult = ConfigStore.SetServerUrlResult.Success
+        viewModel.onServerUrlChanged("http://valid.example.com")
+
+        viewModel.events.test {
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+
+            val event = awaitItem()
+            assertThat(event).isInstanceOf(LoginScreenEvents.LaunchAuth::class.java)
+        }
+    }
+
+    @Test
+    fun `onAuthResult Success emits NavigateToMain`() = runTest {
+        viewModel.events.test {
+            viewModel.onAuthResult(AuthResult.Success)
+            advanceUntilIdle()
+
+            val event = awaitItem()
+            assertThat(event).isEqualTo(LoginScreenEvents.NavigateToMain)
+        }
+    }
+
+    @Test
+    fun `onAuthResult Error updates state with error message`() = runTest {
+        viewModel.onAuthResult(AuthResult.Error("Login failed"))
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.error).isEqualTo("Login failed")
+    }
+}
+
+// Test double
+class FakeLoginInteractor : LoginViewModel.Interactor {
+    var initialServerUrl = "http://default.example.com"
+    var setServerUrlResult: ConfigStore.SetServerUrlResult = ConfigStore.SetServerUrlResult.Success
+
+    override fun getInitialServerUrl() = initialServerUrl
+    override suspend fun setServerUrl(url: String) = setServerUrlResult
+    override fun createAuthIntent() = Intent()
+}
+```
+
+### 7.5 Verification
 
 - [ ] Login screen shows server URL field
 - [ ] Login button launches OIDC flow
 - [ ] Successful login navigates to Catalog
 - [ ] Token is stored and survives app restart
 - [ ] Logout clears tokens
+- [ ] `./gradlew :ui:test` passes (LoginViewModel tests)
 
 ---
 
@@ -1599,7 +2286,349 @@ class AppsRepositoryImpl @Inject constructor(
 }
 ```
 
-### 8.4 Verification
+### 8.4 Unit Tests - CatalogViewModel
+
+```kotlin
+// ui/src/test/java/com/lelloman/store/ui/screen/main/catalog/CatalogViewModelTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class CatalogViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+    private lateinit var fakeInteractor: FakeCatalogInteractor
+    private lateinit var viewModel: CatalogViewModel
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        fakeInteractor = FakeCatalogInteractor()
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `initial state is loading`() {
+        viewModel = CatalogViewModel(fakeInteractor)
+        assertThat(viewModel.state.value.isLoading).isTrue()
+    }
+
+    @Test
+    fun `apps from interactor are displayed`() = testScope.runTest {
+        val apps = listOf(
+            createTestApp("com.example.app1", "App 1"),
+            createTestApp("com.example.app2", "App 2"),
+        )
+        fakeInteractor.apps.value = apps
+
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps).hasSize(2)
+    }
+
+    @Test
+    fun `onSearchQueryChanged filters apps by name`() = testScope.runTest {
+        fakeInteractor.apps.value = listOf(
+            createTestApp("com.example.app1", "Calculator"),
+            createTestApp("com.example.app2", "Calendar"),
+            createTestApp("com.example.app3", "Notes"),
+        )
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.onSearchQueryChanged("Cal")
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name }).containsExactly("Calculator", "Calendar")
+    }
+
+    @Test
+    fun `onFilterChanged to Installed shows only installed apps`() = testScope.runTest {
+        fakeInteractor.apps.value = listOf(
+            createTestApp("com.example.installed", "Installed App"),
+            createTestApp("com.example.notinstalled", "Not Installed App"),
+        )
+        fakeInteractor.installedApps.value = listOf(
+            InstalledApp("com.example.installed", 1, "1.0.0")
+        )
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.onFilterChanged(CatalogFilter.Installed)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps).hasSize(1)
+        assertThat(viewModel.state.value.apps[0].name).isEqualTo("Installed App")
+    }
+
+    @Test
+    fun `onFilterChanged to NotInstalled shows only not installed apps`() = testScope.runTest {
+        fakeInteractor.apps.value = listOf(
+            createTestApp("com.example.installed", "Installed App"),
+            createTestApp("com.example.notinstalled", "Not Installed App"),
+        )
+        fakeInteractor.installedApps.value = listOf(
+            InstalledApp("com.example.installed", 1, "1.0.0")
+        )
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.onFilterChanged(CatalogFilter.NotInstalled)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps).hasSize(1)
+        assertThat(viewModel.state.value.apps[0].name).isEqualTo("Not Installed App")
+    }
+
+    @Test
+    fun `onRefresh calls interactor refreshApps`() = testScope.runTest {
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+        fakeInteractor.refreshAppsCalled = false
+
+        viewModel.onRefresh()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.refreshAppsCalled).isTrue()
+    }
+
+    @Test
+    fun `onRefresh failure updates error state`() = testScope.runTest {
+        fakeInteractor.refreshAppsResult = Result.failure(Exception("Network error"))
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.error).isNotNull()
+    }
+
+    @Test
+    fun `onAppClicked emits NavigateToAppDetail event`() = testScope.runTest {
+        viewModel = CatalogViewModel(fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.events.test {
+            viewModel.onAppClicked(AppUiModel("com.example.app", "App", "", false, false))
+
+            val event = awaitItem()
+            assertThat(event).isInstanceOf(CatalogScreenEvents.NavigateToAppDetail::class.java)
+            assertThat((event as CatalogScreenEvents.NavigateToAppDetail).packageName)
+                .isEqualTo("com.example.app")
+        }
+    }
+
+    private fun createTestApp(packageName: String, name: String) = App(
+        packageName = packageName,
+        name = name,
+        description = null,
+        iconUrl = "",
+        latestVersion = AppVersion(1, "1.0.0", 0, "", 26, Instant.DISTANT_PAST),
+    )
+}
+
+// Test double
+class FakeCatalogInteractor : CatalogViewModel.Interactor {
+    val apps = MutableStateFlow<List<App>>(emptyList())
+    val installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
+    var refreshAppsCalled = false
+    var refreshAppsResult: Result<Unit> = Result.success(Unit)
+
+    override fun watchApps() = apps.asStateFlow()
+    override fun watchInstalledApps() = installedApps.asStateFlow()
+    override suspend fun refreshApps(): Result<Unit> {
+        refreshAppsCalled = true
+        return refreshAppsResult
+    }
+}
+```
+
+### 8.5 Unit Tests - AppDetailViewModel
+
+```kotlin
+// ui/src/test/java/com/lelloman/store/ui/screen/main/appdetail/AppDetailViewModelTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class AppDetailViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+    private lateinit var fakeInteractor: FakeAppDetailInteractor
+    private lateinit var savedStateHandle: SavedStateHandle
+    private lateinit var viewModel: AppDetailViewModel
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        fakeInteractor = FakeAppDetailInteractor()
+        savedStateHandle = SavedStateHandle(mapOf("packageName" to "com.example.app"))
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `loads app detail on init`() = testScope.runTest {
+        val appDetail = AppDetail(
+            packageName = "com.example.app",
+            name = "Test App",
+            description = "Description",
+            iconUrl = "/icon.png",
+            versions = listOf(
+                AppVersion(2, "2.0.0", 2000, "sha256", 26, Instant.DISTANT_PAST),
+                AppVersion(1, "1.0.0", 1000, "sha256", 26, Instant.DISTANT_PAST),
+            ),
+        )
+        fakeInteractor.appDetail.value = appDetail
+
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.app?.name).isEqualTo("Test App")
+        assertThat(viewModel.state.value.app?.versions).hasSize(2)
+    }
+
+    @Test
+    fun `shows installed version when app is installed`() = testScope.runTest {
+        fakeInteractor.installedVersion.value = InstalledApp("com.example.app", 1, "1.0.0")
+
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installedVersion?.versionCode).isEqualTo(1)
+    }
+
+    @Test
+    fun `onInstallClick calls interactor downloadAndInstall`() = testScope.runTest {
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.onInstallClick(2)
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.downloadCalled).isTrue()
+        assertThat(fakeInteractor.downloadPackageName).isEqualTo("com.example.app")
+        assertThat(fakeInteractor.downloadVersionCode).isEqualTo(2)
+    }
+
+    @Test
+    fun `download progress is reflected in state`() = testScope.runTest {
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        advanceUntilIdle()
+
+        fakeInteractor.downloadProgress.value = DownloadProgress(
+            packageName = "com.example.app",
+            progress = 0.5f,
+            bytesDownloaded = 500,
+            totalBytes = 1000,
+            state = DownloadState.DOWNLOADING,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadProgress?.progress).isEqualTo(0.5f)
+        assertThat(viewModel.state.value.downloadProgress?.state).isEqualTo(DownloadState.DOWNLOADING)
+    }
+
+    @Test
+    fun `onCancelDownload calls interactor cancelDownload`() = testScope.runTest {
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        advanceUntilIdle()
+
+        viewModel.onCancelDownload()
+
+        assertThat(fakeInteractor.cancelDownloadCalled).isTrue()
+    }
+}
+
+// Test double
+class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
+    val appDetail = MutableStateFlow<AppDetail?>(null)
+    val installedVersion = MutableStateFlow<InstalledApp?>(null)
+    val downloadProgress = MutableStateFlow<DownloadProgress?>(null)
+
+    var downloadCalled = false
+    var downloadPackageName: String? = null
+    var downloadVersionCode: Int? = null
+    var cancelDownloadCalled = false
+
+    override fun watchApp(packageName: String) = appDetail.asStateFlow()
+    override fun watchInstalledVersion(packageName: String) = installedVersion.asStateFlow()
+    override fun watchDownloadProgress(packageName: String) = downloadProgress.asStateFlow()
+    override suspend fun refreshApp(packageName: String) = Result.success(appDetail.value!!)
+    override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
+        downloadCalled = true
+        downloadPackageName = packageName
+        downloadVersionCode = versionCode
+    }
+    override fun cancelDownload(packageName: String) {
+        cancelDownloadCalled = true
+    }
+}
+```
+
+### 8.6 Unit Tests - AppsRepository
+
+```kotlin
+// app/src/test/java/com/lelloman/store/repository/AppsRepositoryImplTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class AppsRepositoryImplTest {
+
+    private val testScope = TestScope()
+    private lateinit var fakeApiClient: FakeRemoteApiClient
+    private lateinit var fakeAppsDao: FakeAppsDao
+    private lateinit var repository: AppsRepositoryImpl
+
+    @Before
+    fun setup() {
+        fakeApiClient = FakeRemoteApiClient()
+        fakeAppsDao = FakeAppsDao()
+        repository = AppsRepositoryImpl(
+            remoteApiClient = fakeApiClient,
+            appsDao = fakeAppsDao,
+            appVersionsDao = FakeAppVersionsDao(),
+            loggerFactory = ConsoleLoggerFactory(),
+        )
+    }
+
+    @Test
+    fun `watchApps returns apps from DAO`() = testScope.runTest {
+        fakeAppsDao.apps.value = listOf(
+            createTestEntity("com.example.app1"),
+            createTestEntity("com.example.app2"),
+        )
+
+        val apps = repository.watchApps().first()
+
+        assertThat(apps).hasSize(2)
+    }
+
+    @Test
+    fun `refreshApps fetches from API and inserts into DAO`() = testScope.runTest {
+        fakeApiClient.apps = listOf(
+            createTestDto("com.example.app1"),
+            createTestDto("com.example.app2"),
+        )
+
+        val result = repository.refreshApps()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(fakeAppsDao.insertedApps).hasSize(2)
+    }
+
+    @Test
+    fun `refreshApps returns failure when API fails`() = testScope.runTest {
+        fakeApiClient.shouldFail = true
+
+        val result = repository.refreshApps()
+
+        assertThat(result.isFailure).isTrue()
+    }
+}
+```
+
+### 8.7 Verification
 
 - [ ] Catalog shows apps from server
 - [ ] Pull-to-refresh works
@@ -1609,6 +2638,8 @@ class AppsRepositoryImpl @Inject constructor(
 - [ ] Detail shows app info and versions
 - [ ] Install button shown for not-installed apps
 - [ ] Update button shown for outdated apps
+- [ ] `./gradlew :ui:test` passes (CatalogViewModel, AppDetailViewModel tests)
+- [ ] `./gradlew :app:test` passes (Repository tests)
 
 ---
 
@@ -2095,7 +3126,143 @@ class SettingsViewModel @Inject constructor(
 }
 ```
 
-### 10.7 Verification
+### 10.7 Unit Tests - UpdatesViewModel & SettingsViewModel
+
+```kotlin
+// ui/src/test/java/com/lelloman/store/ui/screen/main/updates/UpdatesViewModelTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class UpdatesViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+    private lateinit var fakeInteractor: FakeUpdatesInteractor
+    private lateinit var viewModel: UpdatesViewModel
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        fakeInteractor = FakeUpdatesInteractor()
+        viewModel = UpdatesViewModel(fakeInteractor)
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `displays available updates from interactor`() = testScope.runTest {
+        fakeInteractor.updates.value = listOf(
+            AvailableUpdate(
+                app = createTestApp("com.example.app1"),
+                installedVersionCode = 1,
+                installedVersionName = "1.0.0",
+            )
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.updates).hasSize(1)
+    }
+
+    @Test
+    fun `onCheckNow triggers update check`() = testScope.runTest {
+        viewModel.onCheckNow()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.checkForUpdatesCalled).isTrue()
+    }
+
+    @Test
+    fun `onCheckNow shows loading state`() = testScope.runTest {
+        viewModel.onCheckNow()
+
+        assertThat(viewModel.state.value.isChecking).isTrue()
+
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.isChecking).isFalse()
+    }
+}
+
+// ui/src/test/java/com/lelloman/store/ui/screen/main/settings/SettingsViewModelTest.kt
+@OptIn(ExperimentalCoroutinesApi::class)
+class SettingsViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val testScope = TestScope(testDispatcher)
+    private lateinit var fakeInteractor: FakeSettingsInteractor
+    private lateinit var viewModel: SettingsViewModel
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        fakeInteractor = FakeSettingsInteractor()
+        viewModel = SettingsViewModel(fakeInteractor)
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `displays current settings from interactor`() = testScope.runTest {
+        fakeInteractor.serverUrl.value = "http://current.example.com"
+        fakeInteractor.themeMode.value = ThemeMode.Dark
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.serverUrl).isEqualTo("http://current.example.com")
+        assertThat(viewModel.state.value.themeMode).isEqualTo(ThemeMode.Dark)
+    }
+
+    @Test
+    fun `onServerUrlInputChanged updates input field only`() = testScope.runTest {
+        fakeInteractor.serverUrl.value = "http://original.example.com"
+        advanceUntilIdle()
+
+        viewModel.onServerUrlInputChanged("http://new.example.com")
+
+        assertThat(viewModel.state.value.serverUrlInput).isEqualTo("http://new.example.com")
+        assertThat(viewModel.state.value.serverUrl).isEqualTo("http://original.example.com")
+    }
+
+    @Test
+    fun `onSaveServerUrl with valid URL emits logout event`() = testScope.runTest {
+        fakeInteractor.setServerUrlResult = ConfigStore.SetServerUrlResult.Success
+        viewModel.onServerUrlInputChanged("http://new.example.com")
+
+        viewModel.events.test {
+            viewModel.onSaveServerUrl()
+            advanceUntilIdle()
+
+            val event = awaitItem()
+            assertThat(event).isEqualTo(SettingsScreenEvents.ServerChangedLogout)
+        }
+    }
+
+    @Test
+    fun `onSaveServerUrl with invalid URL shows error`() = testScope.runTest {
+        fakeInteractor.setServerUrlResult = ConfigStore.SetServerUrlResult.InvalidUrl
+        viewModel.onServerUrlInputChanged("invalid")
+
+        viewModel.onSaveServerUrl()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.serverUrlError).isNotNull()
+    }
+
+    @Test
+    fun `onThemeModeChanged calls interactor`() = testScope.runTest {
+        viewModel.onThemeModeChanged(ThemeMode.Light)
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.setThemeModeCalled).isTrue()
+        assertThat(fakeInteractor.lastThemeMode).isEqualTo(ThemeMode.Light)
+    }
+}
+```
+
+### 10.8 Verification
 
 - [ ] Updates screen shows available updates
 - [ ] "Check Now" button works
@@ -2104,6 +3271,477 @@ class SettingsViewModel @Inject constructor(
 - [ ] Notification appears when updates found
 - [ ] Tapping notification opens Updates screen
 - [ ] Settings persist and apply
+- [ ] `./gradlew :ui:test` passes (UpdatesViewModel, SettingsViewModel tests)
+
+---
+
+## Phase 11: E2E Instrumented Tests
+
+**Goal**: Full app instrumented tests with MockWebServer - testing the complete user journey with only the backend mocked.
+
+### 11.1 Test Infrastructure
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/TestRunner.kt
+class LellostoreTestRunner : AndroidJUnitRunner() {
+    override fun newApplication(cl: ClassLoader, name: String, context: Context): Application {
+        return super.newApplication(cl, HiltTestApplication::class.java.name, context)
+    }
+}
+
+// Update app/build.gradle.kts
+android {
+    defaultConfig {
+        testInstrumentationRunner = "com.lelloman.store.TestRunner"
+    }
+}
+```
+
+### 11.2 MockWebServer Setup
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/MockServerRule.kt
+class MockServerRule : TestWatcher() {
+
+    lateinit var mockWebServer: MockWebServer
+    val baseUrl: String get() = mockWebServer.url("/").toString()
+
+    override fun starting(description: Description) {
+        mockWebServer = MockWebServer()
+        mockWebServer.start()
+    }
+
+    override fun finished(description: Description) {
+        mockWebServer.shutdown()
+    }
+
+    fun enqueueAppsResponse(apps: List<MockApp>) {
+        val json = buildAppsJson(apps)
+        mockWebServer.enqueue(MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/json")
+            .setBody(json))
+    }
+
+    fun enqueueAppDetailResponse(app: MockAppDetail) {
+        val json = buildAppDetailJson(app)
+        mockWebServer.enqueue(MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/json")
+            .setBody(json))
+    }
+
+    fun enqueueApkDownload(apkBytes: ByteArray) {
+        mockWebServer.enqueue(MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/vnd.android.package-archive")
+            .setBody(Buffer().write(apkBytes)))
+    }
+
+    fun enqueueError(code: Int, message: String) {
+        mockWebServer.enqueue(MockResponse()
+            .setResponseCode(code)
+            .setBody("""{"error": "error", "message": "$message"}"""))
+    }
+}
+
+data class MockApp(
+    val packageName: String,
+    val name: String,
+    val description: String? = null,
+    val versionCode: Int = 1,
+    val versionName: String = "1.0.0",
+    val size: Long = 1000,
+)
+
+data class MockAppDetail(
+    val packageName: String,
+    val name: String,
+    val description: String? = null,
+    val versions: List<MockAppVersion> = emptyList(),
+)
+
+data class MockAppVersion(
+    val versionCode: Int,
+    val versionName: String,
+    val size: Long,
+    val sha256: String,
+)
+```
+
+### 11.3 Test Hilt Module
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/TestModule.kt
+@Module
+@TestInstallIn(
+    components = [SingletonComponent::class],
+    replaces = [DomainModule::class]
+)
+class TestModule {
+
+    @Provides
+    @DefaultServerUrl
+    fun provideTestServerUrl(): String = "http://localhost:8080"  // Will be overridden per test
+
+    // Provide test doubles for auth if needed
+}
+
+// For injecting the mock server URL into tests
+@Module
+@InstallIn(SingletonComponent::class)
+object TestConfigModule {
+    private var testServerUrl: String = "http://localhost:8080"
+
+    fun setServerUrl(url: String) {
+        testServerUrl = url
+    }
+
+    @Provides
+    @TestServerUrl
+    fun provideTestServerUrl(): String = testServerUrl
+}
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class TestServerUrl
+```
+
+### 11.4 E2E Test - Complete User Journey
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/CatalogE2ETest.kt
+@HiltAndroidTest
+@RunWith(AndroidJUnit4::class)
+class CatalogE2ETest {
+
+    @get:Rule(order = 0)
+    val hiltRule = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
+    val mockServerRule = MockServerRule()
+
+    @get:Rule(order = 2)
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Inject
+    lateinit var configStore: ConfigStore
+
+    @Before
+    fun setup() {
+        hiltRule.inject()
+        runBlocking {
+            configStore.setServerUrl(mockServerRule.baseUrl)
+        }
+    }
+
+    @Test
+    fun catalogScreen_displaysAppsFromServer() {
+        // Given: Server returns list of apps
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app1", "Calculator"),
+            MockApp("com.example.app2", "Calendar"),
+            MockApp("com.example.app3", "Notes"),
+        ))
+
+        // When: App launches and catalog loads
+        // (Assuming user is already logged in or we skip auth for this test)
+
+        // Then: Apps are displayed
+        composeRule.onNodeWithText("Calculator").assertIsDisplayed()
+        composeRule.onNodeWithText("Calendar").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes").assertIsDisplayed()
+    }
+
+    @Test
+    fun catalogScreen_searchFiltersApps() {
+        // Given: Server returns list of apps
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app1", "Calculator"),
+            MockApp("com.example.app2", "Calendar"),
+            MockApp("com.example.app3", "Notes"),
+        ))
+
+        // When: User types in search
+        composeRule.onNodeWithContentDescription("Search").performClick()
+        composeRule.onNodeWithTag("SearchField").performTextInput("Cal")
+
+        // Then: Only matching apps are shown
+        composeRule.onNodeWithText("Calculator").assertIsDisplayed()
+        composeRule.onNodeWithText("Calendar").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes").assertDoesNotExist()
+    }
+
+    @Test
+    fun catalogScreen_filterByInstalled() {
+        // Given: Server returns apps, one is installed locally
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.installed", "Installed App"),
+            MockApp("com.example.notinstalled", "Not Installed App"),
+        ))
+        // Assume "com.example.installed" is tracked as installed
+
+        // When: User selects "Installed" filter
+        composeRule.onNodeWithText("Installed").performClick()
+
+        // Then: Only installed app is shown
+        composeRule.onNodeWithText("Installed App").assertIsDisplayed()
+        composeRule.onNodeWithText("Not Installed App").assertDoesNotExist()
+    }
+
+    @Test
+    fun catalogScreen_pullToRefresh() {
+        // Given: Initial apps loaded
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app1", "App 1"),
+        ))
+
+        // Wait for initial load
+        composeRule.onNodeWithText("App 1").assertIsDisplayed()
+
+        // Given: Server now returns more apps
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app1", "App 1"),
+            MockApp("com.example.app2", "App 2"),
+        ))
+
+        // When: User pulls to refresh
+        composeRule.onNodeWithTag("CatalogList").performTouchInput {
+            swipeDown()
+        }
+
+        // Then: New app appears
+        composeRule.onNodeWithText("App 2").assertIsDisplayed()
+    }
+
+    @Test
+    fun catalogScreen_navigatesToAppDetail() {
+        // Given: Server returns apps
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app1", "Calculator"),
+        ))
+
+        // And: Server will return app detail
+        mockServerRule.enqueueAppDetailResponse(MockAppDetail(
+            packageName = "com.example.app1",
+            name = "Calculator",
+            description = "A simple calculator app",
+            versions = listOf(
+                MockAppVersion(2, "2.0.0", 2000, "sha256-hash-2"),
+                MockAppVersion(1, "1.0.0", 1000, "sha256-hash-1"),
+            ),
+        ))
+
+        // When: User taps on app
+        composeRule.onNodeWithText("Calculator").performClick()
+
+        // Then: App detail screen is shown
+        composeRule.onNodeWithText("A simple calculator app").assertIsDisplayed()
+        composeRule.onNodeWithText("2.0.0").assertIsDisplayed()
+        composeRule.onNodeWithText("1.0.0").assertIsDisplayed()
+    }
+
+    @Test
+    fun catalogScreen_showsErrorOnNetworkFailure() {
+        // Given: Server returns error
+        mockServerRule.enqueueError(500, "Internal server error")
+
+        // Then: Error state is shown
+        composeRule.onNodeWithText("Error").assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").assertIsDisplayed()
+    }
+}
+```
+
+### 11.5 E2E Test - App Detail & Download
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/AppDetailE2ETest.kt
+@HiltAndroidTest
+@RunWith(AndroidJUnit4::class)
+class AppDetailE2ETest {
+
+    @get:Rule(order = 0)
+    val hiltRule = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
+    val mockServerRule = MockServerRule()
+
+    @get:Rule(order = 2)
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun appDetail_showsInstallButtonForNewApp() {
+        // Navigate to app detail for an app that's not installed
+
+        // Then: Install button is shown
+        composeRule.onNodeWithText("Install").assertIsDisplayed()
+    }
+
+    @Test
+    fun appDetail_showsUpdateButtonForOutdatedApp() {
+        // Navigate to app detail for an app that has an update
+
+        // Then: Update button is shown
+        composeRule.onNodeWithText("Update").assertIsDisplayed()
+    }
+
+    @Test
+    fun appDetail_showsDownloadProgress() {
+        // Given: App detail is shown
+        // And: Server will stream APK slowly
+
+        // When: User taps Install
+        composeRule.onNodeWithText("Install").performClick()
+
+        // Then: Progress indicator is shown
+        composeRule.onNodeWithTag("DownloadProgress").assertIsDisplayed()
+    }
+
+    @Test
+    fun appDetail_canCancelDownload() {
+        // Given: Download is in progress
+        composeRule.onNodeWithText("Install").performClick()
+        composeRule.onNodeWithTag("DownloadProgress").assertIsDisplayed()
+
+        // When: User taps Cancel
+        composeRule.onNodeWithText("Cancel").performClick()
+
+        // Then: Download is cancelled, Install button returns
+        composeRule.onNodeWithText("Install").assertIsDisplayed()
+    }
+}
+```
+
+### 11.6 E2E Test - Settings
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/SettingsE2ETest.kt
+@HiltAndroidTest
+@RunWith(AndroidJUnit4::class)
+class SettingsE2ETest {
+
+    @get:Rule(order = 0)
+    val hiltRule = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun settings_displaysCurrentServerUrl() {
+        // Navigate to settings
+        composeRule.onNodeWithText("Settings").performClick()
+
+        // Then: Current server URL is shown
+        composeRule.onNodeWithTag("ServerUrlField").assertIsDisplayed()
+    }
+
+    @Test
+    fun settings_changingServerUrlLogsOut() {
+        // Given: On settings screen
+        composeRule.onNodeWithText("Settings").performClick()
+
+        // When: User changes server URL
+        composeRule.onNodeWithTag("ServerUrlField").performTextClearance()
+        composeRule.onNodeWithTag("ServerUrlField").performTextInput("http://new.example.com")
+        composeRule.onNodeWithText("Save").performClick()
+
+        // Then: Confirmation dialog is shown
+        composeRule.onNodeWithText("Changing server will log you out").assertIsDisplayed()
+
+        // When: User confirms
+        composeRule.onNodeWithText("Confirm").performClick()
+
+        // Then: User is logged out and on login screen
+        composeRule.onNodeWithText("Login").assertIsDisplayed()
+    }
+
+    @Test
+    fun settings_themeChangeAppliesImmediately() {
+        // Given: On settings screen with Light theme
+        composeRule.onNodeWithText("Settings").performClick()
+
+        // When: User selects Dark theme
+        composeRule.onNodeWithText("Dark").performClick()
+
+        // Then: Theme changes immediately (would need to verify colors)
+        // This is harder to test - might use screenshot testing
+    }
+}
+```
+
+### 11.7 E2E Test - Updates Flow
+
+```kotlin
+// app/src/androidTest/java/com/lelloman/store/e2e/UpdatesE2ETest.kt
+@HiltAndroidTest
+@RunWith(AndroidJUnit4::class)
+class UpdatesE2ETest {
+
+    @get:Rule(order = 0)
+    val hiltRule = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
+    val mockServerRule = MockServerRule()
+
+    @get:Rule(order = 2)
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun updates_showsAvailableUpdates() {
+        // Given: User has installed app version 1, server has version 2
+        // Setup installed apps and server response
+
+        // When: Navigate to Updates tab
+        composeRule.onNodeWithText("Updates").performClick()
+
+        // Then: Update is shown
+        composeRule.onNodeWithText("Update available").assertIsDisplayed()
+    }
+
+    @Test
+    fun updates_checkNowRefreshesUpdates() {
+        // Given: On updates screen with no updates
+        composeRule.onNodeWithText("Updates").performClick()
+        composeRule.onNodeWithText("No updates available").assertIsDisplayed()
+
+        // Given: Server now returns app with update
+        mockServerRule.enqueueAppsResponse(listOf(
+            MockApp("com.example.app", "App", versionCode = 2),
+        ))
+
+        // When: User taps Check Now
+        composeRule.onNodeWithText("Check Now").performClick()
+
+        // Then: Update appears
+        composeRule.onNodeWithText("Update available").assertIsDisplayed()
+    }
+
+    @Test
+    fun updates_updateAllDownloadsAllUpdates() {
+        // Given: Multiple apps have updates
+        // Setup...
+
+        // When: User taps Update All
+        composeRule.onNodeWithText("Update All").performClick()
+
+        // Then: All downloads start (progress indicators shown)
+        composeRule.onAllNodesWithTag("DownloadProgress").assertCountEquals(2)
+    }
+}
+```
+
+### 11.8 Verification
+
+- [ ] `./gradlew connectedAndroidTest` passes all E2E tests
+- [ ] Catalog loads and displays mocked apps
+- [ ] Search and filters work correctly
+- [ ] Navigation to app detail works
+- [ ] Download flow with progress works
+- [ ] Settings changes work
+- [ ] Updates detection works
+- [ ] Error states are handled correctly
+- [ ] All user journeys tested end-to-end
 
 ---
 
@@ -2149,3 +3787,4 @@ class SettingsViewModel @Inject constructor(
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-12-19 | Initial implementation plan |
+| 1.1 | 2025-12-19 | Added comprehensive testing: unit tests for every component, E2E tests with MockWebServer |
