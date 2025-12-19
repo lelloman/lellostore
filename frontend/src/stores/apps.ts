@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type App } from '@/services/api'
+import { api, type App, type AppListItem } from '@/services/api'
 
 export const useAppsStore = defineStore('apps', () => {
   // State
-  const apps = ref<App[]>([])
+  const apps = ref<AppListItem[]>([])
   const currentApp = ref<App | null>(null)
   const isLoading = ref(false)
   const isUploading = ref(false)
@@ -36,11 +36,6 @@ export const useAppsStore = defineStore('apps', () => {
     error.value = null
     try {
       currentApp.value = await api.getApp(packageName)
-      // Also update in apps list if present
-      const index = apps.value.findIndex(a => a.packageName === packageName)
-      if (index >= 0) {
-        apps.value[index] = currentApp.value
-      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch app'
       throw e
@@ -69,13 +64,17 @@ export const useAppsStore = defineStore('apps', () => {
     error.value = null
     try {
       const updated = await api.updateApp(packageName, data)
-      // Update in local state
+      // Update in local state - list items only have basic fields
       const index = apps.value.findIndex(a => a.packageName === packageName)
       if (index >= 0) {
-        apps.value[index] = { ...apps.value[index], ...updated }
+        apps.value[index] = {
+          ...apps.value[index],
+          name: updated.name,
+          description: updated.description,
+        }
       }
       if (currentApp.value?.packageName === packageName) {
-        currentApp.value = { ...currentApp.value, ...updated }
+        currentApp.value = updated
       }
       return updated
     } catch (e) {
@@ -104,7 +103,14 @@ export const useAppsStore = defineStore('apps', () => {
     try {
       await api.deleteVersion(packageName, versionCode)
       // Refresh current app to update version list
-      await fetchApp(packageName)
+      // If this was the last version, the app is also deleted and fetchApp will 404
+      try {
+        await fetchApp(packageName)
+      } catch {
+        // App was deleted (last version), remove from local state
+        apps.value = apps.value.filter(a => a.packageName !== packageName)
+        currentApp.value = null
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete version'
       throw e

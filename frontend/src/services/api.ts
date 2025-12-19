@@ -104,23 +104,39 @@ export interface AppVersion {
   versionCode: number
   versionName: string
   size: number
-  sha256?: string
-  minSdk?: number
-  uploadedAt?: string
-  apkUrl?: string
+  sha256: string
+  minSdk: number
+  uploadedAt: string
+  apkUrl: string
 }
 
+// Version info in list endpoint (subset of full version)
+export interface LatestVersionInfo {
+  versionCode: number
+  versionName: string
+  size: number
+}
+
+// App in list response
+export interface AppListItem {
+  packageName: string
+  name: string
+  description?: string
+  iconUrl: string
+  latestVersion?: LatestVersionInfo
+}
+
+// App in detail response
 export interface App {
   packageName: string
   name: string
   description?: string
   iconUrl: string
-  latestVersion?: AppVersion
-  versions?: AppVersion[]
+  versions: AppVersion[]
 }
 
 export interface AppsResponse {
-  apps: App[]
+  apps: AppListItem[]
 }
 
 export interface UploadResponse {

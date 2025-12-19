@@ -104,13 +104,9 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-function goToApp(packageName: string) {
-  router.push({ name: 'app-detail', params: { packageName } })
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function onRowClick(_event: Event, row: any) {
-  goToApp(row.item.packageName)
+  router.push({ name: 'app-detail', params: { packageName: row.item.packageName } })
 }
 
 function onUploaded() {
