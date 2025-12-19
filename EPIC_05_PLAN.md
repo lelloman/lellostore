@@ -23,7 +23,7 @@
 | 9 | Login Page | done |
 | 10 | OIDC Callback Handler | done |
 | 11 | Environment Configuration | done |
-| 12 | Development Proxy Setup | un-done |
+| 12 | Development Proxy Setup | done |
 
 ---
 
