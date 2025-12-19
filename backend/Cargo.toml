@@ -16,9 +16,7 @@ sha2 = "0.10"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 zip = "2"
-# Disable jpeg decoder to avoid zune-jpeg Rust 1.85 compatibility issues
-# APK icons are PNG so we don't need JPEG support
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = "0.25"
 
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate"] }
@@ -65,4 +63,3 @@ tempfile = "3"
 lto = true
 opt-level = 3
 codegen-units = 1
-

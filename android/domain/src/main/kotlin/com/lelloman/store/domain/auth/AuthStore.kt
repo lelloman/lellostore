@@ -13,3 +13,9 @@ sealed interface AuthState {
     data object NotAuthenticated : AuthState
     data class Authenticated(val userEmail: String) : AuthState
 }
+
+sealed interface AuthResult {
+    data object Success : AuthResult
+    data object Cancelled : AuthResult
+    data class Error(val message: String) : AuthResult
+}

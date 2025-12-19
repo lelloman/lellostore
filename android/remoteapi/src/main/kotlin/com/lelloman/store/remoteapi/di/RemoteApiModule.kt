@@ -1,7 +1,7 @@
 package com.lelloman.store.remoteapi.di
 
+import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.config.ConfigStore
-import com.lelloman.store.remoteapi.RemoteApiClient
 import com.lelloman.store.remoteapi.RemoteApiClientImpl
 import dagger.Module
 import dagger.Provides

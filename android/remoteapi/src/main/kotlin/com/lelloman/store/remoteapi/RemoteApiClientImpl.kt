@@ -1,5 +1,6 @@
 package com.lelloman.store.remoteapi
 
+import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.remoteapi.dto.AppDetailDto

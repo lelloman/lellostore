@@ -9,7 +9,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.lelloman.store.domain.preferences.ThemeMode
+import com.lelloman.store.ui.model.AuthResult
+import com.lelloman.store.ui.model.ThemeMode
 import com.lelloman.store.ui.navigation.Screen
 import com.lelloman.store.ui.navigation.fromLoginToMain
 import com.lelloman.store.ui.navigation.fromSplashToLogin
@@ -18,17 +19,20 @@ import com.lelloman.store.ui.navigation.logout
 import com.lelloman.store.ui.navigation.toAppDetail
 import com.lelloman.store.ui.screen.detail.AppDetailScreen
 import com.lelloman.store.ui.screen.login.LoginScreen
+import com.lelloman.store.domain.auth.AuthResult
 import com.lelloman.store.ui.screen.main.MainScreen
 import com.lelloman.store.ui.screen.main.ProfileBottomSheet
 import com.lelloman.store.ui.screen.splash.SplashScreen
 import com.lelloman.store.ui.theme.LellostoreTheme
+import net.openid.appauth.AuthorizationException
+import net.openid.appauth.AuthorizationResponse
 
 @Composable
 fun AppUi(
     themeMode: ThemeMode = ThemeMode.System,
     isLoggedIn: Boolean = false,
     userEmail: String = "",
-    onLogin: () -> Unit = {},
+    onAuthResponse: (AuthorizationResponse?, AuthorizationException?, onResult: (AuthResult) -> Unit) -> Unit = { _, _, _ -> },
     onLogout: () -> Unit = {},
 ) {
     val navController = rememberNavController()
@@ -49,10 +53,8 @@ fun AppUi(
 
             composable<Screen.Login> {
                 LoginScreen(
-                    onLoginClick = {
-                        onLogin()
-                        navController.fromLoginToMain()
-                    },
+                    onNavigateToMain = { navController.fromLoginToMain() },
+                    onAuthResponse = onAuthResponse,
                 )
             }
 

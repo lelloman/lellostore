@@ -6,14 +6,23 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
+import com.lelloman.store.domain.apps.AppsRepository
+import com.lelloman.store.domain.apps.InstalledAppsRepository
+import com.lelloman.store.domain.auth.AuthStore
+import com.lelloman.store.domain.auth.OidcConfig
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.preferences.UserPreferencesStore
+import com.lelloman.store.localdata.apps.AppsRepositoryImpl
+import com.lelloman.store.localdata.apps.InstalledAppsRepositoryImpl
+import com.lelloman.store.localdata.auth.AuthStoreImpl
 import com.lelloman.store.localdata.config.ConfigStoreImpl
 import com.lelloman.store.localdata.db.LellostoreDatabase
 import com.lelloman.store.localdata.db.dao.AppVersionsDao
 import com.lelloman.store.localdata.db.dao.AppsDao
 import com.lelloman.store.localdata.db.dao.InstalledAppsDao
 import com.lelloman.store.localdata.prefs.UserPreferencesStoreImpl
+import com.lelloman.store.logger.Logger
+import com.lelloman.store.domain.api.RemoteApiClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -76,4 +85,33 @@ object LocalDataModule {
         dataStore: DataStore<Preferences>,
         @ApplicationScope scope: CoroutineScope,
     ): UserPreferencesStore = UserPreferencesStoreImpl(dataStore, scope)
+
+    @Provides
+    @Singleton
+    fun provideAuthStoreImpl(
+        @ApplicationContext context: Context,
+        @OidcConfigQualifier oidcConfig: OidcConfig,
+        @ApplicationScope scope: CoroutineScope,
+        logger: Logger,
+    ): AuthStoreImpl = AuthStoreImpl(context, oidcConfig, scope, logger)
+
+    @Provides
+    @Singleton
+    fun provideAuthStore(authStoreImpl: AuthStoreImpl): AuthStore = authStoreImpl
+
+    @Provides
+    @Singleton
+    fun provideAppsRepository(
+        appsDao: AppsDao,
+        appVersionsDao: AppVersionsDao,
+        remoteApiClient: RemoteApiClient,
+    ): AppsRepository = AppsRepositoryImpl(appsDao, appVersionsDao, remoteApiClient)
+
+    @Provides
+    @Singleton
+    fun provideInstalledAppsRepository(
+        @ApplicationContext context: Context,
+        installedAppsDao: InstalledAppsDao,
+        appsDao: AppsDao,
+    ): InstalledAppsRepository = InstalledAppsRepositoryImpl(context, installedAppsDao, appsDao)
 }

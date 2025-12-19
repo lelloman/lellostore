@@ -1,4 +1,4 @@
-package com.lelloman.store.remoteapi
+package com.lelloman.store.domain.api
 
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppDetail

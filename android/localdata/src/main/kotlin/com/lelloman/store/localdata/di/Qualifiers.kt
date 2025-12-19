@@ -16,3 +16,11 @@ annotation class DefaultServerUrl
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
+
+/**
+ * Qualifier for the OIDC configuration.
+ * This must be provided by the :app module.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OidcConfigQualifier

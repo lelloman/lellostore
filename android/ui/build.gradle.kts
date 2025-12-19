@@ -40,7 +40,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":domain"))
     implementation(project(":logger"))
 
     // AndroidX Core
@@ -67,6 +66,9 @@ dependencies {
     // Image Loading
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+
+    // AppAuth (for OIDC types)
+    implementation(libs.appauth)
 
     // Testing
     testImplementation(libs.junit)

@@ -41,6 +41,7 @@ ksp {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":logger"))
+    implementation(project(":remoteapi"))
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -52,6 +53,9 @@ dependencies {
 
     // Security (for encrypted shared prefs)
     implementation(libs.androidx.security.crypto)
+
+    // AppAuth (for OIDC)
+    implementation(libs.appauth)
 
     // Hilt
     implementation(libs.hilt.android)
