@@ -1,0 +1,20 @@
+# Dependencies
+backend/target
+frontend/node_modules
+
+# Development files
+*.md
+.git
+.gitignore
+.env*
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Test artifacts
+*.db
+test-data/
