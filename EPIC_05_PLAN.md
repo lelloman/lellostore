@@ -22,7 +22,7 @@
 | 8 | Base App Layout | done |
 | 9 | Login Page | done |
 | 10 | OIDC Callback Handler | done |
-| 11 | Environment Configuration | un-done |
+| 11 | Environment Configuration | done |
 | 12 | Development Proxy Setup | un-done |
 
 ---
