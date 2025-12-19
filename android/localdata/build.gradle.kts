@@ -41,7 +41,6 @@ ksp {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":logger"))
-    implementation(project(":remoteapi"))
 
     // Room
     implementation(libs.androidx.room.runtime)
