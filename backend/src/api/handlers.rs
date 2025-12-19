@@ -8,35 +8,141 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::auth::AdminUser;
-use crate::db;
+use crate::db::{self, models::AppVersion};
 use crate::error::AppError;
 
 use super::file_response::serve_file;
 use super::AppState;
 
+// ============================================================================
+// API Response Types (matching SPEC.md camelCase format)
+// ============================================================================
+
+/// Version info in list response (subset of full version)
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestVersionInfo {
+    pub version_code: i64,
+    pub version_name: String,
+    pub size: i64,
+}
+
+/// App info for list endpoint
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppListItem {
+    pub package_name: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: String,
+    pub latest_version: Option<LatestVersionInfo>,
+}
+
+/// Version info with URLs for detail endpoint
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppVersionInfo {
+    pub version_code: i64,
+    pub version_name: String,
+    pub apk_url: String,
+    pub size: i64,
+    pub sha256: String,
+    pub min_sdk: i64,
+    pub uploaded_at: String,
+}
+
+/// App detail response
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppDetailResponse {
+    pub package_name: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: String,
+    pub versions: Vec<AppVersionInfo>,
+}
+
+/// Apps list response
+#[derive(Debug, Serialize)]
+pub struct AppsListResponse {
+    pub apps: Vec<AppListItem>,
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+fn make_icon_url(package_name: &str) -> String {
+    format!("/api/apps/{}/icon", package_name)
+}
+
+fn make_apk_url(package_name: &str, version_code: i64) -> String {
+    format!("/api/apps/{}/versions/{}/apk", package_name, version_code)
+}
+
+fn to_version_info(v: &AppVersion) -> AppVersionInfo {
+    AppVersionInfo {
+        version_code: v.version_code,
+        version_name: v.version_name.clone(),
+        apk_url: make_apk_url(&v.package_name, v.version_code),
+        size: v.size,
+        sha256: v.sha256.clone(),
+        min_sdk: v.min_sdk,
+        uploaded_at: v.uploaded_at.clone(),
+    }
+}
+
+// ============================================================================
+// Public Handlers
+// ============================================================================
+
 pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "healthy" }))
 }
 
-pub async fn list_apps(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListResponse>, AppError> {
     let apps = db::get_all_apps(&state.db).await?;
-    Ok(Json(json!({ "apps": apps })))
+
+    let mut items = Vec::new();
+    for app in apps {
+        // Get latest version for this app
+        let versions = db::get_app_versions(&state.db, &app.package_name).await?;
+        let latest = versions.into_iter().max_by_key(|v| v.version_code);
+
+        items.push(AppListItem {
+            package_name: app.package_name.clone(),
+            name: app.name,
+            description: app.description,
+            icon_url: make_icon_url(&app.package_name),
+            latest_version: latest.map(|v| LatestVersionInfo {
+                version_code: v.version_code,
+                version_name: v.version_name,
+                size: v.size,
+            }),
+        });
+    }
+
+    Ok(Json(AppsListResponse { apps: items }))
 }
 
 pub async fn get_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<AppDetailResponse>, AppError> {
     let app = db::get_app(&state.db, &package_name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
 
     let versions = db::get_app_versions(&state.db, &package_name).await?;
+    let version_infos: Vec<AppVersionInfo> = versions.iter().map(to_version_info).collect();
 
-    Ok(Json(json!({
-        "app": app,
-        "versions": versions
-    })))
+    Ok(Json(AppDetailResponse {
+        package_name: app.package_name.clone(),
+        name: app.name,
+        description: app.description,
+        icon_url: make_icon_url(&app.package_name),
+        versions: version_infos,
+    }))
 }
 
 /// Serve app icon
@@ -102,12 +208,13 @@ pub async fn download_apk(
 
 /// Response for successful upload
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadResponse {
     pub package_name: String,
-    pub version_code: i64,
-    pub version_name: String,
-    pub app_name: String,
-    pub is_new_app: bool,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: String,
+    pub version: AppVersionInfo,
 }
 
 /// Upload a new app or version (multipart form)
@@ -200,12 +307,22 @@ pub async fn upload_app(
             other => AppError::Internal(other.to_string()),
         })?;
 
+    // Get the uploaded version details
+    let versions = db::get_app_versions(&state.db, &result.package_name).await?;
+    let version = versions
+        .iter()
+        .find(|v| v.version_code == result.version_code)
+        .ok_or_else(|| AppError::Internal("Uploaded version not found".to_string()))?;
+
+    // Get app details for description
+    let app = db::get_app(&state.db, &result.package_name).await?;
+
     let response = UploadResponse {
-        package_name: result.package_name,
-        version_code: result.version_code,
-        version_name: result.version_name,
-        app_name: result.app_name,
-        is_new_app: result.is_new_app,
+        package_name: result.package_name.clone(),
+        name: result.app_name,
+        description: app.and_then(|a| a.description),
+        icon_url: make_icon_url(&result.package_name),
+        version: to_version_info(version),
     };
 
     Ok((StatusCode::CREATED, Json(response)).into_response())
@@ -224,7 +341,7 @@ pub async fn update_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,
     Json(request): Json<UpdateAppRequest>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<AppDetailResponse>, AppError> {
     // Verify app exists
     db::get_app(&state.db, &package_name)
         .await?
@@ -242,12 +359,21 @@ pub async fn update_app(
         .await?;
     }
 
-    // Fetch and return updated app
-    let updated_app = db::get_app(&state.db, &package_name)
+    // Fetch and return updated app (reuse get_app logic)
+    let app = db::get_app(&state.db, &package_name)
         .await?
         .ok_or_else(|| AppError::Internal("App disappeared after update".to_string()))?;
 
-    Ok(Json(json!({ "app": updated_app })))
+    let versions = db::get_app_versions(&state.db, &package_name).await?;
+    let version_infos: Vec<AppVersionInfo> = versions.iter().map(to_version_info).collect();
+
+    Ok(Json(AppDetailResponse {
+        package_name: app.package_name.clone(),
+        name: app.name,
+        description: app.description,
+        icon_url: make_icon_url(&app.package_name),
+        versions: version_infos,
+    }))
 }
 
 /// Delete an app and all its versions
@@ -273,19 +399,12 @@ pub async fn delete_app(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Response for delete version operation
-#[derive(Debug, Serialize)]
-pub struct DeleteVersionResponse {
-    pub deleted_version: bool,
-    pub deleted_app: bool,
-}
-
 /// Delete a specific version of an app
 pub async fn delete_version(
     _admin: AdminUser,
     State(state): State<AppState>,
     Path((package_name, version_code)): Path<(String, i64)>,
-) -> Result<Json<DeleteVersionResponse>, AppError> {
+) -> Result<StatusCode, AppError> {
     // Verify version exists
     let versions = db::get_app_versions(&state.db, &package_name).await?;
     let _version = versions
@@ -311,19 +430,13 @@ pub async fn delete_version(
     db::delete_app_version(&state.db, &package_name, version_code).await?;
 
     // If this was the last version, also delete the app
-    let deleted_app = if is_last_version {
+    if is_last_version {
         state
             .storage
             .delete_icon(&package_name)
             .map_err(|e| AppError::Internal(format!("Failed to delete icon: {}", e)))?;
         db::delete_app(&state.db, &package_name).await?;
-        true
-    } else {
-        false
-    };
+    }
 
-    Ok(Json(DeleteVersionResponse {
-        deleted_version: true,
-        deleted_app,
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }

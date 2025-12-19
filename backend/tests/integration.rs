@@ -108,7 +108,11 @@ async fn test_apps_list_after_insert() {
     }
 
     assert_eq!(apps.len(), 1);
-    assert_eq!(apps[0]["package_name"], "com.test.app");
+    assert_eq!(apps[0]["packageName"], "com.test.app");
+    // Verify camelCase format
+    assert!(apps[0]["iconUrl"].is_string());
+    // latestVersion is null when no versions exist
+    assert!(apps[0]["latestVersion"].is_null());
 }
 
 #[tokio::test]
@@ -410,9 +414,14 @@ async fn test_get_app_with_versions() {
     }
 
     let body: serde_json::Value = response.json();
-    assert_eq!(body["app"]["package_name"], "com.example.app");
-    assert_eq!(body["app"]["name"], "Test App");
+    // New format: flat structure with camelCase
+    assert_eq!(body["packageName"], "com.example.app");
+    assert_eq!(body["name"], "Test App");
+    assert!(body["iconUrl"].is_string());
 
     let versions = body["versions"].as_array().unwrap();
     assert_eq!(versions.len(), 2);
+    // Verify version fields are camelCase
+    assert!(versions[0]["versionCode"].is_number());
+    assert!(versions[0]["apkUrl"].is_string());
 }
