@@ -40,9 +40,9 @@
     <v-navigation-drawer v-model="drawer" temporary>
       <v-list nav>
         <v-list-item
-          prepend-icon="mdi-view-dashboard"
-          title="Dashboard"
-          to="/"
+          prepend-icon="mdi-package-variant"
+          title="Applications"
+          :to="{ name: 'apps' }"
         />
       </v-list>
     </v-navigation-drawer>

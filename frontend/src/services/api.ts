@@ -34,10 +34,16 @@ async function request<T>(
     headers['Content-Type'] = 'application/json'
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    })
+  } catch (e) {
+    // Network error (offline, DNS failure, CORS, etc.)
+    throw new ApiError(0, 'network_error', 'Unable to connect to server. Please check your connection.')
+  }
 
   // Handle 401 - redirect to login
   if (response.status === 401) {
@@ -52,7 +58,35 @@ async function request<T>(
     try {
       error = await response.json()
     } catch {
-      // Response wasn't JSON
+      // Response wasn't JSON, map status codes to friendly messages
+      switch (response.status) {
+        case 403:
+          error.error = 'forbidden'
+          error.message = "You don't have permission to perform this action"
+          break
+        case 404:
+          error.error = 'not_found'
+          error.message = 'The requested resource was not found'
+          break
+        case 409:
+          error.error = 'conflict'
+          error.message = 'Version already exists. Delete it first to re-upload.'
+          break
+        case 413:
+          error.error = 'payload_too_large'
+          error.message = 'File is too large. Maximum size is 500MB.'
+          break
+        case 415:
+          error.error = 'unsupported_media_type'
+          error.message = 'Invalid file type. Only APK and AAB files are supported.'
+          break
+        case 500:
+        case 502:
+        case 503:
+          error.error = 'server_error'
+          error.message = 'An unexpected server error occurred. Please try again later.'
+          break
+      }
     }
     throw new ApiError(response.status, error.error, error.message)
   }

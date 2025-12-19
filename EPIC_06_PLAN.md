@@ -13,16 +13,16 @@
 | # | Task | Status |
 |---|------|--------|
 | 1 | Apps Store (Pinia) | done |
-| 2 | Apps List View | un-done |
-| 3 | App Detail View | un-done |
-| 4 | Upload Dialog | un-done |
-| 5 | Edit App Dialog | un-done |
-| 6 | Delete Confirmation Dialogs | un-done |
-| 7 | Toast Notifications | un-done |
-| 8 | Loading States & Skeletons | un-done |
-| 9 | Error Handling | un-done |
-| 10 | Router Updates | un-done |
-| 11 | Dashboard Integration | un-done |
+| 2 | Apps List View | done |
+| 3 | App Detail View | done |
+| 4 | Upload Dialog | done |
+| 5 | Edit App Dialog | done |
+| 6 | Delete Confirmation Dialogs | done |
+| 7 | Toast Notifications | done |
+| 8 | Loading States & Skeletons | done |
+| 9 | Error Handling | done |
+| 10 | Router Updates | done |
+| 11 | Dashboard Integration | done |
 | 12 | Component Tests | un-done |
 
 ---
@@ -197,7 +197,7 @@ export const useAppsStore = defineStore('apps', () => {
 
 ## Task 2: Apps List View
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -362,7 +362,7 @@ onMounted(() => {
 
 ## Task 3: App Detail View
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -617,7 +617,7 @@ watch(packageName, (name) => {
 
 ## Task 4: Upload Dialog
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -861,7 +861,7 @@ watch(model, (open) => {
 
 ## Task 5: Edit App Dialog
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1008,7 +1008,7 @@ watch([model, () => props.app], ([open]) => {
 
 ## Task 6: Delete Confirmation Dialogs
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1110,7 +1110,7 @@ function cancel() {
 
 ## Task 7: Toast Notifications
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1238,7 +1238,7 @@ toast.info('Processing upload...')
 
 ## Task 8: Loading States & Skeletons
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1281,7 +1281,7 @@ Ensure all async operations show appropriate loading states. This includes:
 
 ## Task 9: Error Handling
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1341,7 +1341,7 @@ if (!response.ok) {
 
 ## Task 10: Router Updates
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 
@@ -1398,7 +1398,7 @@ const routes: RouteRecordRaw[] = [
 
 ## Task 11: Dashboard Integration
 
-**Status**: un-done
+**Status**: done
 
 ### Description
 

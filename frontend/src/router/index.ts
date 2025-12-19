@@ -5,8 +5,18 @@ import { useAuthStore } from '@/stores/auth'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    name: 'dashboard',
-    component: () => import('@/views/DashboardView.vue'),
+    redirect: { name: 'apps' },
+  },
+  {
+    path: '/apps',
+    name: 'apps',
+    component: () => import('@/views/AppsListView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/apps/:packageName',
+    name: 'app-detail',
+    component: () => import('@/views/AppDetailView.vue'),
     meta: { requiresAuth: true },
   },
   {
@@ -64,7 +74,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // Redirect authenticated users away from guest-only pages
   if (to.meta.guest && authStore.isAuthenticated) {
-    next({ name: 'dashboard' })
+    next({ name: 'apps' })
     return
   }
 
