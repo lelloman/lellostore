@@ -19,8 +19,7 @@ RUN npm run build
 # =============================================================================
 # Backend Builder Stage
 # =============================================================================
-# Using Rust 1.83 due to zune-jpeg compatibility issues with 1.85
-FROM rust:1.83-bookworm AS backend-builder
+FROM rust:1.85-bookworm AS backend-builder
 
 WORKDIR /app
 
