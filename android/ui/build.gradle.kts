@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
@@ -8,19 +8,14 @@ plugins {
 }
 
 android {
-    namespace = "com.lelloman.store"
+    namespace = "com.lelloman.store.ui"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.lelloman.store"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
 
-        testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
-
-        manifestPlaceholders["appAuthRedirectScheme"] = "com.lelloman.store"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -45,16 +40,13 @@ android {
 }
 
 dependencies {
-    // Modules
-    implementation(project(":ui"))
     implementation(project(":domain"))
-    implementation(project(":localdata"))
-    implementation(project(":remoteapi"))
     implementation(project(":logger"))
 
     // AndroidX Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Compose
     implementation(libs.androidx.activity.compose)
@@ -72,28 +64,21 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.android.compiler)
 
-    // AppAuth
-    implementation(libs.appauth)
+    // Image Loading
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
-    // Unit Tests
+    // Testing
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
-
-    // Android Tests
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.hilt.android.testing)
-    kspAndroidTest(libs.hilt.android.compiler)
-    androidTestImplementation(libs.mockwebserver)
-    androidTestImplementation(libs.truth)
-    androidTestImplementation(libs.kotlinx.coroutines.test)
-
-    // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
