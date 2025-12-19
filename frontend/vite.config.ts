@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
@@ -22,6 +23,16 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.VITE_API_BASE_URL || 'http://localhost:8080',
           changeOrigin: true,
+        },
+      },
+    },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: ['./vitest.setup.ts'],
+      server: {
+        deps: {
+          inline: ['vuetify'],
         },
       },
     },

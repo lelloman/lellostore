@@ -13,7 +13,7 @@ When an epic is started, a dedicated implementation plan file (`EPIC_XX_PLAN.md`
 | 3 | Backend Authentication | Done | OIDC token validation, role-based access control | Epic 1 |
 | 4 | Backend API Complete | Done | All REST endpoints fully functional | Epics 2, 3 |
 | 5 | Frontend Foundation | Done | Vue 3 project setup, Vuetify, OIDC login | Epic 4 |
-| 6 | Frontend Features | Not Started | Admin dashboard, upload, edit, delete functionality | Epic 5 |
+| 6 | Frontend Features | Done | Admin dashboard, upload, edit, delete functionality | Epic 5 |
 | 7 | Frontend Embedding | Not Started | Bundle frontend into Rust binary | Epic 6 |
 | 8 | Android Foundation | Not Started | Kotlin/Compose project setup, OIDC login | Epic 4 |
 | 9 | Android Core Features | Not Started | App catalog, download, installation | Epic 8 |
