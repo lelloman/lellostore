@@ -13,7 +13,7 @@
 | # | Task | Status |
 |---|------|--------|
 | 1 | Project Initialization | done |
-| 2 | Vuetify 3 Setup | un-done |
+| 2 | Vuetify 3 Setup | done |
 | 3 | Pinia State Management | un-done |
 | 4 | OIDC Authentication Service | un-done |
 | 5 | Auth Store Implementation | un-done |
