@@ -98,6 +98,17 @@ dependencies {
     androidTestImplementation(libs.mockwebserver)
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    // Module dependencies for instrumented tests
+    androidTestImplementation(project(":localdata"))
+    androidTestImplementation(project(":remoteapi"))
+    androidTestImplementation(project(":domain"))
+    androidTestImplementation(project(":ui"))
+    // Additional dependencies for E2E test modules
+    androidTestImplementation(libs.androidx.datastore.preferences)
+    androidTestImplementation(libs.androidx.room.runtime)
+    androidTestImplementation(libs.ktor.client.okhttp)
+    androidTestImplementation(libs.ktor.client.content.negotiation)
+    androidTestImplementation(libs.ktor.serialization.kotlinx.json)
 
     // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)

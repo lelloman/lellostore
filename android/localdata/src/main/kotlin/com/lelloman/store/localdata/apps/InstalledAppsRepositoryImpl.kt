@@ -10,7 +10,7 @@ import com.lelloman.store.localdata.db.entity.InstalledAppEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-internal class InstalledAppsRepositoryImpl(
+class InstalledAppsRepositoryImpl(
     private val context: Context,
     private val installedAppsDao: InstalledAppsDao,
     private val appsDao: AppsDao,

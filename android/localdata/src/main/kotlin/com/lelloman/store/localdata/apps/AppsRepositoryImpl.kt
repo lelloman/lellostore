@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 
-internal class AppsRepositoryImpl(
+class AppsRepositoryImpl(
     private val appsDao: AppsDao,
     private val appVersionsDao: AppVersionsDao,
     private val remoteApiClient: RemoteApiClient,

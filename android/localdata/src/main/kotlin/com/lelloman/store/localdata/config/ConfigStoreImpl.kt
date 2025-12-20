@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.net.URI
 
-internal class ConfigStoreImpl(
+class ConfigStoreImpl(
     private val dataStore: DataStore<Preferences>,
     private val defaultServerUrl: String,
     scope: CoroutineScope,

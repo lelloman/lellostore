@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-internal class UserPreferencesStoreImpl(
+class UserPreferencesStoreImpl(
     private val dataStore: DataStore<Preferences>,
     scope: CoroutineScope,
 ) : UserPreferencesStore {
