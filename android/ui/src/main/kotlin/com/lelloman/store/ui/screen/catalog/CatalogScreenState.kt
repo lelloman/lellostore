@@ -7,6 +7,10 @@ data class CatalogScreenState(
     val error: String? = null,
     val searchQuery: String = "",
     val filter: CatalogFilter = CatalogFilter.All,
+    val sortOption: SortOption = SortOption.NameAsc,
+    val allCount: Int = 0,
+    val installedCount: Int = 0,
+    val updatesCount: Int = 0,
 )
 
 data class AppUiModel(
@@ -14,6 +18,7 @@ data class AppUiModel(
     val name: String,
     val iconUrl: String,
     val versionName: String,
+    val description: String?,
     val isInstalled: Boolean,
     val hasUpdate: Boolean,
 )
@@ -22,4 +27,9 @@ enum class CatalogFilter {
     All,
     Installed,
     Updates,
+}
+
+enum class SortOption(val displayName: String) {
+    NameAsc("Name (A-Z)"),
+    NameDesc("Name (Z-A)"),
 }

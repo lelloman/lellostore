@@ -174,6 +174,134 @@ class CatalogViewModelTest {
         assertThat(viewModel.state.value.isRefreshing).isFalse()
     }
 
+    @Test
+    fun `onClearSearch clears search query`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "App 1"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSearchQueryChanged("test")
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.searchQuery).isEqualTo("test")
+
+        viewModel.onClearSearch()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.searchQuery).isEmpty()
+    }
+
+    @Test
+    fun `sort by name ascending orders apps alphabetically`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "Zebra"),
+            createApp("com.test.app2", "Apple"),
+            createApp("com.test.app3", "Mango"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSortOptionChanged(SortOption.NameAsc)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name })
+            .containsExactly("Apple", "Mango", "Zebra").inOrder()
+    }
+
+    @Test
+    fun `sort by name descending orders apps reverse alphabetically`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "Zebra"),
+            createApp("com.test.app2", "Apple"),
+            createApp("com.test.app3", "Mango"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSortOptionChanged(SortOption.NameDesc)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name })
+            .containsExactly("Zebra", "Mango", "Apple").inOrder()
+    }
+
+    @Test
+    fun `app counts are calculated correctly`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "App 1", versionCode = 2),
+            createApp("com.test.app2", "App 2", versionCode = 1),
+            createApp("com.test.app3", "App 3", versionCode = 1),
+        )
+        fakeInteractor.mutableInstalledApps.value = listOf(
+            InstalledAppModel("com.test.app1", 1, "1.0.0"), // has update
+            InstalledAppModel("com.test.app2", 1, "1.0.0"), // installed, no update
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.allCount).isEqualTo(3)
+        assertThat(viewModel.state.value.installedCount).isEqualTo(2)
+        assertThat(viewModel.state.value.updatesCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `counts remain correct when filter is applied`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "App 1", versionCode = 2),
+            createApp("com.test.app2", "App 2", versionCode = 1),
+        )
+        fakeInteractor.mutableInstalledApps.value = listOf(
+            InstalledAppModel("com.test.app1", 1, "1.0.0"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onFilterChanged(CatalogFilter.Installed)
+        advanceUntilIdle()
+
+        // Counts should still reflect total, not filtered
+        assertThat(viewModel.state.value.allCount).isEqualTo(2)
+        assertThat(viewModel.state.value.installedCount).isEqualTo(1)
+        assertThat(viewModel.state.value.updatesCount).isEqualTo(1)
+        // But filtered list should only have installed apps
+        assertThat(viewModel.state.value.apps).hasSize(1)
+    }
+
+    @Test
+    fun `description is included in UI model`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            AppModel(
+                packageName = "com.test.app1",
+                name = "App 1",
+                description = "A test description",
+                iconUrl = "https://example.com/icon.png",
+                latestVersionCode = 1,
+                latestVersionName = "1.0.0",
+            ),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps[0].description).isEqualTo("A test description")
+    }
+
+    @Test
+    fun `sort is case insensitive`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "banana"),
+            createApp("com.test.app2", "Apple"),
+            createApp("com.test.app3", "CHERRY"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSortOptionChanged(SortOption.NameAsc)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name })
+            .containsExactly("Apple", "banana", "CHERRY").inOrder()
+    }
+
     private fun createApp(
         packageName: String,
         name: String,

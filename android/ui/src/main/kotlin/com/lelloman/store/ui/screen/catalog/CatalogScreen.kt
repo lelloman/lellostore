@@ -17,12 +17,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
@@ -33,9 +37,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -61,7 +69,9 @@ fun CatalogScreen(
         state = state,
         onRefresh = viewModel::onRefresh,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
+        onClearSearch = viewModel::onClearSearch,
         onFilterChanged = viewModel::onFilterChanged,
+        onSortOptionChanged = viewModel::onSortOptionChanged,
         onAppClicked = viewModel::onAppClicked,
         onErrorDismissed = viewModel::onErrorDismissed,
         modifier = modifier,
@@ -74,11 +84,15 @@ private fun CatalogScreenContent(
     state: CatalogScreenState,
     onRefresh: () -> Unit,
     onSearchQueryChanged: (String) -> Unit,
+    onClearSearch: () -> Unit,
     onFilterChanged: (CatalogFilter) -> Unit,
+    onSortOptionChanged: (SortOption) -> Unit,
     onAppClicked: (AppUiModel) -> Unit,
     onErrorDismissed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
+
     Box(modifier = modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
@@ -86,7 +100,7 @@ private fun CatalogScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Search bar
+                // Search bar with clear button
                 OutlinedTextField(
                     value = state.searchQuery,
                     onValueChange = onSearchQueryChanged,
@@ -97,24 +111,61 @@ private fun CatalogScreenContent(
                             contentDescription = "Search",
                         )
                     },
+                    trailingIcon = {
+                        if (state.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = onClearSearch) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear search",
+                                )
+                            }
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 
-                // Filter chips
+                // Filter chips with counts and sort dropdown
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
                 ) {
-                    CatalogFilter.entries.forEach { filter ->
-                        FilterChip(
-                            selected = state.filter == filter,
-                            onClick = { onFilterChanged(filter) },
-                            label = { Text(filter.name) },
-                        )
-                    }
+                    FilterChip(
+                        selected = state.filter == CatalogFilter.All,
+                        onClick = {
+                            focusManager.clearFocus()
+                            onFilterChanged(CatalogFilter.All)
+                        },
+                        label = { Text("All (${state.allCount})") },
+                    )
+                    FilterChip(
+                        selected = state.filter == CatalogFilter.Installed,
+                        onClick = {
+                            focusManager.clearFocus()
+                            onFilterChanged(CatalogFilter.Installed)
+                        },
+                        label = { Text("Installed (${state.installedCount})") },
+                    )
+                    FilterChip(
+                        selected = state.filter == CatalogFilter.Updates,
+                        onClick = {
+                            focusManager.clearFocus()
+                            onFilterChanged(CatalogFilter.Updates)
+                        },
+                        label = { Text("Updates (${state.updatesCount})") },
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    SortDropdown(
+                        selectedOption = state.sortOption,
+                        onOptionSelected = onSortOptionChanged,
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -182,6 +233,39 @@ private fun CatalogScreenContent(
 }
 
 @Composable
+private fun SortDropdown(
+    selectedOption: SortOption,
+    onOptionSelected: (SortOption) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        TextButton(onClick = { expanded = true }) {
+            Text(
+                text = selectedOption.displayName,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            SortOption.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.displayName) },
+                    onClick = {
+                        onOptionSelected(option)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun AppListItem(
     app: AppUiModel,
     onClick: () -> Unit,
@@ -196,7 +280,7 @@ private fun AppListItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
             AsyncImage(
                 model = app.iconUrl,
@@ -209,31 +293,52 @@ private fun AppListItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = app.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    if (app.hasUpdate) {
+                        Text(
+                            text = "Update",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    } else if (app.isInstalled) {
+                        Text(
+                            text = "Installed",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+
                 Text(
-                    text = app.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = app.versionName,
+                    text = "v${app.versionName}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
 
-            if (app.hasUpdate) {
-                Text(
-                    text = "Update",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else if (app.isInstalled) {
-                Text(
-                    text = "Installed",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                app.description?.let { description ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

@@ -39,19 +39,30 @@ class CatalogViewModel @Inject constructor(
                 interactor.watchInstalledApps(),
                 mutableState,
             ) { apps, installedApps, state ->
-                applyFilterAndSearch(apps, installedApps, state.filter, state.searchQuery)
-            }.collect { filteredApps ->
-                mutableState.value = mutableState.value.copy(apps = filteredApps)
+                processApps(apps, installedApps, state)
+            }.collect { result ->
+                mutableState.value = mutableState.value.copy(
+                    apps = result.filteredApps,
+                    allCount = result.allCount,
+                    installedCount = result.installedCount,
+                    updatesCount = result.updatesCount,
+                )
             }
         }
     }
 
-    private fun applyFilterAndSearch(
+    private data class ProcessedApps(
+        val filteredApps: List<AppUiModel>,
+        val allCount: Int,
+        val installedCount: Int,
+        val updatesCount: Int,
+    )
+
+    private fun processApps(
         apps: List<AppModel>,
         installedApps: List<InstalledAppModel>,
-        filter: CatalogFilter,
-        searchQuery: String,
-    ): List<AppUiModel> {
+        state: CatalogScreenState,
+    ): ProcessedApps {
         val installedMap = installedApps.associateBy { it.packageName }
 
         val uiModels = apps.map { app ->
@@ -61,25 +72,46 @@ class CatalogViewModel @Inject constructor(
                 name = app.name,
                 iconUrl = app.iconUrl,
                 versionName = app.latestVersionName,
+                description = app.description,
                 isInstalled = installed != null,
                 hasUpdate = installed != null && installed.versionCode < app.latestVersionCode,
             )
         }
 
-        val filtered = when (filter) {
+        // Calculate counts before filtering
+        val allCount = uiModels.size
+        val installedCount = uiModels.count { it.isInstalled }
+        val updatesCount = uiModels.count { it.hasUpdate }
+
+        // Apply filter
+        val filtered = when (state.filter) {
             CatalogFilter.All -> uiModels
             CatalogFilter.Installed -> uiModels.filter { it.isInstalled }
             CatalogFilter.Updates -> uiModels.filter { it.hasUpdate }
         }
 
-        return if (searchQuery.isBlank()) {
+        // Apply search
+        val searched = if (state.searchQuery.isBlank()) {
             filtered
         } else {
             filtered.filter { app ->
-                app.name.contains(searchQuery, ignoreCase = true) ||
-                    app.packageName.contains(searchQuery, ignoreCase = true)
+                app.name.contains(state.searchQuery, ignoreCase = true) ||
+                    app.packageName.contains(state.searchQuery, ignoreCase = true)
             }
         }
+
+        // Apply sort
+        val sorted = when (state.sortOption) {
+            SortOption.NameAsc -> searched.sortedBy { it.name.lowercase() }
+            SortOption.NameDesc -> searched.sortedByDescending { it.name.lowercase() }
+        }
+
+        return ProcessedApps(
+            filteredApps = sorted,
+            allCount = allCount,
+            installedCount = installedCount,
+            updatesCount = updatesCount,
+        )
     }
 
     fun onRefresh() {
@@ -107,8 +139,16 @@ class CatalogViewModel @Inject constructor(
         mutableState.value = mutableState.value.copy(searchQuery = query)
     }
 
+    fun onClearSearch() {
+        mutableState.value = mutableState.value.copy(searchQuery = "")
+    }
+
     fun onFilterChanged(filter: CatalogFilter) {
         mutableState.value = mutableState.value.copy(filter = filter)
+    }
+
+    fun onSortOptionChanged(sortOption: SortOption) {
+        mutableState.value = mutableState.value.copy(sortOption = sortOption)
     }
 
     fun onAppClicked(app: AppUiModel) {
