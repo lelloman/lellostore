@@ -29,6 +29,7 @@ import com.lelloman.store.download.DownloadManagerImpl
 import com.lelloman.store.interactor.AppDetailInteractorImpl
 import com.lelloman.store.interactor.CatalogInteractorImpl
 import com.lelloman.store.interactor.LoginInteractorImpl
+import com.lelloman.store.interactor.SettingsInteractorImpl
 import com.lelloman.store.interactor.UpdatesInteractorImpl
 import com.lelloman.store.localdata.apps.AppsRepositoryImpl
 import com.lelloman.store.localdata.apps.InstalledAppsRepositoryImpl
@@ -48,6 +49,7 @@ import com.lelloman.store.ui.screen.catalog.CatalogViewModel
 import com.lelloman.store.ui.screen.detail.AppDetailViewModel
 import com.lelloman.store.ui.screen.login.AuthIntentProvider
 import com.lelloman.store.ui.screen.login.LoginViewModel
+import com.lelloman.store.ui.screen.settings.SettingsViewModel
 import com.lelloman.store.ui.screen.updates.UpdatesViewModel
 import com.lelloman.store.updates.UpdateCheckerImpl
 import dagger.Binds
@@ -158,6 +160,9 @@ abstract class TestAppBindingsModule {
 
     @Binds
     abstract fun bindUpdatesInteractor(impl: UpdatesInteractorImpl): UpdatesViewModel.Interactor
+
+    @Binds
+    abstract fun bindSettingsInteractor(impl: SettingsInteractorImpl): SettingsViewModel.Interactor
 
     @Binds
     @Singleton

@@ -61,6 +61,10 @@ fun AppUi(
                 MainScreen(
                     onAppClick = { packageName -> navController.toAppDetail(packageName) },
                     onProfileClick = { showProfileSheet = true },
+                    onNavigateToLogin = {
+                        onLogout()
+                        navController.logout()
+                    },
                 )
             }
 

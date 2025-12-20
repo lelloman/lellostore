@@ -34,6 +34,7 @@ import com.lelloman.store.ui.screen.updates.UpdatesScreen
 fun MainScreen(
     onAppClick: (String) -> Unit,
     onProfileClick: () -> Unit,
+    onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tabNavController = rememberNavController()
@@ -59,7 +60,7 @@ fun MainScreen(
                 UpdatesScreen(onAppClick = onAppClick)
             }
             composable<MainTab.Settings> {
-                SettingsScreen()
+                SettingsScreen(onNavigateToLogin = onNavigateToLogin)
             }
         }
     }

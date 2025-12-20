@@ -23,6 +23,6 @@ class LelloStoreApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        workManagerInitializer.schedulePeriodicUpdateCheck()
+        workManagerInitializer.initialize()
     }
 }
