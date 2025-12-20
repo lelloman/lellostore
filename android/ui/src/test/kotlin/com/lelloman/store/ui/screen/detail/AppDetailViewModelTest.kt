@@ -2,6 +2,7 @@ package com.lelloman.store.ui.screen.detail
 
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.ui.model.AppDetailModel
 import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
@@ -157,39 +158,31 @@ class AppDetailViewModelTest {
     }
 
     @Test
-    fun `onInstallClick emits InstallApk event`() = runTest {
+    fun `onInstallClick calls downloadAndInstall`() = runTest {
         fakeInteractor.mutableApp.value = createAppDetail()
         createViewModel()
         advanceUntilIdle()
 
-        viewModel.events.test {
-            viewModel.onInstallClick()
-            advanceUntilIdle()
+        viewModel.onInstallClick()
+        advanceUntilIdle()
 
-            val event = awaitItem()
-            assertThat(event).isInstanceOf(AppDetailScreenEvent.InstallApk::class.java)
-            val installEvent = event as AppDetailScreenEvent.InstallApk
-            assertThat(installEvent.packageName).isEqualTo("com.test.app")
-            assertThat(installEvent.versionCode).isEqualTo(2)
-        }
+        assertThat(fakeInteractor.downloadAndInstallCalled).isTrue()
+        assertThat(fakeInteractor.downloadAndInstallPackageName).isEqualTo("com.test.app")
+        assertThat(fakeInteractor.downloadAndInstallVersionCode).isEqualTo(2)
     }
 
     @Test
-    fun `onUpdateClick emits InstallApk event`() = runTest {
+    fun `onUpdateClick calls downloadAndInstall`() = runTest {
         fakeInteractor.mutableApp.value = createAppDetail()
         fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 1, "1.0.0")
         createViewModel()
         advanceUntilIdle()
 
-        viewModel.events.test {
-            viewModel.onUpdateClick()
-            advanceUntilIdle()
+        viewModel.onUpdateClick()
+        advanceUntilIdle()
 
-            val event = awaitItem()
-            assertThat(event).isInstanceOf(AppDetailScreenEvent.InstallApk::class.java)
-            val installEvent = event as AppDetailScreenEvent.InstallApk
-            assertThat(installEvent.versionCode).isEqualTo(2)
-        }
+        assertThat(fakeInteractor.downloadAndInstallCalled).isTrue()
+        assertThat(fakeInteractor.downloadAndInstallVersionCode).isEqualTo(2)
     }
 
     @Test
@@ -290,19 +283,38 @@ class AppDetailViewModelTest {
 class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     val mutableApp = MutableStateFlow<AppDetailModel?>(null)
     val mutableInstalledVersion = MutableStateFlow<InstalledAppModel?>(null)
+    val mutableDownloadProgress = MutableStateFlow<DownloadProgress?>(null)
     var refreshAppResult: Result<AppDetailModel> = Result.success(
         AppDetailModel("com.test.app", "Test", null, "", emptyList())
     )
     var refreshAppCalled = false
     var refreshAppPackageName: String? = null
+    var downloadAndInstallCalled = false
+    var downloadAndInstallPackageName: String? = null
+    var downloadAndInstallVersionCode: Int? = null
+    var cancelDownloadCalled = false
+    var cancelDownloadPackageName: String? = null
 
     override fun watchApp(packageName: String): Flow<AppDetailModel?> = mutableApp
 
     override fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?> = mutableInstalledVersion
 
+    override fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?> = mutableDownloadProgress
+
     override suspend fun refreshApp(packageName: String): Result<AppDetailModel> {
         refreshAppCalled = true
         refreshAppPackageName = packageName
         return refreshAppResult
+    }
+
+    override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
+        downloadAndInstallCalled = true
+        downloadAndInstallPackageName = packageName
+        downloadAndInstallVersionCode = versionCode
+    }
+
+    override fun cancelDownload(packageName: String) {
+        cancelDownloadCalled = true
+        cancelDownloadPackageName = packageName
     }
 }

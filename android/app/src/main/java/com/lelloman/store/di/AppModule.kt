@@ -1,6 +1,8 @@
 package com.lelloman.store.di
 
 import com.lelloman.store.domain.auth.OidcConfig
+import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.download.DownloadManagerImpl
 import com.lelloman.store.interactor.AppDetailInteractorImpl
 import com.lelloman.store.interactor.CatalogInteractorImpl
 import com.lelloman.store.interactor.LoginInteractorImpl
@@ -63,4 +65,8 @@ abstract class AppBindingsModule {
 
     @Binds
     abstract fun bindAppDetailInteractor(impl: AppDetailInteractorImpl): AppDetailViewModel.Interactor
+
+    @Binds
+    @Singleton
+    abstract fun bindDownloadManager(impl: DownloadManagerImpl): DownloadManager
 }

@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":domain"))
     implementation(project(":logger"))
 
     // AndroidX Core

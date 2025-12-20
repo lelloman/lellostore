@@ -1,7 +1,5 @@
 package com.lelloman.store.ui.screen.detail
 
-import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +16,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.lelloman.store.domain.download.DownloadState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,9 +60,6 @@ fun AppDetailScreen(
                 is AppDetailScreenEvent.OpenApp -> {
                     val launchIntent = context.packageManager.getLaunchIntentForPackage(event.packageName)
                     launchIntent?.let { context.startActivity(it) }
-                }
-                is AppDetailScreenEvent.InstallApk -> {
-                    // Install will be handled in Phase 9
                 }
             }
         }
@@ -111,9 +110,12 @@ fun AppDetailScreen(
                 state.app != null -> {
                     AppDetailContent(
                         app = state.app!!,
+                        downloadState = state.downloadState,
+                        downloadProgress = state.downloadProgress,
                         onInstallClick = viewModel::onInstallClick,
                         onUpdateClick = viewModel::onUpdateClick,
                         onOpenClick = viewModel::onOpenClick,
+                        onCancelDownload = viewModel::onCancelDownload,
                     )
                 }
             }
@@ -124,11 +126,18 @@ fun AppDetailScreen(
 @Composable
 private fun AppDetailContent(
     app: AppDetailUiModel,
+    downloadState: DownloadState?,
+    downloadProgress: Float,
     onInstallClick: () -> Unit,
     onUpdateClick: () -> Unit,
     onOpenClick: () -> Unit,
+    onCancelDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isDownloading = downloadState != null &&
+            downloadState != DownloadState.COMPLETED &&
+            downloadState != DownloadState.FAILED &&
+            downloadState != DownloadState.CANCELLED
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -170,33 +179,41 @@ private fun AppDetailContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action buttons
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (app.canInstall) {
-                Button(
-                    onClick = onInstallClick,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Install")
+        // Action buttons / Download progress
+        if (isDownloading) {
+            DownloadProgressSection(
+                downloadState = downloadState!!,
+                progress = downloadProgress,
+                onCancel = onCancelDownload,
+            )
+        } else {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (app.canInstall) {
+                    Button(
+                        onClick = onInstallClick,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Install")
+                    }
                 }
-            }
-            if (app.canUpdate) {
-                Button(
-                    onClick = onUpdateClick,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Update")
+                if (app.canUpdate) {
+                    Button(
+                        onClick = onUpdateClick,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Update")
+                    }
                 }
-            }
-            if (app.canOpen) {
-                OutlinedButton(
-                    onClick = onOpenClick,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Open")
+                if (app.canOpen) {
+                    OutlinedButton(
+                        onClick = onOpenClick,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Open")
+                    }
                 }
             }
         }
@@ -296,6 +313,65 @@ private fun AppDetailContent(
                         Text(version.uploadedAt)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadProgressSection(
+    downloadState: DownloadState,
+    progress: Float,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = when (downloadState) {
+                        DownloadState.PENDING -> "Preparing..."
+                        DownloadState.DOWNLOADING -> "Downloading... ${(progress * 100).toInt()}%"
+                        DownloadState.VERIFYING -> "Verifying..."
+                        DownloadState.INSTALLING -> "Installing..."
+                        DownloadState.COMPLETED -> "Completed"
+                        DownloadState.FAILED -> "Failed"
+                        DownloadState.CANCELLED -> "Cancelled"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                if (downloadState == DownloadState.DOWNLOADING || downloadState == DownloadState.PENDING) {
+                    IconButton(onClick = onCancel) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel download",
+                        )
+                    }
+                }
+            }
+
+            if (downloadState == DownloadState.DOWNLOADING) {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else if (downloadState == DownloadState.PENDING ||
+                downloadState == DownloadState.VERIFYING ||
+                downloadState == DownloadState.INSTALLING) {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

@@ -2,6 +2,8 @@ package com.lelloman.store.interactor
 
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
+import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.ui.model.AppDetailModel
 import com.lelloman.store.ui.model.AppVersionModel
@@ -14,6 +16,7 @@ import javax.inject.Inject
 class AppDetailInteractorImpl @Inject constructor(
     private val appsRepository: AppsRepository,
     private val installedAppsRepository: InstalledAppsRepository,
+    private val downloadManager: DownloadManager,
 ) : AppDetailViewModel.Interactor {
 
     override fun watchApp(packageName: String): Flow<AppDetailModel?> {
@@ -36,6 +39,20 @@ class AppDetailInteractorImpl @Inject constructor(
 
     override suspend fun refreshApp(packageName: String): Result<AppDetailModel> {
         return appsRepository.refreshApp(packageName).map { it.toUiModel() }
+    }
+
+    override fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?> {
+        return downloadManager.activeDownloads.map { downloads ->
+            downloads[packageName]
+        }
+    }
+
+    override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
+        downloadManager.downloadAndInstall(packageName, versionCode)
+    }
+
+    override fun cancelDownload(packageName: String) {
+        downloadManager.cancelDownload(packageName)
     }
 
     private fun AppDetail.toUiModel(): AppDetailModel {

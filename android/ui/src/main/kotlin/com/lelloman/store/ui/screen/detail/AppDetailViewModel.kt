@@ -9,6 +9,8 @@ import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +41,7 @@ class AppDetailViewModel @Inject constructor(
 
     init {
         observeApp()
+        observeDownloadProgress()
         refreshApp()
     }
 
@@ -60,8 +63,19 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
-    private fun createUiModel(app: AppDetailModel, installed: InstalledAppModel?): AppDetailUiModel {
-        val latestVersion = app.versions.first()
+    private fun observeDownloadProgress() {
+        viewModelScope.launch {
+            interactor.watchDownloadProgress(packageName).collect { progress ->
+                mutableState.value = mutableState.value.copy(
+                    downloadState = progress?.state,
+                    downloadProgress = progress?.progress ?: 0f,
+                )
+            }
+        }
+    }
+
+    private fun createUiModel(app: AppDetailModel, installed: InstalledAppModel?): AppDetailUiModel? {
+        val latestVersion = app.versions.firstOrNull() ?: return null
         val installedVersionUi = installed?.let { inst ->
             app.versions.find { it.versionCode == inst.versionCode }?.toUiModel()
                 ?: AppVersionUiModel(
@@ -126,12 +140,19 @@ class AppDetailViewModel @Inject constructor(
 
     fun onInstallClick() {
         val app = mutableState.value.app ?: return
+        val currentDownloadState = mutableState.value.downloadState
+
+        // If download is in progress, cancel it
+        if (currentDownloadState != null && currentDownloadState != DownloadState.COMPLETED &&
+            currentDownloadState != DownloadState.FAILED && currentDownloadState != DownloadState.CANCELLED) {
+            interactor.cancelDownload(packageName)
+            return
+        }
+
         viewModelScope.launch {
-            mutableEvents.emit(
-                AppDetailScreenEvent.InstallApk(
-                    packageName = app.packageName,
-                    versionCode = app.latestVersion.versionCode,
-                )
+            interactor.downloadAndInstall(
+                packageName = app.packageName,
+                versionCode = app.latestVersion.versionCode,
             )
         }
     }
@@ -146,6 +167,10 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
+    fun onCancelDownload() {
+        interactor.cancelDownload(packageName)
+    }
+
     fun onRetry() {
         refreshApp()
     }
@@ -153,6 +178,9 @@ class AppDetailViewModel @Inject constructor(
     interface Interactor {
         fun watchApp(packageName: String): Flow<AppDetailModel?>
         fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?>
+        fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?>
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
+        suspend fun downloadAndInstall(packageName: String, versionCode: Int)
+        fun cancelDownload(packageName: String)
     }
 }

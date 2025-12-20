@@ -1,9 +1,13 @@
 package com.lelloman.store.ui.screen.detail
 
+import com.lelloman.store.domain.download.DownloadState
+
 data class AppDetailScreenState(
     val app: AppDetailUiModel? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
+    val downloadState: DownloadState? = null,
+    val downloadProgress: Float = 0f,
 )
 
 data class AppDetailUiModel(
