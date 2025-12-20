@@ -27,7 +27,7 @@ RUN VITE_OIDC_ISSUER_URL="$VITE_OIDC_ISSUER_URL" \
 # =============================================================================
 # Backend Builder Stage
 # =============================================================================
-FROM rust:1.85-bookworm AS backend-builder
+FROM rust:1.92-bookworm AS backend-builder
 
 WORKDIR /app
 
