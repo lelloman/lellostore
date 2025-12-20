@@ -175,6 +175,10 @@ class AppDetailViewModel @Inject constructor(
         refreshApp()
     }
 
+    fun onGrantPermissionClick() {
+        interactor.openInstallPermissionSettings()
+    }
+
     interface Interactor {
         fun watchApp(packageName: String): Flow<AppDetailModel?>
         fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?>
@@ -182,5 +186,7 @@ class AppDetailViewModel @Inject constructor(
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
         suspend fun downloadAndInstall(packageName: String, versionCode: Int)
         fun cancelDownload(packageName: String)
+        fun canInstallPackages(): Boolean
+        fun openInstallPermissionSettings()
     }
 }

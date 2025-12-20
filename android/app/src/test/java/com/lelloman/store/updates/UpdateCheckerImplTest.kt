@@ -23,93 +23,97 @@ class UpdateCheckerImplTest {
 
     @Test
     fun `availableUpdates initially empty`() = runTest {
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
+
         val appsFlow = MutableStateFlow<List<App>>(emptyList())
         val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
 
         val updateChecker = UpdateCheckerImpl(
             appsRepository = mockk { every { watchApps() } returns appsFlow },
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = scope,
+            scope = testScope,
         )
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
-        scope.cancel()
+        testScope.cancel()
     }
 
     @Test
     fun `finds update when installed version is older`() = runTest {
-        val appsFlow = MutableStateFlow<List<App>>(emptyList())
-        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-
-        val updateChecker = UpdateCheckerImpl(
-            appsRepository = mockk { every { watchApps() } returns appsFlow },
-            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = scope,
-        )
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
 
         val app = createApp("com.test.app", versionCode = 2)
         val installed = InstalledApp("com.test.app", versionCode = 1, versionName = "1.0")
 
-        appsFlow.value = listOf(app)
-        installedAppsFlow.value = listOf(installed)
+        val appsFlow = MutableStateFlow(listOf(app))
+        val installedAppsFlow = MutableStateFlow(listOf(installed))
+
+        val updateChecker = UpdateCheckerImpl(
+            appsRepository = mockk { every { watchApps() } returns appsFlow },
+            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
+            scope = testScope,
+        )
 
         assertThat(updateChecker.availableUpdates.value).hasSize(1)
         val update = updateChecker.availableUpdates.value.first()
         assertThat(update.app.packageName).isEqualTo("com.test.app")
         assertThat(update.installedVersionCode).isEqualTo(1)
-        scope.cancel()
+        testScope.cancel()
     }
 
     @Test
     fun `no update when installed version is current`() = runTest {
-        val appsFlow = MutableStateFlow<List<App>>(emptyList())
-        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-
-        val updateChecker = UpdateCheckerImpl(
-            appsRepository = mockk { every { watchApps() } returns appsFlow },
-            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = scope,
-        )
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
 
         val app = createApp("com.test.app", versionCode = 1)
         val installed = InstalledApp("com.test.app", versionCode = 1, versionName = "1.0")
 
-        appsFlow.value = listOf(app)
-        installedAppsFlow.value = listOf(installed)
-
-        assertThat(updateChecker.availableUpdates.value).isEmpty()
-        scope.cancel()
-    }
-
-    @Test
-    fun `no update when app not installed`() = runTest {
-        val appsFlow = MutableStateFlow<List<App>>(emptyList())
-        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val appsFlow = MutableStateFlow(listOf(app))
+        val installedAppsFlow = MutableStateFlow(listOf(installed))
 
         val updateChecker = UpdateCheckerImpl(
             appsRepository = mockk { every { watchApps() } returns appsFlow },
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = scope,
+            scope = testScope,
         )
+
+        assertThat(updateChecker.availableUpdates.value).isEmpty()
+        testScope.cancel()
+    }
+
+    @Test
+    fun `no update when app not installed`() = runTest {
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
 
         val app = createApp("com.test.app", versionCode = 2)
 
-        appsFlow.value = listOf(app)
-        installedAppsFlow.value = emptyList()
+        val appsFlow = MutableStateFlow(listOf(app))
+        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
+
+        val updateChecker = UpdateCheckerImpl(
+            appsRepository = mockk { every { watchApps() } returns appsFlow },
+            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
+            scope = testScope,
+        )
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
-        scope.cancel()
+        testScope.cancel()
     }
 
     @Test
     fun `checkForUpdates refreshes and returns updates`() = runTest {
-        val appsFlow = MutableStateFlow<List<App>>(emptyList())
-        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
+
+        val app = createApp("com.test.app", versionCode = 2)
+        val installed = InstalledApp("com.test.app", versionCode = 1, versionName = "1.0")
+
+        val appsFlow = MutableStateFlow(listOf(app))
+        val installedAppsFlow = MutableStateFlow(listOf(installed))
 
         val appsRepository: AppsRepository = mockk {
             every { watchApps() } returns appsFlow
@@ -123,27 +127,23 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
-            scope = scope,
+            scope = testScope,
         )
-
-        val app = createApp("com.test.app", versionCode = 2)
-        val installed = InstalledApp("com.test.app", versionCode = 1, versionName = "1.0")
-
-        appsFlow.value = listOf(app)
-        installedAppsFlow.value = listOf(installed)
 
         val result = updateChecker.checkForUpdates()
 
         assertThat(result.isSuccess).isTrue()
         assertThat(result.getOrNull()).hasSize(1)
-        scope.cancel()
+        testScope.cancel()
     }
 
     @Test
     fun `checkForUpdates fails when refresh fails`() = runTest {
+        val testDispatcher = UnconfinedTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(testDispatcher)
+
         val appsFlow = MutableStateFlow<List<App>>(emptyList())
         val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
 
         val appsRepository: AppsRepository = mockk {
             every { watchApps() } returns appsFlow
@@ -156,13 +156,13 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
-            scope = scope,
+            scope = testScope,
         )
 
         val result = updateChecker.checkForUpdates()
 
         assertThat(result.isFailure).isTrue()
-        scope.cancel()
+        testScope.cancel()
     }
 
     private fun createApp(packageName: String, versionCode: Int): App {

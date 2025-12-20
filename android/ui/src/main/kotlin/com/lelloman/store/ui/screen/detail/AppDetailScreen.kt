@@ -116,6 +116,7 @@ fun AppDetailScreen(
                         onUpdateClick = viewModel::onUpdateClick,
                         onOpenClick = viewModel::onOpenClick,
                         onCancelDownload = viewModel::onCancelDownload,
+                        onGrantPermissionClick = viewModel::onGrantPermissionClick,
                     )
                 }
             }
@@ -132,12 +133,14 @@ private fun AppDetailContent(
     onUpdateClick: () -> Unit,
     onOpenClick: () -> Unit,
     onCancelDownload: () -> Unit,
+    onGrantPermissionClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isDownloading = downloadState != null &&
             downloadState != DownloadState.COMPLETED &&
             downloadState != DownloadState.FAILED &&
-            downloadState != DownloadState.CANCELLED
+            downloadState != DownloadState.CANCELLED &&
+            downloadState != DownloadState.PERMISSION_REQUIRED
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -185,6 +188,11 @@ private fun AppDetailContent(
                 downloadState = downloadState!!,
                 progress = downloadProgress,
                 onCancel = onCancelDownload,
+            )
+        } else if (downloadState == DownloadState.PERMISSION_REQUIRED) {
+            PermissionRequiredSection(
+                onGrantPermissionClick = onGrantPermissionClick,
+                onRetryClick = onInstallClick,
             )
         } else {
             Row(
@@ -345,6 +353,7 @@ private fun DownloadProgressSection(
                         DownloadState.COMPLETED -> "Completed"
                         DownloadState.FAILED -> "Failed"
                         DownloadState.CANCELLED -> "Cancelled"
+                        DownloadState.PERMISSION_REQUIRED -> "Permission required"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -372,6 +381,44 @@ private fun DownloadProgressSection(
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionRequiredSection(
+    onGrantPermissionClick: () -> Unit,
+    onRetryClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "Permission Required",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "This app needs permission to install apps from unknown sources.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onGrantPermissionClick) {
+                    Text("Grant Permission")
+                }
+                Button(onClick = onRetryClick) {
+                    Text("Retry Install")
+                }
             }
         }
     }

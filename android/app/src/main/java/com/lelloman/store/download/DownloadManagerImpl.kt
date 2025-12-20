@@ -97,15 +97,16 @@ class DownloadManagerImpl @Inject constructor(
 
             // Install APK
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
-            val installed = installApk(destination)
-
-            if (installed) {
-                finalState = DownloadState.COMPLETED
-                updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
-            } else {
-                // Permission needed - keep the APK for retry after permission is granted
-                finalState = DownloadState.FAILED
-                updateProgress(packageName, DownloadState.FAILED, 0f, 0, 0)
+            when (val installResult = installApk(destination)) {
+                is InstallApkResult.Success -> {
+                    finalState = DownloadState.COMPLETED
+                    updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
+                }
+                is InstallApkResult.PermissionRequired -> {
+                    // Permission needed - keep the APK for retry after permission is granted
+                    finalState = DownloadState.PERMISSION_REQUIRED
+                    updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
+                }
             }
 
         } catch (e: CancellationException) {
@@ -130,12 +131,33 @@ class DownloadManagerImpl @Inject constructor(
         return when (finalState) {
             DownloadState.COMPLETED -> DownloadResult.Success
             DownloadState.CANCELLED -> DownloadResult.Cancelled
+            DownloadState.PERMISSION_REQUIRED -> DownloadResult.PermissionRequired
             else -> DownloadResult.Failed("Download failed")
         }
     }
 
     override fun cancelDownload(packageName: String) {
         downloadJobs[packageName]?.cancel()
+    }
+
+    override fun canInstallPackages(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    override fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
     }
 
     private suspend fun downloadToFile(
@@ -173,11 +195,16 @@ class DownloadManagerImpl @Inject constructor(
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    private sealed interface InstallApkResult {
+        data object Success : InstallApkResult
+        data object PermissionRequired : InstallApkResult
+    }
+
     /**
      * Attempts to install the APK.
-     * @return true if the install intent was launched, false if permission is needed
+     * @return Success if the install intent was launched, PermissionRequired if permission is needed
      */
-    private fun installApk(file: File): Boolean {
+    private fun installApk(file: File): InstallApkResult {
         val uri: Uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -187,16 +214,8 @@ class DownloadManagerImpl @Inject constructor(
         // On Android O and above, check if we can request package installs
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!context.packageManager.canRequestPackageInstalls()) {
-                // Open settings to allow installation from unknown sources
-                val settingsIntent = Intent(
-                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")
-                ).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(settingsIntent)
                 logger.w(tag, "Install permission not granted. User needs to enable 'Install unknown apps' and retry.")
-                return false
+                return InstallApkResult.PermissionRequired
             }
         }
 
@@ -207,7 +226,7 @@ class DownloadManagerImpl @Inject constructor(
         }
 
         context.startActivity(intent)
-        return true
+        return InstallApkResult.Success
     }
 
     private fun updateProgress(

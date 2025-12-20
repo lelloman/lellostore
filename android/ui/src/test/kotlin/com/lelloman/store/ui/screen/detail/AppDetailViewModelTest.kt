@@ -317,4 +317,10 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
         cancelDownloadCalled = true
         cancelDownloadPackageName = packageName
     }
+
+    override fun canInstallPackages(): Boolean = true
+
+    override fun openInstallPermissionSettings() {
+        // no-op for tests
+    }
 }

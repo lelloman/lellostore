@@ -15,9 +15,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +56,8 @@ fun SettingsScreen(
         onThemeModeChanged = viewModel::onThemeModeChanged,
         onUpdateCheckIntervalChanged = viewModel::onUpdateCheckIntervalChanged,
         onWifiOnlyDownloadsChanged = viewModel::onWifiOnlyDownloadsChanged,
+        onServerUrlInputChanged = viewModel::onServerUrlInputChanged,
+        onServerUrlSave = viewModel::onServerUrlSave,
         onLogoutClick = viewModel::onLogoutClick,
         modifier = modifier,
     )
@@ -65,6 +69,8 @@ private fun SettingsContent(
     onThemeModeChanged: (ThemeModeOption) -> Unit,
     onUpdateCheckIntervalChanged: (UpdateCheckIntervalOption) -> Unit,
     onWifiOnlyDownloadsChanged: (Boolean) -> Unit,
+    onServerUrlInputChanged: (String) -> Unit,
+    onServerUrlSave: () -> Unit,
     onLogoutClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -102,6 +108,19 @@ private fun SettingsContent(
             subtitle = "Only download app updates over WiFi",
             checked = state.wifiOnlyDownloads,
             onCheckedChange = onWifiOnlyDownloadsChanged,
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+        // Server Section
+        SettingsSectionHeader(title = "Server")
+
+        ServerUrlInput(
+            serverUrlInput = state.serverUrlInput,
+            serverUrlError = state.serverUrlError,
+            isSaved = state.serverUrlInput == state.serverUrl,
+            onValueChange = onServerUrlInputChanged,
+            onSave = onServerUrlSave,
         )
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -352,4 +371,36 @@ private fun <T> SelectionDialog(
             }
         },
     )
+}
+
+@Composable
+private fun ServerUrlInput(
+    serverUrlInput: String,
+    serverUrlError: String?,
+    isSaved: Boolean,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        OutlinedTextField(
+            value = serverUrlInput,
+            onValueChange = onValueChange,
+            label = { Text("Server URL") },
+            isError = serverUrlError != null,
+            supportingText = serverUrlError?.let { { Text(it) } },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = onSave,
+            enabled = !isSaved,
+            modifier = Modifier.align(Alignment.End),
+        ) {
+            Text(if (isSaved) "Saved" else "Save")
+        }
+    }
 }

@@ -16,7 +16,8 @@ class DownloadStateTest {
             DownloadState.INSTALLING,
             DownloadState.COMPLETED,
             DownloadState.FAILED,
-            DownloadState.CANCELLED
+            DownloadState.CANCELLED,
+            DownloadState.PERMISSION_REQUIRED
         )
     }
 
@@ -56,5 +57,12 @@ class DownloadStateTest {
         val result: DownloadResult = DownloadResult.Cancelled
 
         assertThat(result).isEqualTo(DownloadResult.Cancelled)
+    }
+
+    @Test
+    fun `DownloadResult PermissionRequired is a singleton`() {
+        val result: DownloadResult = DownloadResult.PermissionRequired
+
+        assertThat(result).isEqualTo(DownloadResult.PermissionRequired)
     }
 }

@@ -2,6 +2,7 @@ package com.lelloman.store.interactor
 
 import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
+import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.preferences.ThemeMode
 import com.lelloman.store.domain.preferences.UpdateCheckInterval
 import com.lelloman.store.domain.preferences.UserPreferencesStore
@@ -19,6 +20,7 @@ import javax.inject.Inject
 class SettingsInteractorImpl @Inject constructor(
     private val userPreferencesStore: UserPreferencesStore,
     private val authStore: AuthStore,
+    private val configStore: ConfigStore,
     @ApplicationScope private val scope: CoroutineScope,
 ) : SettingsViewModel.Interactor {
 
@@ -49,6 +51,10 @@ class SettingsInteractorImpl @Inject constructor(
             .stateIn(scope, SharingStarted.Eagerly, null)
     }
 
+    override fun serverUrl(): StateFlow<String> {
+        return configStore.serverUrl
+    }
+
     override fun getAppVersion(): String {
         // Version info from build.gradle.kts
         return "1.0 (1)"
@@ -64,6 +70,13 @@ class SettingsInteractorImpl @Inject constructor(
 
     override suspend fun setWifiOnlyDownloads(enabled: Boolean) {
         userPreferencesStore.setWifiOnlyDownloads(enabled)
+    }
+
+    override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {
+        return when (configStore.setServerUrl(url)) {
+            is ConfigStore.SetServerUrlResult.Success -> SettingsViewModel.SetServerUrlResult.Success
+            is ConfigStore.SetServerUrlResult.InvalidUrl -> SettingsViewModel.SetServerUrlResult.InvalidUrl
+        }
     }
 
     override suspend fun logout() {

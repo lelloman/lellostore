@@ -35,16 +35,26 @@ class SettingsViewModel @Inject constructor(
                 interactor.updateCheckInterval(),
                 interactor.wifiOnlyDownloads(),
                 interactor.userEmail(),
-            ) { theme, interval, wifiOnly, email ->
+                interactor.serverUrl(),
+            ) { theme, interval, wifiOnly, email, serverUrl ->
                 SettingsScreenState(
                     themeMode = theme,
                     updateCheckInterval = interval,
                     wifiOnlyDownloads = wifiOnly,
                     userEmail = email,
+                    serverUrl = serverUrl,
+                    serverUrlInput = serverUrl,
                     appVersion = interactor.getAppVersion(),
                 )
             }.collect { newState ->
-                mutableState.value = newState
+                mutableState.value = mutableState.value.copy(
+                    themeMode = newState.themeMode,
+                    updateCheckInterval = newState.updateCheckInterval,
+                    wifiOnlyDownloads = newState.wifiOnlyDownloads,
+                    userEmail = newState.userEmail,
+                    serverUrl = newState.serverUrl,
+                    appVersion = newState.appVersion,
+                )
             }
         }
     }
@@ -74,16 +84,44 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun onServerUrlInputChanged(input: String) {
+        mutableState.value = mutableState.value.copy(
+            serverUrlInput = input,
+            serverUrlError = null,
+        )
+    }
+
+    fun onServerUrlSave() {
+        viewModelScope.launch {
+            val result = interactor.setServerUrl(mutableState.value.serverUrlInput)
+            when (result) {
+                is SetServerUrlResult.Success -> {
+                    mutableState.value = mutableState.value.copy(serverUrlError = null)
+                }
+                is SetServerUrlResult.InvalidUrl -> {
+                    mutableState.value = mutableState.value.copy(serverUrlError = "Invalid URL")
+                }
+            }
+        }
+    }
+
     interface Interactor {
         fun themeMode(): StateFlow<ThemeModeOption>
         fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption>
         fun wifiOnlyDownloads(): StateFlow<Boolean>
         fun userEmail(): StateFlow<String?>
+        fun serverUrl(): StateFlow<String>
         fun getAppVersion(): String
         suspend fun setThemeMode(mode: ThemeModeOption)
         suspend fun setUpdateCheckInterval(interval: UpdateCheckIntervalOption)
         suspend fun setWifiOnlyDownloads(enabled: Boolean)
+        suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun logout()
+    }
+
+    sealed interface SetServerUrlResult {
+        data object Success : SetServerUrlResult
+        data object InvalidUrl : SetServerUrlResult
     }
 }
 
@@ -92,6 +130,9 @@ data class SettingsScreenState(
     val updateCheckInterval: UpdateCheckIntervalOption = UpdateCheckIntervalOption.Hours24,
     val wifiOnlyDownloads: Boolean = true,
     val userEmail: String? = null,
+    val serverUrl: String = "",
+    val serverUrlInput: String = "",
+    val serverUrlError: String? = null,
     val appVersion: String = "",
 )
 

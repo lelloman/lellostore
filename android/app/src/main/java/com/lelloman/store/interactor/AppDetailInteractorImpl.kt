@@ -55,6 +55,14 @@ class AppDetailInteractorImpl @Inject constructor(
         downloadManager.cancelDownload(packageName)
     }
 
+    override fun canInstallPackages(): Boolean {
+        return downloadManager.canInstallPackages()
+    }
+
+    override fun openInstallPermissionSettings() {
+        downloadManager.openInstallPermissionSettings()
+    }
+
     private fun AppDetail.toUiModel(): AppDetailModel {
         return AppDetailModel(
             packageName = packageName,
