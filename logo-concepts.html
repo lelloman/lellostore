@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LelloStore Logo Concepts</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d9ff, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 50px;
+            font-size: 1.1rem;
+        }
+        .category {
+            max-width: 1400px;
+            margin: 0 auto 60px;
+        }
+        .category h2 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            color: #00d9ff;
+            border-left: 4px solid #a855f7;
+            padding-left: 15px;
+        }
+        .category-desc {
+            color: #aaa;
+            margin-bottom: 25px;
+            padding-left: 19px;
+            font-size: 0.95rem;
+        }
+        .logo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 25px;
+        }
+        .logo-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .logo-card:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0,217,255,0.2);
+        }
+        .logo-card svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 15px;
+        }
+        .logo-card .number {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .logo-card .name {
+            font-size: 0.9rem;
+            color: #ccc;
+            text-align: center;
+        }
+        .dark-preview {
+            background: #0a0a0a;
+        }
+        .light-preview {
+            background: #f5f5f5;
+        }
+        .light-preview .name {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>LelloStore Logo Concepts</h1>
+    <p class="subtitle">80 logo variations across 8 conceptual categories</p>
+
+    <!-- Category 1: Shield + Package -->
+    <section class="category">
+        <h2>1. Shield + Package</h2>
+        <p class="category-desc">Security meets delivery - representing protected app distribution</p>
+        <div class="logo-grid">
+            <!-- 1.1 Classic Shield with Box -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0099cc"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 5 L90 20 L90 45 C90 70 70 90 50 95 C30 90 10 70 10 45 L10 20 Z" fill="url(#shield1)"/>
+                    <rect x="35" y="35" width="30" height="25" rx="3" fill="#fff"/>
+                    <path d="M35 40 L50 50 L65 40" stroke="#00d9ff" stroke-width="3" fill="none"/>
+                </svg>
+                <span class="number">#1.1</span>
+                <span class="name">Classic Shield Box</span>
+            </div>
+
+            <!-- 1.2 Rounded Shield Gradient -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield2" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#a855f7"/>
+                            <stop offset="100%" style="stop-color:#6366f1"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 8 C70 8 85 15 88 22 L88 50 C88 72 70 88 50 94 C30 88 12 72 12 50 L12 22 C15 15 30 8 50 8Z" fill="url(#shield2)"/>
+                    <rect x="32" y="32" width="36" height="28" rx="4" fill="none" stroke="#fff" stroke-width="3"/>
+                    <circle cx="50" cy="46" r="8" fill="#fff"/>
+                </svg>
+                <span class="number">#1.2</span>
+                <span class="name">Rounded Purple</span>
+            </div>
+
+            <!-- 1.3 Minimal Shield Outline -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 10 L85 22 L85 48 C85 70 68 86 50 92 C32 86 15 70 15 48 L15 22 Z"
+                          fill="none" stroke="#00d9ff" stroke-width="4"/>
+                    <rect x="38" y="38" width="24" height="20" rx="2" fill="#00d9ff"/>
+                    <path d="M44 48 L50 53 L62 42" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#1.3</span>
+                <span class="name">Outline Check</span>
+            </div>
+
+            <!-- 1.4 Badge Style -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield4" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:#22c55e"/>
+                            <stop offset="100%" style="stop-color:#16a34a"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 5 L92 18 L92 42 C92 68 72 90 50 98 C28 90 8 68 8 42 L8 18 Z" fill="url(#shield4)"/>
+                    <path d="M50 15 L80 25 L80 42 C80 60 66 75 50 80 C34 75 20 60 20 42 L20 25 Z" fill="#1a1a2e"/>
+                    <rect x="38" y="38" width="24" height="18" rx="3" fill="#22c55e"/>
+                    <line x1="50" y1="42" x2="50" y2="52" stroke="#1a1a2e" stroke-width="2"/>
+                </svg>
+                <span class="number">#1.4</span>
+                <span class="name">Green Badge</span>
+            </div>
+
+            <!-- 1.5 Hexagonal Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield5" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f59e0b"/>
+                            <stop offset="100%" style="stop-color:#d97706"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,5 90,25 90,65 50,95 10,65 10,25" fill="url(#shield5)"/>
+                    <rect x="35" y="35" width="30" height="24" rx="4" fill="#fff"/>
+                    <circle cx="50" cy="47" r="6" fill="#f59e0b"/>
+                    <rect x="48" y="50" width="4" height="6" fill="#f59e0b"/>
+                </svg>
+                <span class="number">#1.5</span>
+                <span class="name">Hex Lock</span>
+            </div>
+
+            <!-- 1.6 Modern Flat -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 10 L82 22 V50 C82 72 66 86 50 92 C34 86 18 72 18 50 V22 Z" fill="#3b82f6"/>
+                    <path d="M50 20 L72 28 V50 C72 65 62 76 50 80 C38 76 28 65 28 50 V28 Z" fill="#1e40af"/>
+                    <path d="M38 45 L48 45 L48 38 L52 38 L52 45 L62 45 L62 55 L52 55 L52 62 L48 62 L48 55 L38 55 Z" fill="#fff"/>
+                </svg>
+                <span class="number">#1.6</span>
+                <span class="name">Plus Shield</span>
+            </div>
+
+            <!-- 1.7 Gradient Glow -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield7" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#ec4899"/>
+                            <stop offset="100%" style="stop-color:#8b5cf6"/>
+                        </linearGradient>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="2" result="blur"/>
+                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                    </defs>
+                    <path d="M50 8 L88 22 V48 C88 72 70 90 50 96 C30 90 12 72 12 48 V22 Z" fill="url(#shield7)" filter="url(#glow)"/>
+                    <rect x="36" y="36" width="28" height="22" rx="3" fill="#fff" opacity="0.9"/>
+                    <path d="M42 47 L48 53 L58 41" stroke="#8b5cf6" stroke-width="4" fill="none" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#1.7</span>
+                <span class="name">Pink Glow</span>
+            </div>
+
+            <!-- 1.8 Stacked Layers -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 18 L78 28 V48 C78 65 65 78 50 82 C35 78 22 65 22 48 V28 Z" fill="#0ea5e9" opacity="0.4"/>
+                    <path d="M50 12 L82 24 V48 C82 68 67 82 50 88 C33 82 18 68 18 48 V24 Z" fill="none" stroke="#0ea5e9" stroke-width="3"/>
+                    <rect x="38" y="40" width="24" height="18" rx="2" fill="#0ea5e9"/>
+                    <path d="M44 49 L50 54 L56 44" stroke="#fff" stroke-width="2" fill="none"/>
+                </svg>
+                <span class="number">#1.8</span>
+                <span class="name">Layered</span>
+            </div>
+
+            <!-- 1.9 Android Bot Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shield9" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#34d399"/>
+                            <stop offset="100%" style="stop-color:#059669"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 8 L86 22 V48 C86 72 68 88 50 94 C32 88 14 72 14 48 V22 Z" fill="url(#shield9)"/>
+                    <ellipse cx="50" cy="52" rx="20" ry="16" fill="#fff"/>
+                    <circle cx="42" cy="50" r="3" fill="#059669"/>
+                    <circle cx="58" cy="50" r="3" fill="#059669"/>
+                    <line x1="38" y1="38" x2="34" y2="32" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="62" y1="38" x2="66" y2="32" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#1.9</span>
+                <span class="name">Android Shield</span>
+            </div>
+
+            <!-- 1.10 Ribbon Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 98 C30 92 10 75 10 50 V20 Z" fill="#1e293b"/>
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 98" fill="#3b82f6"/>
+                    <rect x="35" y="40" width="30" height="22" rx="3" fill="#fff"/>
+                    <path d="M41 51 L48 57 L59 45" stroke="#3b82f6" stroke-width="3" fill="none" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#1.10</span>
+                <span class="name">Split Ribbon</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 2: Storefront with Lock -->
+    <section class="category">
+        <h2>2. Storefront with Lock</h2>
+        <p class="category-desc">Private marketplace aesthetic - exclusive access to curated apps</p>
+        <div class="logo-grid">
+            <!-- 2.1 Classic Storefront -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="store1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#6366f1"/>
+                            <stop offset="100%" style="stop-color:#4f46e5"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="15" y="35" width="70" height="55" rx="4" fill="url(#store1)"/>
+                    <path d="M10 35 L50 12 L90 35" fill="#4f46e5" stroke="#6366f1" stroke-width="2"/>
+                    <rect x="40" y="55" width="20" height="35" rx="2" fill="#1e1b4b"/>
+                    <circle cx="55" cy="72" r="3" fill="#fbbf24"/>
+                </svg>
+                <span class="number">#2.1</span>
+                <span class="name">Classic Store</span>
+            </div>
+
+            <!-- 2.2 Awning Style -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="15" y="40" width="70" height="50" rx="3" fill="#1e293b"/>
+                    <path d="M10 40 Q25 25 40 40 Q55 25 70 40 Q85 25 90 40" fill="#f43f5e"/>
+                    <rect x="25" y="50" width="20" height="30" fill="#0f172a"/>
+                    <rect x="55" y="50" width="20" height="30" fill="#0f172a"/>
+                    <circle cx="50" cy="35" r="10" fill="#1e293b" stroke="#f43f5e" stroke-width="2"/>
+                    <rect x="47" y="32" width="6" height="8" rx="1" fill="#f43f5e"/>
+                </svg>
+                <span class="number">#2.2</span>
+                <span class="name">Red Awning</span>
+            </div>
+
+            <!-- 2.3 Minimal Bag -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="25" y="35" width="50" height="50" rx="5" fill="#00d9ff"/>
+                    <path d="M35 35 V25 C35 15 45 10 50 10 C55 10 65 15 65 25 V35"
+                          fill="none" stroke="#00d9ff" stroke-width="6"/>
+                    <circle cx="50" cy="55" r="10" fill="#0a1628"/>
+                    <rect x="47" y="52" width="6" height="10" rx="1" fill="#00d9ff"/>
+                </svg>
+                <span class="number">#2.3</span>
+                <span class="name">Locked Bag</span>
+            </div>
+
+            <!-- 2.4 Modern Cart -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="store4" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#8b5cf6"/>
+                            <stop offset="100%" style="stop-color:#7c3aed"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M20 25 L30 25 L45 65 L80 65 L88 35 L35 35" fill="none" stroke="url(#store4)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="50" cy="80" r="8" fill="#8b5cf6"/>
+                    <circle cx="72" cy="80" r="8" fill="#8b5cf6"/>
+                    <circle cx="62" cy="48" r="12" fill="#1a1a2e" stroke="#8b5cf6" stroke-width="2"/>
+                    <rect x="59" y="44" width="6" height="10" rx="1" fill="#8b5cf6"/>
+                </svg>
+                <span class="number">#2.4</span>
+                <span class="name">Secure Cart</span>
+            </div>
+
+            <!-- 2.5 Key Shop -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="20" y="30" width="60" height="55" rx="8" fill="#0f766e"/>
+                    <rect x="30" y="45" width="40" height="30" rx="4" fill="#0a1628"/>
+                    <ellipse cx="50" cy="22" rx="20" ry="8" fill="#14b8a6"/>
+                    <circle cx="40" cy="60" r="8" fill="#14b8a6"/>
+                    <rect x="45" y="56" width="18" height="8" rx="2" fill="#14b8a6"/>
+                    <rect x="55" y="60" width="4" height="4" fill="#0a1628"/>
+                </svg>
+                <span class="number">#2.5</span>
+                <span class="name">Key Shop</span>
+            </div>
+
+            <!-- 2.6 Window Display -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="15" y="25" width="70" height="65" rx="4" fill="#1e40af"/>
+                    <rect x="20" y="30" width="28" height="35" rx="2" fill="#dbeafe"/>
+                    <rect x="52" y="30" width="28" height="35" rx="2" fill="#dbeafe"/>
+                    <rect x="38" y="70" width="24" height="18" rx="2" fill="#0a1628"/>
+                    <path d="M15 25 L50 10 L85 25" fill="#2563eb"/>
+                    <circle cx="56" cy="79" r="3" fill="#fbbf24"/>
+                </svg>
+                <span class="number">#2.6</span>
+                <span class="name">Window Display</span>
+            </div>
+
+            <!-- 2.7 App Box -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="store7" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f97316"/>
+                            <stop offset="100%" style="stop-color:#ea580c"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="20" y="25" width="60" height="60" rx="12" fill="url(#store7)"/>
+                    <rect x="30" y="40" width="16" height="16" rx="4" fill="#fff"/>
+                    <rect x="54" y="40" width="16" height="16" rx="4" fill="#fff"/>
+                    <rect x="30" y="62" width="16" height="16" rx="4" fill="#fff"/>
+                    <rect x="54" y="62" width="16" height="16" rx="4" fill="#fff" opacity="0.5"/>
+                    <circle cx="62" cy="70" r="6" fill="#0a1628"/>
+                    <rect x="60" y="68" width="4" height="5" rx="1" fill="#f97316"/>
+                </svg>
+                <span class="number">#2.7</span>
+                <span class="name">App Grid Lock</span>
+            </div>
+
+            <!-- 2.8 Neon Sign -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="15" y="20" width="70" height="60" rx="6" fill="#0a0a0a" stroke="#00d9ff" stroke-width="2"/>
+                    <text x="50" y="55" text-anchor="middle" font-family="Arial Black" font-size="20" fill="#00d9ff">OPEN</text>
+                    <circle cx="75" cy="30" r="8" fill="none" stroke="#f43f5e" stroke-width="2"/>
+                    <rect x="73" y="28" width="4" height="6" rx="1" fill="#f43f5e"/>
+                    <line x1="75" y1="34" x2="75" y2="38" stroke="#f43f5e" stroke-width="2"/>
+                </svg>
+                <span class="number">#2.8</span>
+                <span class="name">Neon Private</span>
+            </div>
+
+            <!-- 2.9 Gift Box -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="20" y="40" width="60" height="45" rx="4" fill="#dc2626"/>
+                    <rect x="20" y="30" width="60" height="15" rx="3" fill="#ef4444"/>
+                    <rect x="46" y="30" width="8" height="55" fill="#fecaca"/>
+                    <path d="M35 30 C35 20 45 15 50 25 C55 15 65 20 65 30" fill="none" stroke="#fecaca" stroke-width="4"/>
+                    <circle cx="50" cy="60" r="8" fill="#0a1628"/>
+                    <rect x="48" y="58" width="4" height="6" rx="1" fill="#dc2626"/>
+                </svg>
+                <span class="number">#2.9</span>
+                <span class="name">Gift Lock</span>
+            </div>
+
+            <!-- 2.10 Tag -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 10 L85 30 L85 75 L50 95 L15 75 L15 30 Z" fill="#8b5cf6"/>
+                    <circle cx="50" cy="35" r="8" fill="#0a1628"/>
+                    <line x1="50" y1="25" x2="50" y2="15" stroke="#0a1628" stroke-width="4"/>
+                    <rect x="35" y="50" width="30" height="25" rx="3" fill="#fff"/>
+                    <circle cx="50" cy="62" r="5" fill="#8b5cf6"/>
+                    <rect x="48" y="65" width="4" height="6" fill="#8b5cf6"/>
+                </svg>
+                <span class="number">#2.10</span>
+                <span class="name">Secure Tag</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 3: Hexagon Grid -->
+    <section class="category">
+        <h2>3. Hexagon Grid</h2>
+        <p class="category-desc">Modular, connected, scalable - representing app ecosystem</p>
+        <div class="logo-grid">
+            <!-- 3.1 Classic Honeycomb -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="hex1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0891b2"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,10 75,25 75,55 50,70 25,55 25,25" fill="url(#hex1)"/>
+                    <polygon points="25,55 50,70 50,100 25,85 0,70 0,40" fill="#0891b2" opacity="0.7"/>
+                    <polygon points="75,55 100,40 100,70 75,85 50,100 50,70" fill="#06b6d4" opacity="0.7"/>
+                </svg>
+                <span class="number">#3.1</span>
+                <span class="name">Honeycomb</span>
+            </div>
+
+            <!-- 3.2 L Shape Hex -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="35,5 55,5 65,20 55,35 35,35 25,20" fill="#8b5cf6"/>
+                    <polygon points="35,35 55,35 65,50 55,65 35,65 25,50" fill="#a855f7"/>
+                    <polygon points="35,65 55,65 65,80 55,95 35,95 25,80" fill="#c084fc"/>
+                    <polygon points="55,65 75,65 85,80 75,95 55,95 45,80" fill="#a855f7"/>
+                </svg>
+                <span class="number">#3.2</span>
+                <span class="name">L-Shape Hex</span>
+            </div>
+
+            <!-- 3.3 Single Gradient Hex -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="hex3" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#ec4899"/>
+                            <stop offset="100%" style="stop-color:#8b5cf6"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,5 90,27 90,73 50,95 10,73 10,27" fill="url(#hex3)"/>
+                    <polygon points="50,20 75,35 75,65 50,80 25,65 25,35" fill="#0a1628"/>
+                    <text x="50" y="58" text-anchor="middle" font-family="Arial Black" font-size="24" fill="#fff">L</text>
+                </svg>
+                <span class="number">#3.3</span>
+                <span class="name">L Monogram</span>
+            </div>
+
+            <!-- 3.4 Cluster -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,8 65,18 65,38 50,48 35,38 35,18" fill="#22c55e"/>
+                    <polygon points="30,38 45,48 45,68 30,78 15,68 15,48" fill="#16a34a"/>
+                    <polygon points="70,38 85,48 85,68 70,78 55,68 55,48" fill="#16a34a"/>
+                    <polygon points="50,58 65,68 65,88 50,98 35,88 35,68" fill="#15803d"/>
+                </svg>
+                <span class="number">#3.4</span>
+                <span class="name">Green Cluster</span>
+            </div>
+
+            <!-- 3.5 Outlined -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,10 80,27 80,63 50,80 20,63 20,27" fill="none" stroke="#00d9ff" stroke-width="3"/>
+                    <polygon points="50,25 68,36 68,56 50,67 32,56 32,36" fill="#00d9ff"/>
+                </svg>
+                <span class="number">#3.5</span>
+                <span class="name">Outlined Core</span>
+            </div>
+
+            <!-- 3.6 Tech Grid -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="35,15 50,8 65,15 65,30 50,37 35,30" fill="#3b82f6" opacity="0.6"/>
+                    <polygon points="15,35 30,28 45,35 45,50 30,57 15,50" fill="#3b82f6" opacity="0.8"/>
+                    <polygon points="55,35 70,28 85,35 85,50 70,57 55,50" fill="#3b82f6" opacity="0.8"/>
+                    <polygon points="35,55 50,48 65,55 65,70 50,77 35,70" fill="#3b82f6"/>
+                    <polygon points="35,75 50,68 65,75 65,90 50,97 35,90" fill="#1d4ed8" opacity="0.6"/>
+                </svg>
+                <span class="number">#3.6</span>
+                <span class="name">Tech Grid</span>
+            </div>
+
+            <!-- 3.7 Connected Nodes -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="50" y1="20" x2="25" y2="50" stroke="#f59e0b" stroke-width="3"/>
+                    <line x1="50" y1="20" x2="75" y2="50" stroke="#f59e0b" stroke-width="3"/>
+                    <line x1="25" y1="50" x2="50" y2="80" stroke="#f59e0b" stroke-width="3"/>
+                    <line x1="75" y1="50" x2="50" y2="80" stroke="#f59e0b" stroke-width="3"/>
+                    <polygon points="50,8 62,15 62,27 50,34 38,27 38,15" fill="#fbbf24"/>
+                    <polygon points="25,38 37,45 37,57 25,64 13,57 13,45" fill="#f59e0b"/>
+                    <polygon points="75,38 87,45 87,57 75,64 63,57 63,45" fill="#f59e0b"/>
+                    <polygon points="50,68 62,75 62,87 50,94 38,87 38,75" fill="#d97706"/>
+                </svg>
+                <span class="number">#3.7</span>
+                <span class="name">Connected</span>
+            </div>
+
+            <!-- 3.8 3D Cube -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,10 85,30 85,70 50,90 15,70 15,30" fill="#6366f1"/>
+                    <polygon points="50,10 85,30 50,50 15,30" fill="#818cf8"/>
+                    <polygon points="50,50 85,30 85,70 50,90" fill="#4f46e5"/>
+                    <polygon points="50,50 50,90 15,70 15,30" fill="#4338ca"/>
+                </svg>
+                <span class="number">#3.8</span>
+                <span class="name">3D Cube</span>
+            </div>
+
+            <!-- 3.9 Burst -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="hex9" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f43f5e"/>
+                            <stop offset="100%" style="stop-color:#e11d48"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,5 58,20 75,15 70,32 88,40 73,50 88,60 70,68 75,85 58,80 50,95 42,80 25,85 30,68 12,60 27,50 12,40 30,32 25,15 42,20" fill="url(#hex9)"/>
+                    <polygon points="50,30 62,38 62,54 50,62 38,54 38,38" fill="#fff"/>
+                </svg>
+                <span class="number">#3.9</span>
+                <span class="name">Star Burst</span>
+            </div>
+
+            <!-- 3.10 Layered -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,20 75,35 75,60 50,75 25,60 25,35" fill="#0ea5e9" opacity="0.3"/>
+                    <polygon points="50,15 78,32 78,63 50,80 22,63 22,32" fill="none" stroke="#0ea5e9" stroke-width="2"/>
+                    <polygon points="50,8 82,27 82,67 50,86 18,67 18,27" fill="none" stroke="#0ea5e9" stroke-width="2" opacity="0.5"/>
+                    <polygon points="50,30 65,40 65,55 50,65 35,55 35,40" fill="#0ea5e9"/>
+                </svg>
+                <span class="number">#3.10</span>
+                <span class="name">Ripple Hex</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 4: Download Arrow + Circle -->
+    <section class="category">
+        <h2>4. Download Arrow + Circle</h2>
+        <p class="category-desc">App installation focus - download, verify, install</p>
+        <div class="logo-grid">
+            <!-- 4.1 Classic Download -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="dl1" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:#22c55e"/>
+                            <stop offset="100%" style="stop-color:#16a34a"/>
+                        </linearGradient>
+                    </defs>
+                    <circle cx="50" cy="50" r="42" fill="url(#dl1)"/>
+                    <path d="M50 25 L50 60 M35 50 L50 65 L65 50" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="30" y1="75" x2="70" y2="75" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#4.1</span>
+                <span class="name">Classic Download</span>
+            </div>
+
+            <!-- 4.2 Arrow Badge -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="#3b82f6"/>
+                    <circle cx="50" cy="50" r="32" fill="#1e3a5f"/>
+                    <polygon points="50,25 65,50 55,50 55,70 45,70 45,50 35,50" fill="#3b82f6"/>
+                </svg>
+                <span class="number">#4.2</span>
+                <span class="name">Arrow Badge</span>
+            </div>
+
+            <!-- 4.3 Checkmark Circle -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#00d9ff" stroke-width="4"/>
+                    <circle cx="50" cy="50" r="32" fill="#00d9ff"/>
+                    <path d="M35 50 L45 60 L65 38" stroke="#0a1628" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#4.3</span>
+                <span class="name">Verified</span>
+            </div>
+
+            <!-- 4.4 Progress Ring -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#a855f7" stroke-width="8"
+                            stroke-dasharray="200 252" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                    <path d="M50 30 L50 55 M40 48 L50 60 L60 48" stroke="#a855f7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#4.4</span>
+                <span class="name">Progress</span>
+            </div>
+
+            <!-- 4.5 Cloud Download -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M75 45 C85 45 92 52 92 62 C92 72 85 78 75 78 L28 78 C18 78 10 70 10 60 C10 50 18 43 28 43 C28 28 40 18 55 18 C70 18 80 28 80 42" fill="#0ea5e9"/>
+                    <path d="M50 40 L50 65 M40 58 L50 68 L60 58" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#4.5</span>
+                <span class="name">Cloud</span>
+            </div>
+
+            <!-- 4.6 Pulse -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="#ec4899" opacity="0.2"/>
+                    <circle cx="50" cy="50" r="32" fill="#ec4899" opacity="0.4"/>
+                    <circle cx="50" cy="50" r="22" fill="#ec4899"/>
+                    <path d="M50 38 L50 55 M44 50 L50 58 L56 50" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#4.6</span>
+                <span class="name">Pulse</span>
+            </div>
+
+            <!-- 4.7 Rounded Square -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="15" y="15" width="70" height="70" rx="20" fill="#14b8a6"/>
+                    <path d="M50 30 L50 58 M38 50 L50 62 L62 50" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="35" y1="72" x2="65" y2="72" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#4.7</span>
+                <span class="name">Rounded Square</span>
+            </div>
+
+            <!-- 4.8 Split Arrow -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="#1e293b"/>
+                    <path d="M30 50 L50 70 L70 50" stroke="#f59e0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="50" y1="25" x2="50" y2="65" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" stroke-width="3"/>
+                </svg>
+                <span class="number">#4.8</span>
+                <span class="name">Gold Arrow</span>
+            </div>
+
+            <!-- 4.9 Box Arrow -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="dl9" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#6366f1"/>
+                            <stop offset="100%" style="stop-color:#4f46e5"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="20" y="45" width="60" height="40" rx="5" fill="url(#dl9)"/>
+                    <path d="M50 15 L50 55 M38 45 L50 58 L62 45" stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="35" y1="70" x2="65" y2="70" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#4.9</span>
+                <span class="name">Into Box</span>
+            </div>
+
+            <!-- 4.10 Play + Download -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="#dc2626"/>
+                    <polygon points="40,32 40,68 68,50" fill="#fff"/>
+                    <path d="M50 55 L50 42" stroke="#dc2626" stroke-width="4" stroke-linecap="round"/>
+                    <path d="M45 50 L50 56 L55 50" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#4.10</span>
+                <span class="name">Play Download</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 5: Abstract "L" Lettermark -->
+    <section class="category">
+        <h2>5. Abstract "L" Lettermark</h2>
+        <p class="category-desc">Modern, memorable, brandable - the "L" for Lello</p>
+        <div class="logo-grid">
+            <!-- 5.1 Bold L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="l1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0891b2"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="15" y="15" width="70" height="70" rx="15" fill="url(#l1)"/>
+                    <path d="M30 25 L30 75 L70 75 L70 60 L45 60 L45 25 Z" fill="#fff"/>
+                </svg>
+                <span class="number">#5.1</span>
+                <span class="name">Bold Square</span>
+            </div>
+
+            <!-- 5.2 Minimal L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M30 15 L30 85 L80 85" stroke="#8b5cf6" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#5.2</span>
+                <span class="name">Minimal Line</span>
+            </div>
+
+            <!-- 5.3 Gradient Block -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="l3" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f43f5e"/>
+                            <stop offset="100%" style="stop-color:#ec4899"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="25" y="10" width="25" height="80" rx="5" fill="url(#l3)"/>
+                    <rect x="25" y="65" width="55" height="25" rx="5" fill="url(#l3)"/>
+                </svg>
+                <span class="number">#5.3</span>
+                <span class="name">Block L</span>
+            </div>
+
+            <!-- 5.4 Arrow L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M25 10 L25 75 L90 75 L75 60 L40 60 L40 10 Z" fill="#22c55e"/>
+                    <polygon points="75,75 90,75 90,60" fill="#16a34a"/>
+                </svg>
+                <span class="number">#5.4</span>
+                <span class="name">Arrow L</span>
+            </div>
+
+            <!-- 5.5 Stacked -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <rect x="25" y="15" width="20" height="70" rx="4" fill="#3b82f6"/>
+                    <rect x="25" y="65" width="50" height="20" rx="4" fill="#60a5fa"/>
+                    <circle cx="75" cy="75" r="10" fill="#1d4ed8"/>
+                </svg>
+                <span class="number">#5.5</span>
+                <span class="name">Dot Accent</span>
+            </div>
+
+            <!-- 5.6 Ribbon L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="l6" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:#f59e0b"/>
+                            <stop offset="100%" style="stop-color:#fbbf24"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M35 10 C35 10 25 10 25 20 L25 80 C25 90 35 90 35 90 L80 90 C80 90 90 90 90 80 L90 70 L45 70 L45 20 C45 10 35 10 35 10" fill="url(#l6)"/>
+                </svg>
+                <span class="number">#5.6</span>
+                <span class="name">Ribbon</span>
+            </div>
+
+            <!-- 5.7 Tech L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M30 15 L30 70 L85 70" stroke="#00d9ff" stroke-width="8" stroke-linecap="square" fill="none"/>
+                    <rect x="26" y="11" width="8" height="8" fill="#00d9ff"/>
+                    <rect x="26" y="66" width="8" height="8" fill="#00d9ff"/>
+                    <rect x="81" y="66" width="8" height="8" fill="#00d9ff"/>
+                    <rect x="53" y="66" width="8" height="8" fill="#0891b2"/>
+                </svg>
+                <span class="number">#5.7</span>
+                <span class="name">Circuit L</span>
+            </div>
+
+            <!-- 5.8 Shadow L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M35 20 L35 80 L80 80 L80 65 L50 65 L50 20 Z" fill="#4f46e5" opacity="0.4" transform="translate(5,5)"/>
+                    <path d="M30 15 L30 75 L75 75 L75 60 L45 60 L45 15 Z" fill="#6366f1"/>
+                </svg>
+                <span class="number">#5.8</span>
+                <span class="name">Shadow</span>
+            </div>
+
+            <!-- 5.9 Rounded L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="l9" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#14b8a6"/>
+                            <stop offset="100%" style="stop-color:#0d9488"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M30 15 Q30 10 35 10 L40 10 Q45 10 45 15 L45 55 Q45 60 50 60 L75 60 Q80 60 80 65 L80 70 Q80 75 75 75 L35 75 Q30 75 30 70 Z" fill="url(#l9)"/>
+                </svg>
+                <span class="number">#5.9</span>
+                <span class="name">Smooth L</span>
+            </div>
+
+            <!-- 5.10 Double L -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M20 15 L20 65 L50 65" stroke="#dc2626" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M40 35 L40 85 L80 85" stroke="#f87171" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="number">#5.10</span>
+                <span class="name">Double L</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 6: App Grid with Hexagons -->
+    <section class="category">
+        <h2>6. App Grid with Hexagons</h2>
+        <p class="category-desc">Hexagonal app tiles - modern, modular app ecosystem visualization</p>
+        <div class="logo-grid">
+            <!-- 6.1 Honeycomb App Grid -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#6366f1"/>
+                            <stop offset="100%" style="stop-color:#8b5cf6"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="30,8 42,8 48,18 42,28 30,28 24,18" fill="#6366f1"/>
+                    <polygon points="50,8 62,8 68,18 62,28 50,28 44,18" fill="#8b5cf6"/>
+                    <polygon points="70,8 82,8 88,18 82,28 70,28 64,18" fill="#a855f7"/>
+                    <polygon points="20,25 32,25 38,35 32,45 20,45 14,35" fill="#8b5cf6"/>
+                    <polygon points="40,25 52,25 58,35 52,45 40,45 34,35" fill="url(#appgrid1)"/>
+                    <polygon points="60,25 72,25 78,35 72,45 60,45 54,35" fill="#6366f1"/>
+                    <polygon points="30,42 42,42 48,52 42,62 30,62 24,52" fill="#a855f7"/>
+                    <polygon points="50,42 62,42 68,52 62,62 50,62 44,52" fill="#6366f1"/>
+                    <polygon points="70,42 82,42 88,52 82,62 70,62 64,52" fill="#8b5cf6"/>
+                    <polygon points="40,59 52,59 58,69 52,79 40,79 34,69" fill="#6366f1"/>
+                    <polygon points="60,59 72,59 78,69 72,79 60,79 54,69" fill="#a855f7"/>
+                    <polygon points="50,76 62,76 68,86 62,96 50,96 44,86" fill="#8b5cf6"/>
+                </svg>
+                <span class="number">#6.1</span>
+                <span class="name">Full Honeycomb</span>
+            </div>
+
+            <!-- 6.2 Three Hex Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid2a" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0891b2"/>
+                        </linearGradient>
+                        <linearGradient id="appgrid2b" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#22c55e"/>
+                            <stop offset="100%" style="stop-color:#16a34a"/>
+                        </linearGradient>
+                        <linearGradient id="appgrid2c" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f59e0b"/>
+                            <stop offset="100%" style="stop-color:#d97706"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,5 72,18 72,42 50,55 28,42 28,18" fill="url(#appgrid2a)"/>
+                    <polygon points="25,45 47,58 47,82 25,95 3,82 3,58" fill="url(#appgrid2b)"/>
+                    <polygon points="75,45 97,58 97,82 75,95 53,82 53,58" fill="url(#appgrid2c)"/>
+                    <circle cx="50" cy="30" r="8" fill="#fff" opacity="0.9"/>
+                    <rect x="18" y="65" width="14" height="14" rx="3" fill="#fff" opacity="0.9"/>
+                    <polygon points="75,62 82,70 75,78 68,70" fill="#fff" opacity="0.9"/>
+                </svg>
+                <span class="number">#6.2</span>
+                <span class="name">Three Apps</span>
+            </div>
+
+            <!-- 6.3 Hex Grid Container -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,5 90,27 90,73 50,95 10,73 10,27" fill="#1e293b" stroke="#3b82f6" stroke-width="3"/>
+                    <polygon points="35,25 45,25 50,33 45,41 35,41 30,33" fill="#3b82f6"/>
+                    <polygon points="55,25 65,25 70,33 65,41 55,41 50,33" fill="#60a5fa"/>
+                    <polygon points="25,40 35,40 40,48 35,56 25,56 20,48" fill="#60a5fa"/>
+                    <polygon points="45,40 55,40 60,48 55,56 45,56 40,48" fill="#3b82f6"/>
+                    <polygon points="65,40 75,40 80,48 75,56 65,56 60,48" fill="#93c5fd"/>
+                    <polygon points="35,55 45,55 50,63 45,71 35,71 30,63" fill="#93c5fd"/>
+                    <polygon points="55,55 65,55 70,63 65,71 55,71 50,63" fill="#3b82f6"/>
+                </svg>
+                <span class="number">#6.3</span>
+                <span class="name">Hex Container</span>
+            </div>
+
+            <!-- 6.4 Gradient Hex Tiles -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid4" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#ec4899"/>
+                            <stop offset="50%" style="stop-color:#8b5cf6"/>
+                            <stop offset="100%" style="stop-color:#6366f1"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="50,5 70,17 70,39 50,51 30,39 30,17" fill="url(#appgrid4)"/>
+                    <polygon points="25,35 45,47 45,69 25,81 5,69 5,47" fill="#ec4899"/>
+                    <polygon points="75,35 95,47 95,69 75,81 55,69 55,47" fill="#6366f1"/>
+                    <polygon points="50,55 70,67 70,89 50,101 30,89 30,67" fill="#8b5cf6"/>
+                    <!-- App icons inside -->
+                    <circle cx="50" cy="28" r="6" fill="#fff"/>
+                    <rect x="21" y="55" width="8" height="8" rx="2" fill="#fff"/>
+                    <polygon points="75,55 80,62 75,69 70,62" fill="#fff"/>
+                    <path d="M46 74 L50 78 L54 74 L54 82 L46 82 Z" fill="#fff"/>
+                </svg>
+                <span class="number">#6.4</span>
+                <span class="name">Gradient Tiles</span>
+            </div>
+
+            <!-- 6.5 Stacked Hex Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,15 68,25 68,45 50,55 32,45 32,25" fill="#0f766e" opacity="0.3"/>
+                    <polygon points="50,10 70,22 70,44 50,56 30,44 30,22" fill="#14b8a6"/>
+                    <polygon points="50,25 62,32 62,46 50,53 38,46 38,32" fill="#0d9488"/>
+                    <polygon points="50,50 70,62 70,84 50,96 30,84 30,62" fill="#0f766e"/>
+                    <polygon points="50,62 60,68 60,80 50,86 40,80 40,68" fill="#5eead4"/>
+                    <!-- Mini apps in bottom hex -->
+                    <circle cx="45" cy="74" r="3" fill="#fff"/>
+                    <circle cx="55" cy="74" r="3" fill="#fff"/>
+                </svg>
+                <span class="number">#6.5</span>
+                <span class="name">Stacked Apps</span>
+            </div>
+
+            <!-- 6.6 Colorful App Cluster -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,5 62,12 62,26 50,33 38,26 38,12" fill="#ef4444"/>
+                    <polygon points="30,20 42,27 42,41 30,48 18,41 18,27" fill="#f59e0b"/>
+                    <polygon points="70,20 82,27 82,41 70,48 58,41 58,27" fill="#22c55e"/>
+                    <polygon points="20,40 32,47 32,61 20,68 8,61 8,47" fill="#3b82f6"/>
+                    <polygon points="50,40 62,47 62,61 50,68 38,61 38,47" fill="#8b5cf6"/>
+                    <polygon points="80,40 92,47 92,61 80,68 68,61 68,47" fill="#ec4899"/>
+                    <polygon points="35,60 47,67 47,81 35,88 23,81 23,67" fill="#14b8a6"/>
+                    <polygon points="65,60 77,67 77,81 65,88 53,81 53,67" fill="#f43f5e"/>
+                    <polygon points="50,75 62,82 62,96 50,103 38,96 38,82" fill="#6366f1"/>
+                </svg>
+                <span class="number">#6.6</span>
+                <span class="name">Rainbow Grid</span>
+            </div>
+
+            <!-- 6.7 Hex with Plus -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid7" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0ea5e9"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="35,10 50,3 65,10 65,28 50,35 35,28" fill="#00d9ff"/>
+                    <polygon points="15,30 30,23 45,30 45,48 30,55 15,48" fill="#0891b2"/>
+                    <polygon points="55,30 70,23 85,30 85,48 70,55 55,48" fill="#0891b2"/>
+                    <polygon points="35,50 50,43 65,50 65,68 50,75 35,68" fill="url(#appgrid7)"/>
+                    <polygon points="35,72 50,65 65,72 65,90 50,97 35,90" fill="#06b6d4" opacity="0.5" stroke="#00d9ff" stroke-width="2" stroke-dasharray="4,2"/>
+                    <!-- Plus icon in dashed hex -->
+                    <line x1="50" y1="75" x2="50" y2="87" stroke="#00d9ff" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="44" y1="81" x2="56" y2="81" stroke="#00d9ff" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <span class="number">#6.7</span>
+                <span class="name">Add App</span>
+            </div>
+
+            <!-- 6.8 Isometric Hex Grid -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid8a" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:#a855f7"/>
+                            <stop offset="100%" style="stop-color:#7c3aed"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- Top row -->
+                    <polygon points="50,8 62,15 62,28 50,35 38,28 38,15" fill="#c084fc"/>
+                    <!-- Middle row -->
+                    <polygon points="30,25 42,32 42,45 30,52 18,45 18,32" fill="#a855f7"/>
+                    <polygon points="50,30 62,37 62,50 50,57 38,50 38,37" fill="url(#appgrid8a)"/>
+                    <polygon points="70,25 82,32 82,45 70,52 58,45 58,32" fill="#a855f7"/>
+                    <!-- Bottom row -->
+                    <polygon points="30,50 42,57 42,70 30,77 18,70 18,57" fill="#8b5cf6"/>
+                    <polygon points="50,55 62,62 62,75 50,82 38,75 38,62" fill="#7c3aed"/>
+                    <polygon points="70,50 82,57 82,70 70,77 58,70 58,57" fill="#8b5cf6"/>
+                    <!-- App icons -->
+                    <circle cx="50" cy="22" r="4" fill="#fff"/>
+                    <rect x="47" y="41" width="6" height="6" rx="1" fill="#fff"/>
+                    <polygon points="50,65 53,70 50,75 47,70" fill="#fff"/>
+                </svg>
+                <span class="number">#6.8</span>
+                <span class="name">Isometric</span>
+            </div>
+
+            <!-- 6.9 Outlined Hex Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="35,8 50,0 65,8 65,24 50,32 35,24" fill="none" stroke="#f43f5e" stroke-width="2"/>
+                    <polygon points="35,8 50,0 65,8 65,24 50,32 35,24" fill="#f43f5e" opacity="0.2"/>
+                    <polygon points="15,28 30,20 45,28 45,44 30,52 15,44" fill="none" stroke="#f59e0b" stroke-width="2"/>
+                    <polygon points="15,28 30,20 45,28 45,44 30,52 15,44" fill="#f59e0b" opacity="0.2"/>
+                    <polygon points="55,28 70,20 85,28 85,44 70,52 55,44" fill="none" stroke="#22c55e" stroke-width="2"/>
+                    <polygon points="55,28 70,20 85,28 85,44 70,52 55,44" fill="#22c55e" opacity="0.2"/>
+                    <polygon points="35,48 50,40 65,48 65,64 50,72 35,64" fill="#3b82f6"/>
+                    <polygon points="15,68 30,60 45,68 45,84 30,92 15,84" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+                    <polygon points="15,68 30,60 45,68 45,84 30,92 15,84" fill="#8b5cf6" opacity="0.2"/>
+                    <polygon points="55,68 70,60 85,68 85,84 70,92 55,84" fill="none" stroke="#ec4899" stroke-width="2"/>
+                    <polygon points="55,68 70,60 85,68 85,84 70,92 55,84" fill="#ec4899" opacity="0.2"/>
+                    <!-- Center icon -->
+                    <circle cx="50" cy="56" r="6" fill="#fff"/>
+                </svg>
+                <span class="number">#6.9</span>
+                <span class="name">Outlined Grid</span>
+            </div>
+
+            <!-- 6.10 Minimal Hex Trio -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="appgrid10" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#1e293b"/>
+                            <stop offset="100%" style="stop-color:#334155"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- Large background hex -->
+                    <polygon points="50,5 88,27 88,71 50,93 12,71 12,27" fill="url(#appgrid10)"/>
+                    <!-- Three app hexes -->
+                    <polygon points="50,18 62,25 62,39 50,46 38,39 38,25" fill="#00d9ff"/>
+                    <polygon points="32,42 44,49 44,63 32,70 20,63 20,49" fill="#8b5cf6"/>
+                    <polygon points="68,42 80,49 80,63 68,70 56,63 56,49" fill="#22c55e"/>
+                    <!-- Icons -->
+                    <path d="M47 28 L50 32 L53 28 L53 36 L47 36 Z" fill="#0a1628"/>
+                    <circle cx="32" cy="56" r="5" fill="#0a1628"/>
+                    <rect x="64" y="52" width="8" height="8" rx="2" fill="#0a1628"/>
+                </svg>
+                <span class="number">#6.10</span>
+                <span class="name">Minimal Trio</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 7: Shield with App Grid -->
+    <section class="category">
+        <h2>7. Shield with App Grid</h2>
+        <p class="category-desc">Protected app collection - minimal shield containing app tiles</p>
+        <div class="logo-grid">
+            <!-- 7.1 Simple Shield 4 Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#3b82f6"/>
+                    <rect x="30" y="32" width="16" height="16" rx="3" fill="#fff"/>
+                    <rect x="54" y="32" width="16" height="16" rx="3" fill="#fff"/>
+                    <rect x="30" y="54" width="16" height="16" rx="3" fill="#fff"/>
+                    <rect x="54" y="54" width="16" height="16" rx="3" fill="#fff"/>
+                </svg>
+                <span class="number">#7.1</span>
+                <span class="name">Four Apps</span>
+            </div>
+
+            <!-- 7.2 Shield 6 Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#8b5cf6"/>
+                    <rect x="22" y="30" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="43" y="30" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="64" y="30" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="22" y="50" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="43" y="50" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="64" y="50" width="14" height="14" rx="2" fill="#fff"/>
+                </svg>
+                <span class="number">#7.2</span>
+                <span class="name">Six Apps</span>
+            </div>
+
+            <!-- 7.3 Gradient Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <defs>
+                        <linearGradient id="shieldapp3" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff"/>
+                            <stop offset="100%" style="stop-color:#0891b2"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="url(#shieldapp3)"/>
+                    <rect x="32" y="35" width="12" height="12" rx="2" fill="#fff"/>
+                    <rect x="56" y="35" width="12" height="12" rx="2" fill="#fff"/>
+                    <rect x="44" y="55" width="12" height="12" rx="2" fill="#fff"/>
+                </svg>
+                <span class="number">#7.3</span>
+                <span class="name">Three Centered</span>
+            </div>
+
+            <!-- 7.4 Outline Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 8 L85 22 V50 C85 72 68 87 50 92 C32 87 15 72 15 50 V22 Z" fill="none" stroke="#22c55e" stroke-width="4"/>
+                    <rect x="32" y="32" width="14" height="14" rx="2" fill="#22c55e"/>
+                    <rect x="54" y="32" width="14" height="14" rx="2" fill="#22c55e"/>
+                    <rect x="32" y="52" width="14" height="14" rx="2" fill="#22c55e"/>
+                    <rect x="54" y="52" width="14" height="14" rx="2" fill="#22c55e"/>
+                </svg>
+                <span class="number">#7.4</span>
+                <span class="name">Outline Green</span>
+            </div>
+
+            <!-- 7.5 Hex Apps in Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#f59e0b"/>
+                    <polygon points="38,30 46,26 54,30 54,40 46,44 38,40" fill="#fff"/>
+                    <polygon points="56,30 64,26 72,30 72,40 64,44 56,40" fill="#fff"/>
+                    <polygon points="28,48 36,44 44,48 44,58 36,62 28,58" fill="#fff"/>
+                    <polygon points="46,48 54,44 62,48 62,58 54,62 46,58" fill="#fff"/>
+                </svg>
+                <span class="number">#7.5</span>
+                <span class="name">Hex Apps</span>
+            </div>
+
+            <!-- 7.6 Split Color -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 V5 Z" fill="#6366f1"/>
+                    <path d="M50 5 L10 20 V50 C10 75 30 92 50 97 V5 Z" fill="#4f46e5"/>
+                    <rect x="30" y="35" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="56" y="35" width="14" height="14" rx="2" fill="#fff"/>
+                    <rect x="43" y="55" width="14" height="14" rx="2" fill="#fff"/>
+                </svg>
+                <span class="number">#7.6</span>
+                <span class="name">Split Purple</span>
+            </div>
+
+            <!-- 7.7 Dark Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#1e293b"/>
+                    <rect x="30" y="32" width="16" height="16" rx="3" fill="#3b82f6"/>
+                    <rect x="54" y="32" width="16" height="16" rx="3" fill="#8b5cf6"/>
+                    <rect x="30" y="54" width="16" height="16" rx="3" fill="#22c55e"/>
+                    <rect x="54" y="54" width="16" height="16" rx="3" fill="#f59e0b"/>
+                </svg>
+                <span class="number">#7.7</span>
+                <span class="name">Dark Colorful</span>
+            </div>
+
+            <!-- 7.8 Rounded Shield -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 8 C70 8 85 18 85 25 V55 C85 75 68 90 50 95 C32 90 15 75 15 55 V25 C15 18 30 8 50 8Z" fill="#ec4899"/>
+                    <rect x="30" y="35" width="16" height="16" rx="4" fill="#fff"/>
+                    <rect x="54" y="35" width="16" height="16" rx="4" fill="#fff"/>
+                    <rect x="42" y="58" width="16" height="16" rx="4" fill="#fff"/>
+                </svg>
+                <span class="number">#7.8</span>
+                <span class="name">Rounded Pink</span>
+            </div>
+
+            <!-- 7.9 Circle Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#14b8a6"/>
+                    <circle cx="36" cy="38" r="9" fill="#fff"/>
+                    <circle cx="64" cy="38" r="9" fill="#fff"/>
+                    <circle cx="36" cy="60" r="9" fill="#fff"/>
+                    <circle cx="64" cy="60" r="9" fill="#fff"/>
+                </svg>
+                <span class="number">#7.9</span>
+                <span class="name">Circle Apps</span>
+            </div>
+
+            <!-- 7.10 Minimal 2 Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <path d="M50 5 L90 20 V50 C90 75 70 92 50 97 C30 92 10 75 10 50 V20 Z" fill="#dc2626"/>
+                    <rect x="26" y="40" width="20" height="20" rx="4" fill="#fff"/>
+                    <rect x="54" y="40" width="20" height="20" rx="4" fill="#fff"/>
+                </svg>
+                <span class="number">#7.10</span>
+                <span class="name">Two Apps</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Category 8: Android Head with Apps -->
+    <section class="category">
+        <h2>8. Android Head with Apps</h2>
+        <p class="category-desc">Android head split open with apps inside - South Park Canadian style</p>
+        <div class="logo-grid">
+            <!-- 8.1 Colorful 3 Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="5" x2="38" y2="15" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="3" x2="62" y2="14" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-3 50 50)">
+                        <path d="M15 50 Q15 15 50 15 Q85 15 85 50 H15 Z" fill="#3ddc84"/>
+                        <circle cx="35" cy="38" r="5" fill="#fff"/>
+                        <circle cx="65" cy="38" r="5" fill="#fff"/>
+                    </g>
+                    <rect x="28" y="55" width="12" height="12" rx="3" fill="#3b82f6"/>
+                    <rect x="44" y="55" width="12" height="12" rx="3" fill="#f59e0b"/>
+                    <rect x="60" y="55" width="12" height="12" rx="3" fill="#ec4899"/>
+                    <path d="M15 72 H85 Q85 92 50 92 Q15 92 15 72 Z" fill="#3ddc84"/>
+                </svg>
+                <span class="number">#8.1</span>
+                <span class="name">Colorful 3</span>
+            </div>
+
+            <!-- 8.2 Two Large Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="5" x2="38" y2="15" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="3" x2="62" y2="14" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-4 85 48)">
+                        <path d="M12 48 Q12 12 50 12 Q88 12 88 48 H12 Z" fill="#3ddc84"/>
+                        <circle cx="35" cy="34" r="5" fill="#fff"/>
+                        <circle cx="65" cy="34" r="5" fill="#fff"/>
+                    </g>
+                    <rect x="28" y="54" width="18" height="18" rx="4" fill="#8b5cf6"/>
+                    <rect x="54" y="54" width="18" height="18" rx="4" fill="#f59e0b"/>
+                    <path d="M12 78 H88 Q88 95 50 95 Q12 95 12 78 Z" fill="#3ddc84"/>
+                </svg>
+                <span class="number">#8.2</span>
+                <span class="name">Two Large</span>
+            </div>
+
+            <!-- 8.3 Apps Falling Out -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="3" x2="38" y2="13" stroke="#00d9ff" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="1" x2="62" y2="12" stroke="#00d9ff" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-5 85 40)">
+                        <path d="M15 42 Q15 8 50 8 Q85 8 85 42 H15 Z" fill="#00d9ff"/>
+                        <circle cx="35" cy="28" r="5" fill="#0a1628"/>
+                        <circle cx="65" cy="28" r="5" fill="#0a1628"/>
+                    </g>
+                    <rect x="55" y="46" width="11" height="11" rx="2" fill="#3b82f6"/>
+                    <rect x="38" y="52" width="11" height="11" rx="2" fill="#8b5cf6"/>
+                    <rect x="22" y="60" width="11" height="11" rx="2" fill="#f59e0b"/>
+                    <path d="M15 75 H85 Q85 92 50 92 Q15 92 15 75 Z" fill="#00d9ff"/>
+                </svg>
+                <span class="number">#8.3</span>
+                <span class="name">Falling Out</span>
+            </div>
+
+            <!-- 8.4 One Big App -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="6" x2="38" y2="16" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="4" x2="62" y2="15" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-3 85 48)">
+                        <path d="M15 50 Q15 15 50 15 Q85 15 85 50 H15 Z" fill="#8b5cf6"/>
+                        <circle cx="35" cy="36" r="5" fill="#fff"/>
+                        <circle cx="65" cy="36" r="5" fill="#fff"/>
+                    </g>
+                    <rect x="38" y="54" width="24" height="18" rx="4" fill="#22c55e"/>
+                    <path d="M15 78 H85 Q85 93 50 93 Q15 93 15 78 Z" fill="#8b5cf6"/>
+                </svg>
+                <span class="number">#8.4</span>
+                <span class="name">One Big</span>
+            </div>
+
+            <!-- 8.5 Spaced Rounded -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="8" x2="38" y2="18" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="6" x2="62" y2="17" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-2 80 50)">
+                        <path d="M15 52 Q15 18 50 18 Q85 18 85 52 H15 Z" fill="#22c55e"/>
+                        <circle cx="35" cy="40" r="5" fill="#fff"/>
+                        <circle cx="65" cy="40" r="5" fill="#fff"/>
+                    </g>
+                    <rect x="26" y="58" width="13" height="13" rx="4" fill="#3b82f6"/>
+                    <rect x="44" y="58" width="13" height="13" rx="4" fill="#ec4899"/>
+                    <rect x="62" y="58" width="13" height="13" rx="4" fill="#f59e0b"/>
+                    <path d="M15 78 H85 Q85 92 50 92 Q15 92 15 78 Z" fill="#22c55e"/>
+                </svg>
+                <span class="number">#8.5</span>
+                <span class="name">Spaced Rounded</span>
+            </div>
+
+            <!-- 8.6 Cascade -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="26" y1="4" x2="34" y2="14" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="1" x2="64" y2="12" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-6 88 38)">
+                        <path d="M10 40 Q10 5 50 5 Q90 5 90 40 H10 Z" fill="#f59e0b"/>
+                        <circle cx="33" cy="26" r="5" fill="#fff"/>
+                        <circle cx="67" cy="26" r="5" fill="#fff"/>
+                    </g>
+                    <rect x="58" y="44" width="14" height="14" rx="3" fill="#3b82f6"/>
+                    <rect x="40" y="54" width="14" height="14" rx="3" fill="#8b5cf6"/>
+                    <rect x="22" y="64" width="14" height="14" rx="3" fill="#22c55e"/>
+                    <path d="M10 82 H90 Q90 97 50 97 Q10 97 10 82 Z" fill="#f59e0b"/>
+                </svg>
+                <span class="number">#8.6</span>
+                <span class="name">Cascade</span>
+            </div>
+
+            <!-- 8.7 Peeking Out -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="6" x2="38" y2="16" stroke="#ec4899" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="4" x2="62" y2="15" stroke="#ec4899" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-3 80 48)">
+                        <path d="M15 50 Q15 15 50 15 Q85 15 85 50 H15 Z" fill="#ec4899"/>
+                        <circle cx="35" cy="36" r="6" fill="#fff"/>
+                        <circle cx="65" cy="36" r="6" fill="#fff"/>
+                        <circle cx="35" cy="37" r="2" fill="#0a1628"/>
+                        <circle cx="65" cy="37" r="2" fill="#0a1628"/>
+                    </g>
+                    <rect x="32" y="52" width="14" height="14" rx="3" fill="#3b82f6"/>
+                    <rect x="54" y="52" width="14" height="14" rx="3" fill="#22c55e"/>
+                    <rect x="68" y="62" width="12" height="12" rx="3" fill="#f59e0b"/>
+                    <path d="M15 73 H85 Q85 92 50 92 Q15 92 15 73 Z" fill="#ec4899"/>
+                </svg>
+                <span class="number">#8.7</span>
+                <span class="name">Peeking Out</span>
+            </div>
+
+            <!-- 8.8 Hex Colorful -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="6" x2="38" y2="16" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="4" x2="62" y2="15" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-3 80 48)">
+                        <path d="M15 50 Q15 15 50 15 Q85 15 85 50 H15 Z" fill="#3ddc84"/>
+                        <circle cx="35" cy="36" r="5" fill="#fff"/>
+                        <circle cx="65" cy="36" r="5" fill="#fff"/>
+                    </g>
+                    <polygon points="35,62 43,56 51,62 51,72 43,78 35,72" fill="#3b82f6"/>
+                    <polygon points="51,62 59,56 67,62 67,72 59,78 51,72" fill="#ec4899"/>
+                    <path d="M15 82 H85 Q85 95 50 95 Q15 95 15 82 Z" fill="#3ddc84"/>
+                </svg>
+                <span class="number">#8.8</span>
+                <span class="name">Hex Colorful</span>
+            </div>
+
+            <!-- 8.9 Dark Two Apps -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="6" x2="38" y2="16" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="4" x2="62" y2="15" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-3 80 48)">
+                        <path d="M15 50 Q15 15 50 15 Q85 15 85 50 H15 Z" fill="#1e293b"/>
+                        <circle cx="35" cy="36" r="5" fill="#3ddc84"/>
+                        <circle cx="65" cy="36" r="5" fill="#3ddc84"/>
+                    </g>
+                    <rect x="30" y="54" width="16" height="16" rx="4" fill="#3ddc84"/>
+                    <rect x="54" y="54" width="16" height="16" rx="4" fill="#22c55e"/>
+                    <path d="M15 77 H85 Q85 92 50 92 Q15 92 15 77 Z" fill="#1e293b"/>
+                </svg>
+                <span class="number">#8.9</span>
+                <span class="name">Dark Two</span>
+            </div>
+
+            <!-- 8.10 Outline Falling -->
+            <div class="logo-card">
+                <svg viewBox="0 0 100 100">
+                    <line x1="30" y1="4" x2="38" y2="14" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="70" y1="2" x2="62" y2="13" stroke="#3ddc84" stroke-width="4" stroke-linecap="round"/>
+                    <g transform="rotate(-4 80 45)">
+                        <path d="M15 48 Q15 12 50 12 Q85 12 85 48 H15 Z" fill="none" stroke="#3ddc84" stroke-width="4"/>
+                        <circle cx="35" cy="34" r="5" fill="#3ddc84"/>
+                        <circle cx="65" cy="34" r="5" fill="#3ddc84"/>
+                    </g>
+                    <rect x="52" y="50" width="12" height="12" rx="3" fill="#3b82f6"/>
+                    <rect x="36" y="58" width="12" height="12" rx="3" fill="#8b5cf6"/>
+                    <rect x="20" y="66" width="12" height="12" rx="3" fill="#f59e0b"/>
+                    <path d="M15 82 H85 Q85 95 50 95 Q15 95 15 82 Z" fill="none" stroke="#3ddc84" stroke-width="4"/>
+                </svg>
+                <span class="number">#8.10</span>
+                <span class="name">Outline Falling</span>
+            </div>
+        </div>
+    </section>
+
+    <footer style="text-align: center; padding: 40px; color: #666;">
+        <p>LelloStore Logo Concepts &mdash; 80 variations for consideration</p>
+        <p style="margin-top: 10px; font-size: 0.85rem;">Click on any logo card to see it highlighted</p>
+    </footer>
+
+    <script>
+        document.querySelectorAll('.logo-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.logo-card').forEach(c => c.style.border = '1px solid rgba(255,255,255,0.1)');
+                card.style.border = '2px solid #00d9ff';
+            });
+        });
+    </script>
+</body>
+</html>
