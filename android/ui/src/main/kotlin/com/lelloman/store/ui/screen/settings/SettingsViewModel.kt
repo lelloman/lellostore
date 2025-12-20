@@ -47,12 +47,14 @@ class SettingsViewModel @Inject constructor(
                     appVersion = interactor.getAppVersion(),
                 )
             }.collect { newState ->
-                mutableState.value = mutableState.value.copy(
+                val currentState = mutableState.value
+                mutableState.value = currentState.copy(
                     themeMode = newState.themeMode,
                     updateCheckInterval = newState.updateCheckInterval,
                     wifiOnlyDownloads = newState.wifiOnlyDownloads,
                     userEmail = newState.userEmail,
                     serverUrl = newState.serverUrl,
+                    serverUrlInput = if (currentState.serverUrlInput.isEmpty()) newState.serverUrl else currentState.serverUrlInput,
                     appVersion = newState.appVersion,
                 )
             }

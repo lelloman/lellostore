@@ -3,6 +3,7 @@ package com.lelloman.store.ui.screen.detail
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.ui.model.AppDetailModel
 import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
@@ -264,6 +265,223 @@ class AppDetailViewModelTest {
         assertThat(viewModel.state.value.error).isEqualTo("Failed to load app details")
     }
 
+    @Test
+    fun `download progress is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0.5f,
+            bytesDownloaded = 1000L,
+            totalBytes = 2000L,
+            state = DownloadState.DOWNLOADING,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.DOWNLOADING)
+        assertThat(viewModel.state.value.downloadProgress).isEqualTo(0.5f)
+    }
+
+    @Test
+    fun `download state PENDING is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0f,
+            bytesDownloaded = 0L,
+            totalBytes = 0L,
+            state = DownloadState.PENDING,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.PENDING)
+    }
+
+    @Test
+    fun `download state VERIFYING is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 1f,
+            bytesDownloaded = 2000L,
+            totalBytes = 2000L,
+            state = DownloadState.VERIFYING,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.VERIFYING)
+    }
+
+    @Test
+    fun `download state INSTALLING is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 1f,
+            bytesDownloaded = 2000L,
+            totalBytes = 2000L,
+            state = DownloadState.INSTALLING,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.INSTALLING)
+    }
+
+    @Test
+    fun `download state COMPLETED is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 1f,
+            bytesDownloaded = 2000L,
+            totalBytes = 2000L,
+            state = DownloadState.COMPLETED,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.COMPLETED)
+    }
+
+    @Test
+    fun `download state FAILED is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0.5f,
+            bytesDownloaded = 1000L,
+            totalBytes = 2000L,
+            state = DownloadState.FAILED,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.FAILED)
+    }
+
+    @Test
+    fun `download state CANCELLED is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0.3f,
+            bytesDownloaded = 600L,
+            totalBytes = 2000L,
+            state = DownloadState.CANCELLED,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.CANCELLED)
+    }
+
+    @Test
+    fun `download state PERMISSION_REQUIRED is reflected in state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0f,
+            bytesDownloaded = 0L,
+            totalBytes = 0L,
+            state = DownloadState.PERMISSION_REQUIRED,
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.PERMISSION_REQUIRED)
+    }
+
+    @Test
+    fun `onCancelDownload calls interactor cancelDownload`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onCancelDownload()
+
+        assertThat(fakeInteractor.cancelDownloadCalled).isTrue()
+        assertThat(fakeInteractor.cancelDownloadPackageName).isEqualTo("com.test.app")
+    }
+
+    @Test
+    fun `onGrantPermissionClick calls interactor openInstallPermissionSettings`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onGrantPermissionClick()
+
+        assertThat(fakeInteractor.openInstallPermissionSettingsCalled).isTrue()
+    }
+
+    @Test
+    fun `null download progress clears download state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        // First set a download progress
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0.5f,
+            bytesDownloaded = 1000L,
+            totalBytes = 2000L,
+            state = DownloadState.DOWNLOADING,
+        )
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.DOWNLOADING)
+
+        // Then clear it
+        fakeInteractor.mutableDownloadProgress.value = null
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.downloadState).isNull()
+        assertThat(viewModel.state.value.downloadProgress).isEqualTo(0f)
+    }
+
+    @Test
+    fun `onInstallClick cancels in-progress download`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        // Simulate in-progress download
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0.5f,
+            bytesDownloaded = 1000L,
+            totalBytes = 2000L,
+            state = DownloadState.DOWNLOADING,
+        )
+        advanceUntilIdle()
+
+        // Click install when download is in progress should cancel
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.cancelDownloadCalled).isTrue()
+        assertThat(fakeInteractor.downloadAndInstallCalled).isFalse()
+    }
+
     private fun createAppDetail(
         packageName: String = "com.test.app",
         name: String = "Test App",
@@ -294,6 +512,7 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     var downloadAndInstallVersionCode: Int? = null
     var cancelDownloadCalled = false
     var cancelDownloadPackageName: String? = null
+    var openInstallPermissionSettingsCalled = false
 
     override fun watchApp(packageName: String): Flow<AppDetailModel?> = mutableApp
 
@@ -321,6 +540,6 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     override fun canInstallPackages(): Boolean = true
 
     override fun openInstallPermissionSettings() {
-        // no-op for tests
+        openInstallPermissionSettingsCalled = true
     }
 }
