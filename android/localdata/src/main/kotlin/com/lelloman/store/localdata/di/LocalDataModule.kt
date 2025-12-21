@@ -10,11 +10,13 @@ import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.OidcConfig
+import com.lelloman.store.domain.auth.SessionExpiredHandler
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.localdata.apps.AppsRepositoryImpl
 import com.lelloman.store.localdata.apps.InstalledAppsRepositoryImpl
 import com.lelloman.store.localdata.auth.AuthStoreImpl
+import com.lelloman.store.localdata.auth.SessionExpiredHandlerImpl
 import com.lelloman.store.localdata.config.ConfigStoreImpl
 import com.lelloman.store.localdata.db.LellostoreDatabase
 import com.lelloman.store.localdata.db.dao.AppVersionsDao
@@ -98,6 +100,13 @@ object LocalDataModule {
     @Provides
     @Singleton
     fun provideAuthStore(authStoreImpl: AuthStoreImpl): AuthStore = authStoreImpl
+
+    @Provides
+    @Singleton
+    fun provideSessionExpiredHandler(
+        authStore: AuthStore,
+        logger: Logger,
+    ): SessionExpiredHandler = SessionExpiredHandlerImpl(authStore, logger)
 
     @Provides
     @Singleton

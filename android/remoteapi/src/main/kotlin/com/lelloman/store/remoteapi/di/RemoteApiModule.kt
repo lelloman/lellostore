@@ -3,8 +3,10 @@ package com.lelloman.store.remoteapi.di
 import android.util.Log
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.auth.AuthStore
+import com.lelloman.store.domain.auth.SessionExpiredHandler
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.remoteapi.RemoteApiClientImpl
+import com.lelloman.store.remoteapi.SessionExpiredInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,8 +35,13 @@ object RemoteApiModule {
 
     @Provides
     @Singleton
-    fun provideHttpClient(json: Json, authStore: AuthStore): HttpClient = HttpClient(OkHttp) {
+    fun provideHttpClient(
+        json: Json,
+        authStore: AuthStore,
+        sessionExpiredHandler: SessionExpiredHandler,
+    ): HttpClient = HttpClient(OkHttp) {
         engine {
+            // First interceptor: add auth token (with proactive refresh)
             addInterceptor { chain ->
                 val token = runBlocking { authStore.getAccessToken() }
                 val request = if (token != null) {
@@ -46,6 +53,8 @@ object RemoteApiModule {
                 }
                 chain.proceed(request)
             }
+            // Second interceptor: detect 401/403 after token refresh has been attempted
+            addInterceptor(SessionExpiredInterceptor(sessionExpiredHandler))
         }
         install(ContentNegotiation) {
             json(json)

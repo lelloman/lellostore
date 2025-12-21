@@ -1,6 +1,7 @@
 package com.lelloman.store.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,9 +34,19 @@ fun AppUi(
     userEmail: String = "",
     onAuthResponse: (AuthorizationResponse?, AuthorizationException?, onResult: (AuthResult) -> Unit) -> Unit = { _, _, _ -> },
     onLogout: () -> Unit = {},
+    forceNavigateToLogin: Boolean = false,
+    onForceNavigateToLoginHandled: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     var showProfileSheet by remember { mutableStateOf(false) }
+
+    // Handle forced navigation to login (e.g., session expired)
+    LaunchedEffect(forceNavigateToLogin) {
+        if (forceNavigateToLogin) {
+            navController.logout()
+            onForceNavigateToLoginHandled()
+        }
+    }
 
     LellostoreTheme(themeMode = themeMode) {
         NavHost(

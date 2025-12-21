@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationResponse
@@ -41,6 +43,7 @@ class AuthStoreImpl(
     override val authState: StateFlow<AuthState> = mutableAuthState.asStateFlow()
 
     private var appAuthState: net.openid.appauth.AuthState? = null
+    private val tokenRefreshMutex = Mutex()
 
     init {
         scope.launch {
@@ -108,10 +111,10 @@ class AuthStoreImpl(
         }
     }
 
-    override suspend fun getAccessToken(): String? {
-        val state = appAuthState ?: return null
+    override suspend fun getAccessToken(): String? = tokenRefreshMutex.withLock {
+        val state = appAuthState ?: return@withLock null
 
-        return suspendCancellableCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             state.performActionWithFreshTokens(authService) { accessToken, _, ex ->
                 if (ex != null) {
                     logger.e(TAG, "Token refresh failed", ex)
