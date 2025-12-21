@@ -25,6 +25,8 @@ pub struct LatestVersionInfo {
     pub version_code: i64,
     pub version_name: String,
     pub size: i64,
+    pub min_sdk: i64,
+    pub uploaded_at: String,
 }
 
 /// App info for list endpoint
@@ -118,6 +120,8 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
                 version_code: v.version_code,
                 version_name: v.version_name,
                 size: v.size,
+                min_sdk: v.min_sdk,
+                uploaded_at: v.uploaded_at,
             }),
         });
     }

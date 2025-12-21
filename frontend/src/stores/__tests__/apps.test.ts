@@ -24,7 +24,7 @@ describe('Apps Store', () => {
   describe('fetchApps', () => {
     it('fetches apps from API and updates state', async () => {
       const mockApps = [
-        { package_name: 'com.test.app', name: 'Test App', icon_url: '/api/apps/com.test.app/icon', latest_version: { version_code: 1, version_name: '1.0', size: 1000 } },
+        { package_name: 'com.test.app', name: 'Test App', icon_url: '/api/apps/com.test.app/icon', latest_version: { version_code: 1, version_name: '1.0', size: 1000, min_sdk: 21, uploaded_at: '2024-01-01T00:00:00Z' } },
         { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '/api/apps/com.test.app2/icon' },
       ]
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })

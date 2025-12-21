@@ -152,6 +152,8 @@ export interface LatestVersionInfo {
   version_code: number
   version_name: string
   size: number
+  min_sdk: number
+  uploaded_at: string
 }
 
 // App in list response
