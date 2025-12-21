@@ -20,6 +20,7 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import javax.inject.Singleton
 
 @Module
@@ -35,26 +36,32 @@ object RemoteApiModule {
 
     @Provides
     @Singleton
-    fun provideHttpClient(
-        json: Json,
+    fun provideOkHttpClient(
         authStore: AuthStore,
         sessionExpiredHandler: SessionExpiredHandler,
+    ): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val token = runBlocking { authStore.getAccessToken() }
+            val request = if (token != null) {
+                chain.request().newBuilder()
+                    .addHeader("Authorization", "Bearer $token")
+                    .build()
+            } else {
+                chain.request()
+            }
+            chain.proceed(request)
+        }
+        .addInterceptor(SessionExpiredInterceptor(sessionExpiredHandler))
+        .build()
+
+    @Provides
+    @Singleton
+    fun provideHttpClient(
+        json: Json,
+        okHttpClient: OkHttpClient,
     ): HttpClient = HttpClient(OkHttp) {
         engine {
-            // First interceptor: add auth token (with proactive refresh)
-            addInterceptor { chain ->
-                val token = runBlocking { authStore.getAccessToken() }
-                val request = if (token != null) {
-                    chain.request().newBuilder()
-                        .addHeader("Authorization", "Bearer $token")
-                        .build()
-                } else {
-                    chain.request()
-                }
-                chain.proceed(request)
-            }
-            // Second interceptor: detect 401/403 after token refresh has been attempted
-            addInterceptor(SessionExpiredInterceptor(sessionExpiredHandler))
+            preconfigured = okHttpClient
         }
         install(ContentNegotiation) {
             json(json)

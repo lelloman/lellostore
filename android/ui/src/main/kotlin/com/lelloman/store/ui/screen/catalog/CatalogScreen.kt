@@ -1,6 +1,7 @@
 package com.lelloman.store.ui.screen.catalog
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -129,38 +131,42 @@ private fun CatalogScreenContent(
 
                 // Filter chips with counts and sort dropdown
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                 ) {
-                    FilterChip(
-                        selected = state.filter == CatalogFilter.All,
-                        onClick = {
-                            focusManager.clearFocus()
-                            onFilterChanged(CatalogFilter.All)
-                        },
-                        label = { Text("All (${state.allCount})") },
-                    )
-                    FilterChip(
-                        selected = state.filter == CatalogFilter.Installed,
-                        onClick = {
-                            focusManager.clearFocus()
-                            onFilterChanged(CatalogFilter.Installed)
-                        },
-                        label = { Text("Installed (${state.installedCount})") },
-                    )
-                    FilterChip(
-                        selected = state.filter == CatalogFilter.Updates,
-                        onClick = {
-                            focusManager.clearFocus()
-                            onFilterChanged(CatalogFilter.Updates)
-                        },
-                        label = { Text("Updates (${state.updatesCount})") },
-                    )
-
-                    Spacer(modifier = Modifier.weight(1f))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                    ) {
+                        FilterChip(
+                            selected = state.filter == CatalogFilter.All,
+                            onClick = {
+                                focusManager.clearFocus()
+                                onFilterChanged(CatalogFilter.All)
+                            },
+                            label = { Text("All (${state.allCount})") },
+                        )
+                        FilterChip(
+                            selected = state.filter == CatalogFilter.Installed,
+                            onClick = {
+                                focusManager.clearFocus()
+                                onFilterChanged(CatalogFilter.Installed)
+                            },
+                            label = { Text("Installed (${state.installedCount})") },
+                        )
+                        FilterChip(
+                            selected = state.filter == CatalogFilter.Updates,
+                            onClick = {
+                                focusManager.clearFocus()
+                                onFilterChanged(CatalogFilter.Updates)
+                            },
+                            label = { Text("Updates (${state.updatesCount})") },
+                        )
+                    }
 
                     SortDropdown(
                         selectedOption = state.sortOption,

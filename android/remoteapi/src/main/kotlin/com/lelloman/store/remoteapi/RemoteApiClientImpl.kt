@@ -25,7 +25,7 @@ internal class RemoteApiClientImpl(
             throw ApiException("Failed to get apps: ${response.status}")
         }
         val appsResponse: AppsResponseDto = response.body()
-        appsResponse.apps.map { it.toDomain() }
+        appsResponse.apps.map { it.toDomain().withAbsoluteUrls(baseUrl) }
     }
 
     override suspend fun getApp(packageName: String): Result<AppDetail> = runCatching {
@@ -34,8 +34,19 @@ internal class RemoteApiClientImpl(
             throw ApiException("Failed to get app $packageName: ${response.status}")
         }
         val appDetail: AppDetailDto = response.body()
-        appDetail.toDomain()
+        appDetail.toDomain().withAbsoluteUrls(baseUrl)
     }
+
+    private fun App.withAbsoluteUrls(baseUrl: String): App = copy(
+        iconUrl = resolveUrl(baseUrl, iconUrl),
+    )
+
+    private fun AppDetail.withAbsoluteUrls(baseUrl: String): AppDetail = copy(
+        iconUrl = resolveUrl(baseUrl, iconUrl),
+    )
+
+    private fun resolveUrl(baseUrl: String, url: String): String =
+        if (url.startsWith("/")) "$baseUrl$url" else url
 
     override suspend fun downloadApk(packageName: String, versionCode: Int): Result<InputStream> =
         runCatching {

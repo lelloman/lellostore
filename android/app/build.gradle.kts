@@ -80,6 +80,13 @@ dependencies {
     // AppAuth
     implementation(libs.appauth)
 
+    // OkHttp (for Coil image loading with auth)
+    implementation(libs.okhttp)
+
+    // Coil
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+
     // Unit Tests
     testImplementation(libs.junit)
     testImplementation(libs.truth)

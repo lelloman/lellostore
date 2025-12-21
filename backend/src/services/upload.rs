@@ -153,12 +153,13 @@ impl UploadService {
             self.storage
                 .save_apk(&metadata.package_name, metadata.version_code, &apk_data)?;
 
-        // 11. Save icon if available
-        let icon_path = if let Some(icon_data) = &metadata.icon_data {
-            Some(self.storage.save_icon(&metadata.package_name, icon_data)?)
-        } else {
-            None
-        };
+        // 11. Save icon (required - fail if not available)
+        let icon_data = metadata.icon_data.as_ref().ok_or_else(|| {
+            UploadError::ApkError(ApkError::IconError(
+                "APK does not contain a valid icon".to_string(),
+            ))
+        })?;
+        let icon_path = self.storage.save_icon(&metadata.package_name, icon_data)?;
 
         // 12. Update database (with cleanup on failure)
         let app_name = override_name
@@ -178,7 +179,7 @@ impl UploadService {
                 &app_name,
                 override_name.as_deref(),
                 override_description.as_deref(),
-                icon_path.as_deref(),
+                &icon_path,
                 is_new_app,
             )
             .await;
@@ -220,7 +221,7 @@ impl UploadService {
         app_name: &str,
         override_name: Option<&str>,
         override_description: Option<&str>,
-        icon_path: Option<&str>,
+        icon_path: &str,
         is_new_app: bool,
     ) -> Result<(), UploadError> {
         // Start a transaction
@@ -232,30 +233,19 @@ impl UploadService {
                 package_name,
                 app_name,
                 override_description,
-                icon_path,
+                Some(icon_path),
             )
             .await?;
         } else {
-            // Update icon if we got a new one
-            if icon_path.is_some() {
-                db::update_app_tx(
-                    &mut tx,
-                    package_name,
-                    override_name,
-                    override_description,
-                    icon_path,
-                )
-                .await?;
-            } else if override_name.is_some() || override_description.is_some() {
-                db::update_app_tx(
-                    &mut tx,
-                    package_name,
-                    override_name,
-                    override_description,
-                    None,
-                )
-                .await?;
-            }
+            // Always update icon (and optionally name/description)
+            db::update_app_tx(
+                &mut tx,
+                package_name,
+                override_name,
+                override_description,
+                Some(icon_path),
+            )
+            .await?;
         }
 
         // Insert version
