@@ -1,7 +1,11 @@
 import { useAuthStore } from '@/stores/auth'
+import { authService } from '@/services/auth'
 import router from '@/router'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+// Track if a token refresh is in progress to avoid multiple concurrent refreshes
+let refreshPromise: Promise<string | null> | null = null
 
 export class ApiError extends Error {
   constructor(
@@ -14,9 +18,33 @@ export class ApiError extends Error {
   }
 }
 
+async function refreshAccessToken(): Promise<string | null> {
+  // If a refresh is already in progress, wait for it
+  if (refreshPromise) {
+    return refreshPromise
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const user = await authService.silentRenew()
+      if (user?.access_token) {
+        const authStore = useAuthStore()
+        authStore.setUser(user)
+        return user.access_token
+      }
+      return null
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<T> {
   const authStore = useAuthStore()
 
@@ -45,8 +73,17 @@ async function request<T>(
     throw new ApiError(0, 'network_error', 'Unable to connect to server. Please check your connection.')
   }
 
-  // Handle 401 - redirect to login
+  // Handle 401 - attempt token refresh and retry once
   if (response.status === 401) {
+    if (!isRetry && authStore.accessToken) {
+      // Try to refresh the token
+      const newToken = await refreshAccessToken()
+      if (newToken) {
+        // Retry the request with the new token
+        return request<T>(path, options, true)
+      }
+    }
+    // Refresh failed or this was already a retry - logout
     await authStore.logout()
     router.push({ name: 'login' })
     throw new ApiError(401, 'unauthorized', 'Session expired')

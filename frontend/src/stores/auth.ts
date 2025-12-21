@@ -88,6 +88,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function setUser(newUser: User) {
+    user.value = newUser
+  }
+
   return {
     // State
     user,
@@ -105,5 +109,6 @@ export const useAuthStore = defineStore('auth', () => {
     handleCallback,
     logout,
     refreshToken,
+    setUser,
   }
 })
