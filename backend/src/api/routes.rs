@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     http::Method,
     middleware,
     routing::{delete, get, post, put},
@@ -11,6 +12,7 @@ use crate::auth::{auth_middleware, AuthState};
 use crate::metrics::track_metrics;
 
 pub fn create_router(state: AppState) -> Router {
+    let max_upload_size = state.config.max_upload_size;
     let mut router = Router::new().route("/health", get(handlers::health_check));
 
     // Add protected routes if auth is configured
@@ -18,7 +20,7 @@ pub fn create_router(state: AppState) -> Router {
         // User routes require authentication (any valid user)
         router = router.nest("/api", user_routes(auth_state.clone()));
         // Admin routes require authentication AND admin role
-        router = router.nest("/api/admin", admin_routes(auth_state.clone()));
+        router = router.nest("/api/admin", admin_routes(auth_state.clone(), max_upload_size));
     } else {
         // No auth configured - make user routes public (dev/testing mode)
         router = router.nest("/api", public_routes());
@@ -63,7 +65,7 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 }
 
 /// Admin routes (requires authentication and admin role)
-fn admin_routes(auth_state: AuthState) -> Router<AppState> {
+fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState> {
     Router::new()
         .route("/apps", post(handlers::upload_app))
         .route("/apps/:package_name", put(handlers::update_app))
@@ -72,6 +74,7 @@ fn admin_routes(auth_state: AuthState) -> Router<AppState> {
             "/apps/:package_name/versions/:version_code",
             delete(handlers::delete_version),
         )
+        .layer(DefaultBodyLimit::max(max_upload_size as usize))
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
