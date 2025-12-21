@@ -48,7 +48,11 @@
     >
       <template #item.icon="{ item }">
         <v-avatar size="40" rounded>
-          <v-img :src="getIconUrl(item.package_name)" />
+          <AuthenticatedImg :src="getIconUrl(item.package_name)">
+            <template #fallback>
+              <v-icon icon="mdi-android" size="24" />
+            </template>
+          </AuthenticatedImg>
         </v-avatar>
       </template>
 
@@ -75,6 +79,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
+import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
 import { useAppsStore } from '@/stores/apps'
 import { api } from '@/services/api'
 

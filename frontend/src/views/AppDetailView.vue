@@ -22,7 +22,11 @@
           <v-icon>mdi-arrow-left</v-icon>
         </v-btn>
         <v-avatar size="64" rounded class="mr-4">
-          <v-img :src="api.getIconUrl(app.package_name)" />
+          <AuthenticatedImg :src="api.getIconUrl(app.package_name)">
+            <template #fallback>
+              <v-icon icon="mdi-android" size="32" />
+            </template>
+          </AuthenticatedImg>
         </v-avatar>
         <div class="flex-grow-1">
           <h1 class="text-h4">{{ app.name }}</h1>
@@ -129,6 +133,7 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import EditAppDialog from '@/components/EditAppDialog.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
 import { useAppsStore } from '@/stores/apps'
 import { useToast } from '@/composables/useToast'
 import { api, type AppVersion } from '@/services/api'

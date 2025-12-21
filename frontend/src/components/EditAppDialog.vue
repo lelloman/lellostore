@@ -9,9 +9,8 @@
           <div class="d-flex align-center mb-4">
             <v-avatar size="72" class="mr-4" color="grey-lighten-2">
               <v-img
-                v-if="iconPreview || props.app?.icon_url"
-                :src="iconPreview || api.getIconUrl(props.app!.package_name)"
-                :key="iconKey"
+                v-if="iconPreview || iconBlobUrl"
+                :src="iconPreview ?? iconBlobUrl ?? undefined"
               />
               <v-icon v-else icon="mdi-android" size="36" />
             </v-avatar>
@@ -83,6 +82,7 @@ import { useAppsStore } from '@/stores/apps'
 import { api } from '@/services/api'
 import type { App } from '@/services/api'
 import { useToast } from '@/composables/useToast'
+import { useAuthenticatedImage } from '@/composables/useAuthenticatedImage'
 
 const props = defineProps<{
   app: App | null
@@ -96,6 +96,11 @@ const emit = defineEmits<{
 const appsStore = useAppsStore()
 const toast = useToast()
 
+// Fetch icon with auth header
+const { blobUrl: iconBlobUrl, refresh: refreshIcon } = useAuthenticatedImage(
+  () => props.app ? api.getIconUrl(props.app.package_name) : undefined
+)
+
 const form = ref()
 const iconInput = ref<HTMLInputElement>()
 const name = ref('')
@@ -105,7 +110,6 @@ const isSaving = ref(false)
 const isUploadingIcon = ref(false)
 const error = ref<string | null>(null)
 const iconPreview = ref<string | null>(null)
-const iconKey = ref(0) // Used to force icon refresh
 
 const rules = {
   required: (v: string) => !!v?.trim() || 'Name is required',
@@ -148,9 +152,9 @@ async function handleIconSelect(event: Event) {
   try {
     await api.uploadIcon(props.app.package_name, file)
     toast.success('Icon updated successfully')
-    // Force refresh the icon by changing the key
-    iconKey.value++
+    // Refresh the authenticated icon
     iconPreview.value = null
+    await refreshIcon()
     emit('saved')
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to upload icon'
