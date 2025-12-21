@@ -153,13 +153,18 @@ impl UploadService {
             self.storage
                 .save_apk(&metadata.package_name, metadata.version_code, &apk_data)?;
 
-        // 11. Save icon (required - fail if not available)
-        let icon_data = metadata.icon_data.as_ref().ok_or_else(|| {
-            UploadError::ApkError(ApkError::IconError(
-                "APK does not contain a valid icon".to_string(),
-            ))
-        })?;
-        let icon_path = self.storage.save_icon(&metadata.package_name, icon_data)?;
+        // 11. Save icon if available (best-effort)
+        let icon_path = if let Some(icon_data) = &metadata.icon_data {
+            match self.storage.save_icon(&metadata.package_name, icon_data) {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    warn!("Failed to save icon for {}: {}", metadata.package_name, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         // 12. Update database (with cleanup on failure)
         let app_name = override_name
@@ -179,7 +184,7 @@ impl UploadService {
                 &app_name,
                 override_name.as_deref(),
                 override_description.as_deref(),
-                &icon_path,
+                icon_path.as_deref(),
                 is_new_app,
             )
             .await;
@@ -221,7 +226,7 @@ impl UploadService {
         app_name: &str,
         override_name: Option<&str>,
         override_description: Option<&str>,
-        icon_path: &str,
+        icon_path: Option<&str>,
         is_new_app: bool,
     ) -> Result<(), UploadError> {
         // Start a transaction
@@ -233,17 +238,17 @@ impl UploadService {
                 package_name,
                 app_name,
                 override_description,
-                Some(icon_path),
+                icon_path,
             )
             .await?;
         } else {
-            // Always update icon (and optionally name/description)
+            // Update icon only if we have a new one (and optionally name/description)
             db::update_app_tx(
                 &mut tx,
                 package_name,
                 override_name,
                 override_description,
-                Some(icon_path),
+                icon_path,
             )
             .await?;
         }
