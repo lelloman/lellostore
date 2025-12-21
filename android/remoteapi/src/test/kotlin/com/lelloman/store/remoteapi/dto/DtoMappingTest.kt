@@ -14,7 +14,7 @@ class DtoMappingTest {
             size = 5120000,
             sha256 = "abc123def456",
             minSdk = 26,
-            uploadedAt = 1700000000000,
+            uploadedAt = "2023-11-14 22:13:20",
         )
 
         val domain = dto.toDomain()
@@ -24,7 +24,7 @@ class DtoMappingTest {
         assertThat(domain.size).isEqualTo(5120000)
         assertThat(domain.sha256).isEqualTo("abc123def456")
         assertThat(domain.minSdk).isEqualTo(26)
-        assertThat(domain.uploadedAt).isEqualTo(Instant.fromEpochMilliseconds(1700000000000))
+        assertThat(domain.uploadedAt).isEqualTo(Instant.parse("2023-11-14T22:13:20Z"))
     }
 
     @Test
@@ -40,7 +40,7 @@ class DtoMappingTest {
                 size = 1024000,
                 sha256 = "hash123",
                 minSdk = 24,
-                uploadedAt = 1700000000000,
+                uploadedAt = "2023-11-14 22:13:20",
             ),
         )
 
@@ -67,7 +67,7 @@ class DtoMappingTest {
                 size = 1024000,
                 sha256 = "hash123",
                 minSdk = 24,
-                uploadedAt = 1700000000000,
+                uploadedAt = "2023-11-14 22:13:20",
             ),
         )
 
@@ -90,7 +90,7 @@ class DtoMappingTest {
                     size = 3072000,
                     sha256 = "hash3",
                     minSdk = 24,
-                    uploadedAt = 1700200000000,
+                    uploadedAt = "2023-11-17 05:46:40",
                 ),
                 AppVersionDto(
                     versionCode = 2,
@@ -98,7 +98,7 @@ class DtoMappingTest {
                     size = 2560000,
                     sha256 = "hash2",
                     minSdk = 24,
-                    uploadedAt = 1700100000000,
+                    uploadedAt = "2023-11-16 02:00:00",
                 ),
             ),
         )

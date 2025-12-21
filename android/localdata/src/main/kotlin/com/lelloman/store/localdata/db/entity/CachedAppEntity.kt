@@ -20,7 +20,7 @@ data class CachedAppEntity(
     @ColumnInfo(name = "latest_version_size")
     val latestVersionSize: Long,
     @ColumnInfo(name = "latest_version_sha256")
-    val latestVersionSha256: String,
+    val latestVersionSha256: String?,
     @ColumnInfo(name = "latest_version_min_sdk")
     val latestVersionMinSdk: Int,
     @ColumnInfo(name = "latest_version_uploaded_at")

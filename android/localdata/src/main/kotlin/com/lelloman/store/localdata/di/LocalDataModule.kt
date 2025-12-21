@@ -46,7 +46,7 @@ object LocalDataModule {
             context,
             LellostoreDatabase::class.java,
             "lellostore.db"
-        ).build()
+        ).fallbackToDestructiveMigration(dropAllTables = true).build()
     }
 
     @Provides

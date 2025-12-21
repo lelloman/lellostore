@@ -14,7 +14,7 @@ data class AppVersion(
     val versionCode: Int,
     val versionName: String,
     val size: Long,
-    val sha256: String,
+    val sha256: String?,
     val minSdk: Int,
     val uploadedAt: Instant,
 )

@@ -26,7 +26,7 @@ data class CachedAppVersionEntity(
     @ColumnInfo(name = "version_name")
     val versionName: String,
     val size: Long,
-    val sha256: String,
+    val sha256: String?,
     @ColumnInfo(name = "min_sdk")
     val minSdk: Int,
     @ColumnInfo(name = "uploaded_at")

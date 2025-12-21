@@ -43,7 +43,7 @@ class RemoteApiClientImplTest {
                             "size": 1024000,
                             "sha256": "abc123",
                             "min_sdk": 24,
-                            "uploaded_at": 1700000000000
+                            "uploaded_at": "2023-11-14 22:13:20"
                         }
                     },
                     {
@@ -57,7 +57,7 @@ class RemoteApiClientImplTest {
                             "size": 2048000,
                             "sha256": "def456",
                             "min_sdk": 26,
-                            "uploaded_at": 1700100000000
+                            "uploaded_at": "2023-11-16 02:00:00"
                         }
                     }
                 ]
@@ -122,7 +122,7 @@ class RemoteApiClientImplTest {
                         "size": 3072000,
                         "sha256": "hash123",
                         "min_sdk": 24,
-                        "uploaded_at": 1700200000000
+                        "uploaded_at": "2023-11-17 05:46:40"
                     },
                     {
                         "version_code": 2,
@@ -130,7 +130,7 @@ class RemoteApiClientImplTest {
                         "size": 2560000,
                         "sha256": "hash456",
                         "min_sdk": 24,
-                        "uploaded_at": 1700100000000
+                        "uploaded_at": "2023-11-16 02:00:00"
                     }
                 ]
             }
