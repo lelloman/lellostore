@@ -24,8 +24,8 @@ describe('Apps Store', () => {
   describe('fetchApps', () => {
     it('fetches apps from API and updates state', async () => {
       const mockApps = [
-        { packageName: 'com.test.app', name: 'Test App', iconUrl: '/api/apps/com.test.app/icon', latestVersion: { versionCode: 1, versionName: '1.0', size: 1000 } },
-        { packageName: 'com.test.app2', name: 'Test App 2', iconUrl: '/api/apps/com.test.app2/icon' },
+        { package_name: 'com.test.app', name: 'Test App', icon_url: '/api/apps/com.test.app/icon', latest_version: { version_code: 1, version_name: '1.0', size: 1000 } },
+        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '/api/apps/com.test.app2/icon' },
       ]
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })
 
@@ -61,9 +61,9 @@ describe('Apps Store', () => {
   describe('fetchApp', () => {
     it('fetches single app and updates currentApp', async () => {
       const mockApp = {
-        packageName: 'com.test.app',
+        package_name: 'com.test.app',
         name: 'Test App',
-        iconUrl: '/api/apps/com.test.app/icon',
+        icon_url: '/api/apps/com.test.app/icon',
         versions: [],
       }
       vi.mocked(api.getApp).mockResolvedValue(mockApp)
@@ -80,17 +80,17 @@ describe('Apps Store', () => {
   describe('uploadApp', () => {
     it('uploads app and refreshes list', async () => {
       const mockResponse = {
-        packageName: 'com.new.app',
+        package_name: 'com.new.app',
         name: 'New App',
-        iconUrl: '',
+        icon_url: '',
         version: {
-          versionCode: 1,
-          versionName: '1.0.0',
+          version_code: 1,
+          version_name: '1.0.0',
           size: 1000,
           sha256: '0'.repeat(64),
-          minSdk: 21,
-          uploadedAt: '2024-01-01T00:00:00Z',
-          apkUrl: '/api/apps/com.new.app/versions/1/apk',
+          min_sdk: 21,
+          uploaded_at: '2024-01-01T00:00:00Z',
+          apk_url: '/api/apps/com.new.app/versions/1/apk',
         },
       }
       vi.mocked(api.uploadApp).mockResolvedValue(mockResponse)
@@ -119,8 +119,8 @@ describe('Apps Store', () => {
 
   describe('updateApp', () => {
     it('updates app and local state', async () => {
-      const initialApp = { packageName: 'com.test.app', name: 'Old Name', iconUrl: '' }
-      const updatedApp = { packageName: 'com.test.app', name: 'New Name', iconUrl: '', versions: [] }
+      const initialApp = { package_name: 'com.test.app', name: 'Old Name', icon_url: '' }
+      const updatedApp = { package_name: 'com.test.app', name: 'New Name', icon_url: '', versions: [] }
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: [initialApp] })
       vi.mocked(api.updateApp).mockResolvedValue(updatedApp)
@@ -137,8 +137,8 @@ describe('Apps Store', () => {
   describe('deleteApp', () => {
     it('deletes app and removes from local state', async () => {
       const mockApps = [
-        { packageName: 'com.test.app', name: 'Test App', iconUrl: '' },
-        { packageName: 'com.test.app2', name: 'Test App 2', iconUrl: '' },
+        { package_name: 'com.test.app', name: 'Test App', icon_url: '' },
+        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '' },
       ]
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })
@@ -152,11 +152,11 @@ describe('Apps Store', () => {
 
       expect(api.deleteApp).toHaveBeenCalledWith('com.test.app')
       expect(store.apps).toHaveLength(1)
-      expect(store.apps[0].packageName).toBe('com.test.app2')
+      expect(store.apps[0].package_name).toBe('com.test.app2')
     })
 
     it('clears currentApp if deleted', async () => {
-      const mockApp = { packageName: 'com.test.app', name: 'Test App', iconUrl: '', versions: [] }
+      const mockApp = { package_name: 'com.test.app', name: 'Test App', icon_url: '', versions: [] }
 
       vi.mocked(api.getApp).mockResolvedValue(mockApp)
       vi.mocked(api.deleteApp).mockResolvedValue(undefined)
@@ -174,17 +174,17 @@ describe('Apps Store', () => {
   describe('deleteVersion', () => {
     it('deletes version and refreshes app', async () => {
       const mockApp = {
-        packageName: 'com.test.app',
+        package_name: 'com.test.app',
         name: 'Test App',
-        iconUrl: '',
+        icon_url: '',
         versions: [{
-          versionCode: 1,
-          versionName: '1.0.0',
+          version_code: 1,
+          version_name: '1.0.0',
           size: 1000,
           sha256: '0'.repeat(64),
-          minSdk: 21,
-          uploadedAt: '2024-01-01T00:00:00Z',
-          apkUrl: '/api/apps/com.test.app/versions/1/apk',
+          min_sdk: 21,
+          uploaded_at: '2024-01-01T00:00:00Z',
+          apk_url: '/api/apps/com.test.app/versions/1/apk',
         }],
       }
 
@@ -202,9 +202,9 @@ describe('Apps Store', () => {
   describe('sortedApps getter', () => {
     it('returns apps sorted by name', async () => {
       const mockApps = [
-        { packageName: 'com.z.app', name: 'Zebra', iconUrl: '' },
-        { packageName: 'com.a.app', name: 'Alpha', iconUrl: '' },
-        { packageName: 'com.m.app', name: 'Middle', iconUrl: '' },
+        { package_name: 'com.z.app', name: 'Zebra', icon_url: '' },
+        { package_name: 'com.a.app', name: 'Alpha', icon_url: '' },
+        { package_name: 'com.m.app', name: 'Middle', icon_url: '' },
       ]
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })

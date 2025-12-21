@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct App {
     pub package_name: String,
     pub name: String,
@@ -13,7 +13,7 @@ pub struct App {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct AppVersion {
     #[serde(skip_serializing)]
     pub id: i64,

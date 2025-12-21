@@ -15,12 +15,12 @@ use super::file_response::serve_file;
 use super::AppState;
 
 // ============================================================================
-// API Response Types (matching SPEC.md camelCase format)
+// API Response Types (snake_case format)
 // ============================================================================
 
 /// Version info in list response (subset of full version)
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct LatestVersionInfo {
     pub version_code: i64,
     pub version_name: String,
@@ -29,7 +29,7 @@ pub struct LatestVersionInfo {
 
 /// App info for list endpoint
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct AppListItem {
     pub package_name: String,
     pub name: String,
@@ -40,7 +40,7 @@ pub struct AppListItem {
 
 /// Version info with URLs for detail endpoint
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct AppVersionInfo {
     pub version_code: i64,
     pub version_name: String,
@@ -53,7 +53,7 @@ pub struct AppVersionInfo {
 
 /// App detail response
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct AppDetailResponse {
     pub package_name: String,
     pub name: String,
@@ -208,7 +208,7 @@ pub async fn download_apk(
 
 /// Response for successful upload
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct UploadResponse {
     pub package_name: String,
     pub name: String,

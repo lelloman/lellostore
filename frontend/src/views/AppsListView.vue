@@ -41,27 +41,27 @@
       :headers="headers"
       :items="filteredApps"
       :search="search"
-      item-key="packageName"
+      item-key="package_name"
       hover
       @click:row="onRowClick"
       class="cursor-pointer"
     >
       <template #item.icon="{ item }">
         <v-avatar size="40" rounded>
-          <v-img :src="getIconUrl(item.packageName)" />
+          <v-img :src="getIconUrl(item.package_name)" />
         </v-avatar>
       </template>
 
-      <template #item.latestVersion="{ item }">
-        <span v-if="item.latestVersion">
-          {{ item.latestVersion.versionName }}
-          <span class="text-medium-emphasis">({{ item.latestVersion.versionCode }})</span>
+      <template #item.latest_version="{ item }">
+        <span v-if="item.latest_version">
+          {{ item.latest_version.version_name }}
+          <span class="text-medium-emphasis">({{ item.latest_version.version_code }})</span>
         </span>
         <span v-else class="text-medium-emphasis">-</span>
       </template>
 
       <template #item.size="{ item }">
-        {{ item.latestVersion ? formatSize(item.latestVersion.size) : '-' }}
+        {{ item.latest_version ? formatSize(item.latest_version.size) : '-' }}
       </template>
     </v-data-table>
 
@@ -87,8 +87,8 @@ const showUploadDialog = ref(false)
 const headers = [
   { title: '', key: 'icon', sortable: false, width: '60px' },
   { title: 'Name', key: 'name' },
-  { title: 'Package', key: 'packageName' },
-  { title: 'Version', key: 'latestVersion', sortable: false },
+  { title: 'Package', key: 'package_name' },
+  { title: 'Version', key: 'latest_version', sortable: false },
   { title: 'Size', key: 'size', sortable: false },
 ]
 
@@ -106,7 +106,7 @@ function formatSize(bytes: number): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function onRowClick(_event: Event, row: any) {
-  router.push({ name: 'app-detail', params: { packageName: row.item.packageName } })
+  router.push({ name: 'app-detail', params: { packageName: row.item.package_name } })
 }
 
 function onUploaded() {

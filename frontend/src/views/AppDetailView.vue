@@ -22,11 +22,11 @@
           <v-icon>mdi-arrow-left</v-icon>
         </v-btn>
         <v-avatar size="64" rounded class="mr-4">
-          <v-img :src="api.getIconUrl(app.packageName)" />
+          <v-img :src="api.getIconUrl(app.package_name)" />
         </v-avatar>
         <div class="flex-grow-1">
           <h1 class="text-h4">{{ app.name }}</h1>
-          <p class="text-body-2 text-medium-emphasis">{{ app.packageName }}</p>
+          <p class="text-body-2 text-medium-emphasis">{{ app.package_name }}</p>
         </div>
         <v-btn variant="outlined" class="mr-2" @click="showEditDialog = true">
           <v-icon start>mdi-pencil</v-icon>
@@ -57,14 +57,14 @@
         <v-data-table
           :headers="versionHeaders"
           :items="app.versions || []"
-          item-key="versionCode"
+          item-key="version_code"
         >
           <template #item.size="{ item }">
             {{ formatSize(item.size) }}
           </template>
 
-          <template #item.uploadedAt="{ item }">
-            {{ formatDate(item.uploadedAt) }}
+          <template #item.uploaded_at="{ item }">
+            {{ formatDate(item.uploaded_at) }}
           </template>
 
           <template #item.actions="{ item }">
@@ -72,7 +72,7 @@
               icon
               size="small"
               variant="text"
-              :href="item.apkUrl"
+              :href="item.apk_url"
               download
               title="Download APK"
             >
@@ -148,11 +148,11 @@ const packageName = computed(() => route.params.packageName as string)
 const app = computed(() => appsStore.currentApp)
 
 const versionHeaders = [
-  { title: 'Version', key: 'versionName' },
-  { title: 'Code', key: 'versionCode' },
+  { title: 'Version', key: 'version_name' },
+  { title: 'Code', key: 'version_code' },
   { title: 'Size', key: 'size' },
-  { title: 'Min SDK', key: 'minSdk' },
-  { title: 'Uploaded', key: 'uploadedAt' },
+  { title: 'Min SDK', key: 'min_sdk' },
+  { title: 'Uploaded', key: 'uploaded_at' },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
 ]
 
@@ -162,7 +162,7 @@ const deleteVersionMessage = computed(() => {
   if (isLastVersion) {
     return `This is the last version. Deleting it will also delete the entire app '${app.value.name}'.`
   }
-  return `Are you sure you want to delete version ${versionToDelete.value.versionName}?`
+  return `Are you sure you want to delete version ${versionToDelete.value.version_name}?`
 })
 
 function formatSize(bytes: number): string {
@@ -194,7 +194,7 @@ async function deleteApp() {
 async function deleteVersion() {
   if (!versionToDelete.value) return
   try {
-    await appsStore.deleteVersion(packageName.value, versionToDelete.value.versionCode)
+    await appsStore.deleteVersion(packageName.value, versionToDelete.value.version_code)
     toast.success('Version deleted successfully')
     // Check if app was also deleted (last version)
     if (!appsStore.currentApp) {

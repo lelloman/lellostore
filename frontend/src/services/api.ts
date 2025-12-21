@@ -136,39 +136,39 @@ async function request<T>(
   return response.json()
 }
 
-// API Types (matching backend responses)
+// API Types (matching backend responses - snake_case)
 export interface AppVersion {
-  versionCode: number
-  versionName: string
+  version_code: number
+  version_name: string
   size: number
   sha256: string
-  minSdk: number
-  uploadedAt: string
-  apkUrl: string
+  min_sdk: number
+  uploaded_at: string
+  apk_url: string
 }
 
 // Version info in list endpoint (subset of full version)
 export interface LatestVersionInfo {
-  versionCode: number
-  versionName: string
+  version_code: number
+  version_name: string
   size: number
 }
 
 // App in list response
 export interface AppListItem {
-  packageName: string
+  package_name: string
   name: string
   description?: string
-  iconUrl: string
-  latestVersion?: LatestVersionInfo
+  icon_url: string
+  latest_version?: LatestVersionInfo
 }
 
 // App in detail response
 export interface App {
-  packageName: string
+  package_name: string
   name: string
   description?: string
-  iconUrl: string
+  icon_url: string
   versions: AppVersion[]
 }
 
@@ -177,10 +177,10 @@ export interface AppsResponse {
 }
 
 export interface UploadResponse {
-  packageName: string
+  package_name: string
   name: string
   description?: string
-  iconUrl: string
+  icon_url: string
   version: AppVersion
 }
 

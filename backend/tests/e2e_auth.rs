@@ -335,14 +335,14 @@ async fn test_multi_app_database_operations() {
     assert_eq!(apps.len(), 3, "Should have 3 apps");
 
     // Verify app1 has latest version info
-    let app1 = apps.iter().find(|a| a["packageName"] == "com.example.app1").unwrap();
+    let app1 = apps.iter().find(|a| a["package_name"] == "com.example.app1").unwrap();
     assert_eq!(app1["name"], "App One");
-    assert!(app1["latestVersion"].is_object());
-    assert_eq!(app1["latestVersion"]["versionCode"], 3);
+    assert!(app1["latest_version"].is_object());
+    assert_eq!(app1["latest_version"]["version_code"], 3);
 
     // Verify app3 has no versions
-    let app3 = apps.iter().find(|a| a["packageName"] == "com.example.app3").unwrap();
-    assert!(app3["latestVersion"].is_null(), "App3 should have no versions");
+    let app3 = apps.iter().find(|a| a["package_name"] == "com.example.app3").unwrap();
+    assert!(app3["latest_version"].is_null(), "App3 should have no versions");
 
     // =========================================================================
     // PHASE 2: Get app details with versions
@@ -354,15 +354,15 @@ async fn test_multi_app_database_operations() {
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
-    assert_eq!(body["packageName"], "com.example.app1");
+    assert_eq!(body["package_name"], "com.example.app1");
     assert_eq!(body["name"], "App One");
     let versions = body["versions"].as_array().unwrap();
     assert_eq!(versions.len(), 3, "App1 should have 3 versions");
 
     // Versions should be sorted by version_code descending
-    assert_eq!(versions[0]["versionCode"], 3);
-    assert_eq!(versions[1]["versionCode"], 2);
-    assert_eq!(versions[2]["versionCode"], 1);
+    assert_eq!(versions[0]["version_code"], 3);
+    assert_eq!(versions[1]["version_code"], 2);
+    assert_eq!(versions[2]["version_code"], 1);
 
     // =========================================================================
     // PHASE 3: Admin updates app metadata
@@ -514,7 +514,7 @@ async fn test_multi_app_database_operations() {
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
     assert_eq!(apps.len(), 1, "Should have only app3 remaining");
-    assert_eq!(apps[0]["packageName"], "com.example.app3");
+    assert_eq!(apps[0]["package_name"], "com.example.app3");
 }
 
 /// Test token expiration and refresh scenarios

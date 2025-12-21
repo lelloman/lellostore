@@ -65,7 +65,7 @@ export const useAppsStore = defineStore('apps', () => {
     try {
       const updated = await api.updateApp(packageName, data)
       // Update in local state - list items only have basic fields
-      const index = apps.value.findIndex(a => a.packageName === packageName)
+      const index = apps.value.findIndex(a => a.package_name === packageName)
       if (index >= 0) {
         apps.value[index] = {
           ...apps.value[index],
@@ -73,7 +73,7 @@ export const useAppsStore = defineStore('apps', () => {
           description: updated.description,
         }
       }
-      if (currentApp.value?.packageName === packageName) {
+      if (currentApp.value?.package_name === packageName) {
         currentApp.value = updated
       }
       return updated
@@ -88,8 +88,8 @@ export const useAppsStore = defineStore('apps', () => {
     try {
       await api.deleteApp(packageName)
       // Remove from local state
-      apps.value = apps.value.filter(a => a.packageName !== packageName)
-      if (currentApp.value?.packageName === packageName) {
+      apps.value = apps.value.filter(a => a.package_name !== packageName)
+      if (currentApp.value?.package_name === packageName) {
         currentApp.value = null
       }
     } catch (e) {
@@ -108,7 +108,7 @@ export const useAppsStore = defineStore('apps', () => {
         await fetchApp(packageName)
       } catch {
         // App was deleted (last version), remove from local state
-        apps.value = apps.value.filter(a => a.packageName !== packageName)
+        apps.value = apps.value.filter(a => a.package_name !== packageName)
         currentApp.value = null
       }
     } catch (e) {

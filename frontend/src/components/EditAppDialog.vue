@@ -84,7 +84,7 @@ async function save() {
   error.value = null
 
   try {
-    await appsStore.updateApp(props.app.packageName, {
+    await appsStore.updateApp(props.app.package_name, {
       name: name.value,
       description: description.value || undefined,
     })
