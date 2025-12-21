@@ -244,4 +244,17 @@ export const api = {
       { method: 'DELETE' }
     )
   },
+
+  async uploadIcon(
+    packageName: string,
+    file: File
+  ): Promise<{ message: string; icon_url: string }> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/icon`, {
+      method: 'POST',
+      body: formData,
+    })
+  },
 }

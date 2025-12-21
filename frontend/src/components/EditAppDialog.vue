@@ -5,6 +5,39 @@
 
       <v-card-text>
         <v-form ref="form" v-model="isValid">
+          <!-- Icon upload section -->
+          <div class="d-flex align-center mb-4">
+            <v-avatar size="72" class="mr-4" color="grey-lighten-2">
+              <v-img
+                v-if="iconPreview || props.app?.icon_url"
+                :src="iconPreview || api.getIconUrl(props.app!.package_name)"
+                :key="iconKey"
+              />
+              <v-icon v-else icon="mdi-android" size="36" />
+            </v-avatar>
+            <div>
+              <v-btn
+                variant="outlined"
+                size="small"
+                :loading="isUploadingIcon"
+                @click="triggerIconUpload"
+              >
+                <v-icon start icon="mdi-upload" />
+                Change Icon
+              </v-btn>
+              <input
+                ref="iconInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                style="display: none"
+                @change="handleIconSelect"
+              />
+              <div class="text-caption text-medium-emphasis mt-1">
+                Square image (PNG, JPG, WebP)
+              </div>
+            </div>
+          </div>
+
           <v-text-field
             v-model="name"
             label="App Name"
@@ -47,7 +80,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useAppsStore } from '@/stores/apps'
+import { api } from '@/services/api'
 import type { App } from '@/services/api'
+import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   app: App | null
@@ -59,13 +94,18 @@ const emit = defineEmits<{
 }>()
 
 const appsStore = useAppsStore()
+const toast = useToast()
 
 const form = ref()
+const iconInput = ref<HTMLInputElement>()
 const name = ref('')
 const description = ref('')
 const isValid = ref(false)
 const isSaving = ref(false)
+const isUploadingIcon = ref(false)
 const error = ref<string | null>(null)
+const iconPreview = ref<string | null>(null)
+const iconKey = ref(0) // Used to force icon refresh
 
 const rules = {
   required: (v: string) => !!v?.trim() || 'Name is required',
@@ -76,6 +116,51 @@ const hasChanges = computed(() => {
   return name.value !== props.app.name ||
          description.value !== (props.app.description || '')
 })
+
+function triggerIconUpload() {
+  iconInput.value?.click()
+}
+
+async function handleIconSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !props.app) return
+
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    error.value = 'Please select an image file'
+    return
+  }
+
+  // Validate file size (5MB max)
+  if (file.size > 5 * 1024 * 1024) {
+    error.value = 'Image must be less than 5MB'
+    return
+  }
+
+  // Show preview
+  iconPreview.value = URL.createObjectURL(file)
+
+  // Upload immediately
+  isUploadingIcon.value = true
+  error.value = null
+
+  try {
+    await api.uploadIcon(props.app.package_name, file)
+    toast.success('Icon updated successfully')
+    // Force refresh the icon by changing the key
+    iconKey.value++
+    iconPreview.value = null
+    emit('saved')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to upload icon'
+    iconPreview.value = null
+  } finally {
+    isUploadingIcon.value = false
+    // Reset input so same file can be selected again
+    input.value = ''
+  }
+}
 
 async function save() {
   if (!props.app || !isValid.value) return
@@ -107,6 +192,7 @@ function reset() {
     description.value = props.app.description || ''
   }
   error.value = null
+  iconPreview.value = null
 }
 
 // Reset when dialog opens or app changes
