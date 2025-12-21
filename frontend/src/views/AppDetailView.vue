@@ -1,7 +1,7 @@
 <template>
   <DefaultLayout>
     <!-- Loading -->
-    <v-skeleton-loader v-if="appsStore.isLoading" type="article, table" />
+    <v-skeleton-loader v-if="appsStore.isLoading || !hasFetched" type="article, table" />
 
     <!-- Not found -->
     <v-alert v-else-if="!app" type="error" variant="tonal">
@@ -148,6 +148,7 @@ const showUploadDialog = ref(false)
 const showDeleteAppDialog = ref(false)
 const showDeleteVersionDialog = ref(false)
 const versionToDelete = ref<AppVersion | null>(null)
+const hasFetched = ref(false)
 
 const packageName = computed(() => route.params.packageName as string)
 const app = computed(() => appsStore.currentApp)
@@ -221,7 +222,14 @@ function onVersionUploaded() {
   appsStore.fetchApp(packageName.value)
 }
 
-watch(packageName, (name) => {
-  if (name) appsStore.fetchApp(name)
+watch(packageName, async (name) => {
+  if (name) {
+    hasFetched.value = false
+    try {
+      await appsStore.fetchApp(name)
+    } finally {
+      hasFetched.value = true
+    }
+  }
 }, { immediate: true })
 </script>
