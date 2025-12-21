@@ -403,6 +403,98 @@ pub async fn delete_app(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Upload or replace app icon
+pub async fn upload_icon(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Path(package_name): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, AppError> {
+    // Verify app exists
+    db::get_app(&state.db, &package_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
+
+    // Extract file from multipart
+    let mut file_data: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Failed to read multipart field: {}", e)))?
+    {
+        let field_name = field.name().map(|s| s.to_string());
+
+        if field_name.as_deref() == Some("file") || field_name.as_deref() == Some("icon") {
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::BadRequest(format!("Failed to read file: {}", e)))?;
+
+            // Limit icon size to 5MB
+            if bytes.len() > 5 * 1024 * 1024 {
+                return Err(AppError::BadRequest(
+                    "Icon file too large (max 5MB)".to_string(),
+                ));
+            }
+
+            file_data = Some(bytes.to_vec());
+        }
+    }
+
+    let data = file_data.ok_or_else(|| {
+        AppError::BadRequest("No file provided. Expected 'file' or 'icon' field.".to_string())
+    })?;
+
+    // Process the icon (validate, resize, convert to PNG)
+    let processed = process_uploaded_icon(&data)?;
+
+    // Save the icon
+    let icon_path = state
+        .storage
+        .save_icon(&package_name, &processed)
+        .map_err(|e| AppError::Internal(format!("Failed to save icon: {}", e)))?;
+
+    // Update database
+    db::update_app(&state.db, &package_name, None, None, Some(&icon_path)).await?;
+
+    Ok(Json(json!({
+        "message": "Icon uploaded successfully",
+        "icon_url": make_icon_url(&package_name)
+    })))
+}
+
+/// Process uploaded icon: validate square dimensions, resize to 192x192, convert to PNG
+fn process_uploaded_icon(data: &[u8]) -> Result<Vec<u8>, AppError> {
+    use image::imageops::FilterType;
+    use image::ImageFormat;
+    use std::io::Cursor;
+
+    // Load the image
+    let img = image::load_from_memory(data)
+        .map_err(|e| AppError::BadRequest(format!("Invalid image file: {}", e)))?;
+
+    // Check if square
+    let (width, height) = (img.width(), img.height());
+    if width != height {
+        return Err(AppError::BadRequest(format!(
+            "Icon must be square. Got {}x{} pixels.",
+            width, height
+        )));
+    }
+
+    // Resize to 192x192 (standard launcher icon size)
+    let resized = img.resize_exact(192, 192, FilterType::Lanczos3);
+
+    // Convert to PNG
+    let mut output = Vec::new();
+    resized
+        .write_to(&mut Cursor::new(&mut output), ImageFormat::Png)
+        .map_err(|e| AppError::Internal(format!("Failed to encode PNG: {}", e)))?;
+
+    Ok(output)
+}
+
 /// Delete a specific version of an app
 pub async fn delete_version(
     _admin: AdminUser,
