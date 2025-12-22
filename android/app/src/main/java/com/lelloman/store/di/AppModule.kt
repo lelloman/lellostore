@@ -1,5 +1,6 @@
 package com.lelloman.store.di
 
+import com.lelloman.store.BuildConfig
 import com.lelloman.store.domain.auth.OidcConfig
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.updates.UpdateChecker
@@ -38,8 +39,6 @@ annotation class ApplicationScope
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    private const val DEFAULT_SERVER_URL = "https://store.lelloman.com"
-
     // OIDC Configuration
     private const val OIDC_ISSUER_URL = "https://auth.lelloman.com"
     private const val OIDC_CLIENT_ID = "22cd4a2d-a771-41e3-b76e-3f83ff8e9bbf"
@@ -47,7 +46,7 @@ object AppModule {
 
     @Provides
     @DefaultServerUrl
-    fun provideDefaultServerUrl(): String = DEFAULT_SERVER_URL
+    fun provideDefaultServerUrl(): String = BuildConfig.DEFAULT_SERVER_URL
 
     @Provides
     @Singleton

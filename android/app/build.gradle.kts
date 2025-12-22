@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,15 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
+    }
+}
+
+val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
 
 android {
     namespace = "com.lelloman.store"
@@ -21,6 +32,8 @@ android {
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
         manifestPlaceholders["appAuthRedirectScheme"] = "com.lelloman.store"
+
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServerUrl\"")
     }
 
     buildTypes {
@@ -41,6 +54,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

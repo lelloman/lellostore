@@ -755,15 +755,43 @@ Centralized dependency versions following pezzottify pattern.
 
 ### Build Config Fields
 
+The default server URL is configured via `local.properties` (which is not checked into version control):
+
+```properties
+# android/local.properties
+default.server.url=https://store.lelloman.com
+```
+
+The `app/build.gradle.kts` reads this property and exposes it via BuildConfig:
+
 ```kotlin
 // app/build.gradle.kts
-android {
-    defaultConfig {
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://lellostore.example.com\"")
-        buildConfigField("String", "OIDC_ISSUER", "\"https://auth.example.com\"")
-        buildConfigField("String", "OIDC_CLIENT_ID", "\"lellostore-android\"")
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
     }
 }
+
+val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
+
+android {
+    defaultConfig {
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServerUrl\"")
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+}
+```
+
+OIDC configuration is hardcoded in `AppModule.kt`:
+
+```kotlin
+// app/src/.../AppModule.kt
+private const val OIDC_ISSUER_URL = "https://auth.lelloman.com"
+private const val OIDC_CLIENT_ID = "22cd4a2d-a771-41e3-b76e-3f83ff8e9bbf"
+private const val OIDC_REDIRECT_URI = "com.lelloman.store:/oauth2redirect"
 ```
 
 ---
