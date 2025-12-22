@@ -71,6 +71,30 @@ class InstalledAppsRepositoryImpl(
         }
     }
 
+    override suspend fun refreshInstalledApp(packageName: String) {
+        val packageManager = context.packageManager
+        try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            @Suppress("DEPRECATION")
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode.toInt()
+            } else {
+                packageInfo.versionCode
+            }
+            installedAppsDao.insert(
+                InstalledAppEntity(
+                    packageName = packageName,
+                    versionCode = versionCode,
+                    versionName = packageInfo.versionName ?: "",
+                    lastChecked = System.currentTimeMillis(),
+                )
+            )
+        } catch (e: PackageManager.NameNotFoundException) {
+            // App is not installed, remove from database if present
+            installedAppsDao.delete(packageName)
+        }
+    }
+
     override fun isInstalled(packageName: String): Flow<Boolean> {
         return installedAppsDao.watch(packageName).map { it != null }
     }

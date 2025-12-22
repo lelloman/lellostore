@@ -57,6 +57,8 @@ class AppDetailViewModelTest {
 
         assertThat(fakeInteractor.refreshAppCalled).isTrue()
         assertThat(fakeInteractor.refreshAppPackageName).isEqualTo("com.test.app")
+        assertThat(fakeInteractor.refreshInstalledAppCalled).isTrue()
+        assertThat(fakeInteractor.refreshInstalledAppPackageName).isEqualTo("com.test.app")
     }
 
     @Test
@@ -224,6 +226,20 @@ class AppDetailViewModelTest {
         advanceUntilIdle()
 
         assertThat(fakeInteractor.refreshAppCalled).isTrue()
+    }
+
+    @Test
+    fun `onResume refreshes installed app state`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+        fakeInteractor.refreshInstalledAppCalled = false
+
+        viewModel.onResume()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.refreshInstalledAppCalled).isTrue()
+        assertThat(fakeInteractor.refreshInstalledAppPackageName).isEqualTo("com.test.app")
     }
 
     @Test
@@ -507,6 +523,8 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     )
     var refreshAppCalled = false
     var refreshAppPackageName: String? = null
+    var refreshInstalledAppCalled = false
+    var refreshInstalledAppPackageName: String? = null
     var downloadAndInstallCalled = false
     var downloadAndInstallPackageName: String? = null
     var downloadAndInstallVersionCode: Int? = null
@@ -524,6 +542,11 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
         refreshAppCalled = true
         refreshAppPackageName = packageName
         return refreshAppResult
+    }
+
+    override suspend fun refreshInstalledApp(packageName: String) {
+        refreshInstalledAppCalled = true
+        refreshInstalledAppPackageName = packageName
     }
 
     override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {

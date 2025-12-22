@@ -41,6 +41,10 @@ class AppDetailInteractorImpl @Inject constructor(
         return appsRepository.refreshApp(packageName).map { it.toUiModel() }
     }
 
+    override suspend fun refreshInstalledApp(packageName: String) {
+        installedAppsRepository.refreshInstalledApp(packageName)
+    }
+
     override fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?> {
         return downloadManager.activeDownloads.map { downloads ->
             downloads[packageName]

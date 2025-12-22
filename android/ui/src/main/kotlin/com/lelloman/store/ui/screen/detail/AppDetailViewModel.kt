@@ -43,6 +43,7 @@ class AppDetailViewModel @Inject constructor(
         observeApp()
         observeDownloadProgress()
         refreshApp()
+        refreshInstalledApp()
     }
 
     private fun observeApp() {
@@ -175,6 +176,16 @@ class AppDetailViewModel @Inject constructor(
         refreshApp()
     }
 
+    fun onResume() {
+        refreshInstalledApp()
+    }
+
+    private fun refreshInstalledApp() {
+        viewModelScope.launch {
+            interactor.refreshInstalledApp(packageName)
+        }
+    }
+
     fun onGrantPermissionClick() {
         interactor.openInstallPermissionSettings()
     }
@@ -184,6 +195,7 @@ class AppDetailViewModel @Inject constructor(
         fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?>
         fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?>
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
+        suspend fun refreshInstalledApp(packageName: String)
         suspend fun downloadAndInstall(packageName: String, versionCode: Int)
         fun cancelDownload(packageName: String)
         fun canInstallPackages(): Boolean
