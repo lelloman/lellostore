@@ -31,10 +31,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.lelloman.store.ui.R
 
 @Composable
 fun UpdatesScreen(
@@ -89,12 +91,12 @@ private fun EmptyContent(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "All apps are up to date",
+            text = stringResource(R.string.all_apps_up_to_date),
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Check back later for updates",
+            text = stringResource(R.string.check_back_later),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -105,7 +107,7 @@ private fun EmptyContent(
             IconButton(onClick = onRefresh) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Check for updates",
+                    contentDescription = stringResource(R.string.content_description_check_updates),
                 )
             }
         }
@@ -129,7 +131,7 @@ private fun ErrorContent(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetry) {
-            Text("Retry")
+            Text(stringResource(R.string.retry))
         }
     }
 }
@@ -151,7 +153,11 @@ private fun UpdatesList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "${updates.size} update${if (updates.size != 1) "s" else ""} available",
+                text = if (updates.size == 1) {
+                    stringResource(R.string.updates_available_one)
+                } else {
+                    stringResource(R.string.updates_available_many, updates.size)
+                },
                 style = MaterialTheme.typography.titleMedium,
             )
             if (isRefreshing) {
@@ -160,7 +166,7 @@ private fun UpdatesList(
                 IconButton(onClick = onRefresh) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Check for updates",
+                        contentDescription = stringResource(R.string.content_description_check_updates),
                     )
                 }
             }
@@ -233,7 +239,7 @@ private fun UpdateItem(
             Spacer(modifier = Modifier.width(8.dp))
 
             Button(onClick = onUpdateClick) {
-                Text("Update")
+                Text(stringResource(R.string.update))
             }
         }
     }

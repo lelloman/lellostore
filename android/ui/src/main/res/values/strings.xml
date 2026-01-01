@@ -1,6 +1,4 @@
 <resources>
-    <string name="app_name">LelloStore</string>
-
     <!-- Common -->
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
@@ -111,10 +109,6 @@
     <!-- Content Descriptions -->
     <string name="content_description_selected">Selected</string>
 
-    <!-- Notifications -->
-    <string name="notification_channel_updates">App Updates</string>
-    <string name="notification_channel_description">Notifications about available app updates</string>
-    <string name="notification_updates_title_one">1 update available</string>
-    <string name="notification_updates_title_many">%1$d updates available</string>
-    <string name="notification_updates_content">Tap to view and install updates</string>
+    <!-- Splash Screen -->
+    <string name="splash_title">LelloStore</string>
 </resources>

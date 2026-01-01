@@ -29,7 +29,7 @@ enum class CatalogFilter {
     Updates,
 }
 
-enum class SortOption(val displayName: String) {
-    NameAsc("Name (A-Z)"),
-    NameDesc("Name (Z-A)"),
+enum class SortOption {
+    NameAsc,
+    NameDesc,
 }

@@ -46,10 +46,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.lelloman.store.ui.R
+
+@Composable
+fun SortOption.getDisplayName(): String = when (this) {
+    SortOption.NameAsc -> stringResource(R.string.sort_name_asc)
+    SortOption.NameDesc -> stringResource(R.string.sort_name_desc)
+}
 
 @Composable
 fun CatalogScreen(
@@ -106,11 +114,11 @@ private fun CatalogScreenContent(
                 OutlinedTextField(
                     value = state.searchQuery,
                     onValueChange = onSearchQueryChanged,
-                    placeholder = { Text("Search apps") },
+                    placeholder = { Text(stringResource(R.string.search_apps)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
+                            contentDescription = stringResource(R.string.content_description_search),
                         )
                     },
                     trailingIcon = {
@@ -118,7 +126,7 @@ private fun CatalogScreenContent(
                             IconButton(onClick = onClearSearch) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
+                                    contentDescription = stringResource(R.string.content_description_clear_search),
                                 )
                             }
                         }
@@ -148,7 +156,7 @@ private fun CatalogScreenContent(
                                 focusManager.clearFocus()
                                 onFilterChanged(CatalogFilter.All)
                             },
-                            label = { Text("All (${state.allCount})") },
+                            label = { Text(stringResource(R.string.filter_all, state.allCount)) },
                         )
                         FilterChip(
                             selected = state.filter == CatalogFilter.Installed,
@@ -156,7 +164,7 @@ private fun CatalogScreenContent(
                                 focusManager.clearFocus()
                                 onFilterChanged(CatalogFilter.Installed)
                             },
-                            label = { Text("Installed (${state.installedCount})") },
+                            label = { Text(stringResource(R.string.filter_installed, state.installedCount)) },
                         )
                         FilterChip(
                             selected = state.filter == CatalogFilter.Updates,
@@ -164,7 +172,7 @@ private fun CatalogScreenContent(
                                 focusManager.clearFocus()
                                 onFilterChanged(CatalogFilter.Updates)
                             },
-                            label = { Text("Updates (${state.updatesCount})") },
+                            label = { Text(stringResource(R.string.filter_updates, state.updatesCount)) },
                         )
                     }
 
@@ -184,10 +192,10 @@ private fun CatalogScreenContent(
                     ) {
                         Text(
                             text = when {
-                                state.searchQuery.isNotBlank() -> "No apps found for \"${state.searchQuery}\""
-                                state.filter == CatalogFilter.Installed -> "No installed apps"
-                                state.filter == CatalogFilter.Updates -> "No updates available"
-                                else -> "No apps available"
+                                state.searchQuery.isNotBlank() -> stringResource(R.string.no_apps_found_for_query, state.searchQuery)
+                                state.filter == CatalogFilter.Installed -> stringResource(R.string.no_installed_apps)
+                                state.filter == CatalogFilter.Updates -> stringResource(R.string.no_updates_available)
+                                else -> stringResource(R.string.no_apps_available)
                             },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -228,7 +236,7 @@ private fun CatalogScreenContent(
                     .padding(16.dp),
                 action = {
                     TextButton(onClick = onErrorDismissed) {
-                        Text("Dismiss")
+                        Text(stringResource(R.string.dismiss))
                     }
                 },
             ) {
@@ -249,7 +257,7 @@ private fun SortDropdown(
     Box(modifier = modifier) {
         TextButton(onClick = { expanded = true }) {
             Text(
-                text = selectedOption.displayName,
+                text = selectedOption.getDisplayName(),
                 style = MaterialTheme.typography.labelMedium,
             )
         }
@@ -260,7 +268,7 @@ private fun SortDropdown(
         ) {
             SortOption.entries.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option.displayName) },
+                    text = { Text(option.getDisplayName()) },
                     onClick = {
                         onOptionSelected(option)
                         expanded = false
@@ -314,14 +322,14 @@ private fun AppListItem(
 
                     if (app.hasUpdate) {
                         Text(
-                            text = "Update",
+                            text = stringResource(R.string.status_update),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 8.dp),
                         )
                     } else if (app.isInstalled) {
                         Text(
-                            text = "Installed",
+                            text = stringResource(R.string.status_installed),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 8.dp),

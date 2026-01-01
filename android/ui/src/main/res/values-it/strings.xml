@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Common -->
+    <string name="retry">Riprova</string>
+    <string name="cancel">Annulla</string>
+    <string name="save">Salva</string>
+    <string name="saved">Salvato</string>
+    <string name="dismiss">Chiudi</string>
+    <string name="logout">Esci</string>
+    <string name="unknown_error">Errore sconosciuto</string>
+
+    <!-- Navigation -->
+    <string name="nav_catalog">Catalogo</string>
+    <string name="nav_updates">Aggiornamenti</string>
+    <string name="nav_settings">Impostazioni</string>
+    <string name="content_description_profile">Profilo</string>
+    <string name="content_description_back">Indietro</string>
+
+    <!-- Login Screen -->
+    <string name="login_welcome">Benvenuto su LelloStore</string>
+    <string name="login_subtitle">Accedi per vedere le tue app</string>
+    <string name="login_server_url">URL del server</string>
+    <string name="login_server_url_placeholder">https://store.esempio.com</string>
+    <string name="login_sign_in_oidc">Accedi con OIDC</string>
+
+    <!-- Catalog Screen -->
+    <string name="search_apps">Cerca app</string>
+    <string name="content_description_search">Cerca</string>
+    <string name="content_description_clear_search">Cancella ricerca</string>
+    <string name="filter_all">Tutte (%1$d)</string>
+    <string name="filter_installed">Installate (%1$d)</string>
+    <string name="filter_updates">Aggiornamenti (%1$d)</string>
+    <string name="no_apps_found_for_query">Nessuna app trovata per \"%1$s\"</string>
+    <string name="no_installed_apps">Nessuna app installata</string>
+    <string name="no_updates_available">Nessun aggiornamento disponibile</string>
+    <string name="no_apps_available">Nessuna app disponibile</string>
+    <string name="status_update">Aggiorna</string>
+    <string name="status_installed">Installata</string>
+
+    <!-- Sort Options -->
+    <string name="sort_name_asc">Nome (A-Z)</string>
+    <string name="sort_name_desc">Nome (Z-A)</string>
+
+    <!-- App Detail Screen -->
+    <string name="app_details">Dettagli App</string>
+    <string name="install">Installa</string>
+    <string name="update">Aggiorna</string>
+    <string name="open">Apri</string>
+    <string name="installed_version">Versione installata</string>
+    <string name="about">Informazioni</string>
+    <string name="latest_version">Ultima versione</string>
+    <string name="version_history">Cronologia versioni</string>
+    <string name="version_label">Versione</string>
+    <string name="size_label">Dimensione</string>
+    <string name="released_label">Rilasciata</string>
+    <string name="content_description_app_icon">Icona di %1$s</string>
+
+    <!-- Download States -->
+    <string name="download_preparing">Preparazione…</string>
+    <string name="download_downloading">Download… %1$d%%</string>
+    <string name="download_verifying">Verifica…</string>
+    <string name="download_installing">Installazione…</string>
+    <string name="download_completed">Completato</string>
+    <string name="download_failed">Fallito</string>
+    <string name="download_cancelled">Annullato</string>
+    <string name="download_permission_required">Permesso richiesto</string>
+    <string name="content_description_cancel_download">Annulla download</string>
+
+    <!-- Permission Required Section -->
+    <string name="permission_required_title">Permesso richiesto</string>
+    <string name="permission_required_message">Questa app richiede il permesso di installare app da origini sconosciute.</string>
+    <string name="grant_permission">Concedi permesso</string>
+    <string name="retry_install">Riprova installazione</string>
+
+    <!-- Updates Screen -->
+    <string name="all_apps_up_to_date">Tutte le app sono aggiornate</string>
+    <string name="check_back_later">Controlla più tardi per nuovi aggiornamenti</string>
+    <string name="content_description_check_updates">Controlla aggiornamenti</string>
+    <string name="updates_available_one">1 aggiornamento disponibile</string>
+    <string name="updates_available_many">%1$d aggiornamenti disponibili</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_appearance">Aspetto</string>
+    <string name="settings_theme">Tema</string>
+    <string name="settings_updates">Aggiornamenti</string>
+    <string name="settings_check_for_updates">Controlla aggiornamenti</string>
+    <string name="settings_wifi_only">Solo WiFi</string>
+    <string name="settings_wifi_only_subtitle">Scarica gli aggiornamenti solo tramite WiFi</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_logged_in_as">Connesso come</string>
+    <string name="settings_about">Informazioni</string>
+    <string name="settings_app_version">Versione app</string>
+    <string name="settings_invalid_url">URL non valido</string>
+
+    <!-- Theme Options -->
+    <string name="theme_system">Sistema</string>
+    <string name="theme_light">Chiaro</string>
+    <string name="theme_dark">Scuro</string>
+
+    <!-- Update Check Interval Options -->
+    <string name="interval_6_hours">Ogni 6 ore</string>
+    <string name="interval_12_hours">Ogni 12 ore</string>
+    <string name="interval_24_hours">Ogni 24 ore</string>
+    <string name="interval_manual">Solo manuale</string>
+
+    <!-- Logout Dialog -->
+    <string name="logout_confirmation">Sei sicuro di voler uscire?</string>
+
+    <!-- Content Descriptions -->
+    <string name="content_description_selected">Selezionato</string>
+
+    <!-- Splash Screen -->
+    <string name="splash_title">LelloStore</string>
+</resources>

@@ -18,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import com.lelloman.store.ui.R
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
@@ -72,12 +74,12 @@ private fun LellostoreTopBar(
     onProfileClick: () -> Unit,
 ) {
     TopAppBar(
-        title = { Text("Lellostore") },
+        title = { Text(stringResource(R.string.splash_title)) },
         actions = {
             IconButton(onClick = onProfileClick) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
-                    contentDescription = "Profile",
+                    contentDescription = stringResource(R.string.content_description_profile),
                 )
             }
         },
@@ -91,9 +93,10 @@ private fun LellostoreBottomNav(navController: NavController) {
 
     NavigationBar {
         BottomNavItem.entries.forEach { item ->
+            val label = stringResource(item.labelRes)
             NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.label) },
-                label = { Text(item.label) },
+                icon = { Icon(item.icon, contentDescription = label) },
+                label = { Text(label) },
                 selected = currentDestination?.hasRoute(item.route::class) == true,
                 onClick = {
                     navController.navigate(item.route) {
@@ -112,9 +115,9 @@ private fun LellostoreBottomNav(navController: NavController) {
 private enum class BottomNavItem(
     val route: MainTab,
     val icon: ImageVector,
-    val label: String,
+    val labelRes: Int,
 ) {
-    Catalog(MainTab.Catalog, Icons.Default.Home, "Catalog"),
-    Updates(MainTab.Updates, Icons.Default.Refresh, "Updates"),
-    Settings(MainTab.Settings, Icons.Default.Settings, "Settings"),
+    Catalog(MainTab.Catalog, Icons.Default.Home, R.string.nav_catalog),
+    Updates(MainTab.Updates, Icons.Default.Refresh, R.string.nav_updates),
+    Settings(MainTab.Settings, Icons.Default.Settings, R.string.nav_settings),
 }

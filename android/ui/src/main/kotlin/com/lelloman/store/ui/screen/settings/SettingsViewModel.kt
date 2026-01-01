@@ -142,15 +142,15 @@ sealed interface SettingsScreenEvent {
     data object NavigateToLogin : SettingsScreenEvent
 }
 
-enum class ThemeModeOption(val displayName: String) {
-    System("System"),
-    Light("Light"),
-    Dark("Dark"),
+enum class ThemeModeOption {
+    System,
+    Light,
+    Dark,
 }
 
-enum class UpdateCheckIntervalOption(val displayName: String) {
-    Hours6("Every 6 hours"),
-    Hours12("Every 12 hours"),
-    Hours24("Every 24 hours"),
-    Manual("Manual only"),
+enum class UpdateCheckIntervalOption {
+    Hours6,
+    Hours12,
+    Hours24,
+    Manual,
 }

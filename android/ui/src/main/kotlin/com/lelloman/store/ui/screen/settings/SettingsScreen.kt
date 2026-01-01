@@ -32,8 +32,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lelloman.store.ui.R
+
+@Composable
+fun ThemeModeOption.getDisplayName(): String = when (this) {
+    ThemeModeOption.System -> stringResource(R.string.theme_system)
+    ThemeModeOption.Light -> stringResource(R.string.theme_light)
+    ThemeModeOption.Dark -> stringResource(R.string.theme_dark)
+}
+
+@Composable
+fun UpdateCheckIntervalOption.getDisplayName(): String = when (this) {
+    UpdateCheckIntervalOption.Hours6 -> stringResource(R.string.interval_6_hours)
+    UpdateCheckIntervalOption.Hours12 -> stringResource(R.string.interval_12_hours)
+    UpdateCheckIntervalOption.Hours24 -> stringResource(R.string.interval_24_hours)
+    UpdateCheckIntervalOption.Manual -> stringResource(R.string.interval_manual)
+}
 
 @Composable
 fun SettingsScreen(
@@ -84,28 +101,28 @@ private fun SettingsContent(
             .verticalScroll(rememberScrollState()),
     ) {
         // Appearance Section
-        SettingsSectionHeader(title = "Appearance")
+        SettingsSectionHeader(title = stringResource(R.string.settings_appearance))
 
         SettingsClickableItem(
-            title = "Theme",
-            subtitle = state.themeMode.displayName,
+            title = stringResource(R.string.settings_theme),
+            subtitle = state.themeMode.getDisplayName(),
             onClick = { showThemeDialog = true },
         )
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
         // Updates Section
-        SettingsSectionHeader(title = "Updates")
+        SettingsSectionHeader(title = stringResource(R.string.settings_updates))
 
         SettingsClickableItem(
-            title = "Check for updates",
-            subtitle = state.updateCheckInterval.displayName,
+            title = stringResource(R.string.settings_check_for_updates),
+            subtitle = state.updateCheckInterval.getDisplayName(),
             onClick = { showIntervalDialog = true },
         )
 
         SettingsSwitchItem(
-            title = "WiFi only downloads",
-            subtitle = "Only download app updates over WiFi",
+            title = stringResource(R.string.settings_wifi_only),
+            subtitle = stringResource(R.string.settings_wifi_only_subtitle),
             checked = state.wifiOnlyDownloads,
             onCheckedChange = onWifiOnlyDownloadsChanged,
         )
@@ -113,7 +130,7 @@ private fun SettingsContent(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
         // Server Section
-        SettingsSectionHeader(title = "Server")
+        SettingsSectionHeader(title = stringResource(R.string.settings_server))
 
         ServerUrlInput(
             serverUrlInput = state.serverUrlInput,
@@ -126,17 +143,17 @@ private fun SettingsContent(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
         // Account Section
-        SettingsSectionHeader(title = "Account")
+        SettingsSectionHeader(title = stringResource(R.string.settings_account))
 
         state.userEmail?.let { email ->
             SettingsInfoItem(
-                title = "Logged in as",
+                title = stringResource(R.string.settings_logged_in_as),
                 value = email,
             )
         }
 
         SettingsClickableItem(
-            title = "Logout",
+            title = stringResource(R.string.logout),
             subtitle = null,
             onClick = { showLogoutConfirmation = true },
             leadingIcon = {
@@ -152,10 +169,10 @@ private fun SettingsContent(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
         // About Section
-        SettingsSectionHeader(title = "About")
+        SettingsSectionHeader(title = stringResource(R.string.settings_about))
 
         SettingsInfoItem(
-            title = "App version",
+            title = stringResource(R.string.settings_app_version),
             value = state.appVersion,
         )
 
@@ -165,10 +182,10 @@ private fun SettingsContent(
     // Theme Selection Dialog
     if (showThemeDialog) {
         SelectionDialog(
-            title = "Theme",
+            title = stringResource(R.string.settings_theme),
             options = ThemeModeOption.entries,
             selectedOption = state.themeMode,
-            optionLabel = { it.displayName },
+            optionLabel = { it.getDisplayName() },
             onOptionSelected = {
                 onThemeModeChanged(it)
                 showThemeDialog = false
@@ -180,10 +197,10 @@ private fun SettingsContent(
     // Update Interval Selection Dialog
     if (showIntervalDialog) {
         SelectionDialog(
-            title = "Check for updates",
+            title = stringResource(R.string.settings_check_for_updates),
             options = UpdateCheckIntervalOption.entries,
             selectedOption = state.updateCheckInterval,
-            optionLabel = { it.displayName },
+            optionLabel = { it.getDisplayName() },
             onOptionSelected = {
                 onUpdateCheckIntervalChanged(it)
                 showIntervalDialog = false
@@ -196,8 +213,8 @@ private fun SettingsContent(
     if (showLogoutConfirmation) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirmation = false },
-            title = { Text("Logout") },
-            text = { Text("Are you sure you want to logout?") },
+            title = { Text(stringResource(R.string.logout)) },
+            text = { Text(stringResource(R.string.logout_confirmation)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -205,12 +222,12 @@ private fun SettingsContent(
                         onLogoutClick()
                     }
                 ) {
-                    Text("Logout", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.logout), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutConfirmation = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             },
         )
@@ -331,7 +348,7 @@ private fun <T> SelectionDialog(
     title: String,
     options: List<T>,
     selectedOption: T,
-    optionLabel: (T) -> String,
+    optionLabel: @Composable (T) -> String,
     onOptionSelected: (T) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -356,7 +373,7 @@ private fun <T> SelectionDialog(
                         if (option == selectedOption) {
                             Icon(
                                 imageVector = Icons.Default.Check,
-                                contentDescription = "Selected",
+                                contentDescription = stringResource(R.string.content_description_selected),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -367,7 +384,7 @@ private fun <T> SelectionDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         },
     )
@@ -388,7 +405,7 @@ private fun ServerUrlInput(
         OutlinedTextField(
             value = serverUrlInput,
             onValueChange = onValueChange,
-            label = { Text("Server URL") },
+            label = { Text(stringResource(R.string.login_server_url)) },
             isError = serverUrlError != null,
             supportingText = serverUrlError?.let { { Text(it) } },
             singleLine = true,
@@ -400,7 +417,7 @@ private fun ServerUrlInput(
             enabled = !isSaved,
             modifier = Modifier.align(Alignment.End),
         ) {
-            Text(if (isSaved) "Saved" else "Save")
+            Text(stringResource(if (isSaved) R.string.saved else R.string.save))
         }
     }
 }

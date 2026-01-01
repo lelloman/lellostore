@@ -22,8 +22,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lelloman.store.ui.R
 import com.lelloman.store.ui.model.AuthResult
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationResponse
@@ -94,12 +96,12 @@ private fun LoginScreenContent(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "Welcome to Lellostore",
+            text = stringResource(R.string.login_welcome),
             style = MaterialTheme.typography.headlineMedium,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Sign in to access your apps",
+            text = stringResource(R.string.login_subtitle),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -108,8 +110,8 @@ private fun LoginScreenContent(
         OutlinedTextField(
             value = state.serverUrl,
             onValueChange = onServerUrlChanged,
-            label = { Text("Server URL") },
-            placeholder = { Text("https://store.example.com") },
+            label = { Text(stringResource(R.string.login_server_url)) },
+            placeholder = { Text(stringResource(R.string.login_server_url_placeholder)) },
             isError = state.serverUrlError != null,
             supportingText = state.serverUrlError?.let { { Text(it) } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -138,7 +140,7 @@ private fun LoginScreenContent(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Text("Sign in with OIDC")
+                Text(stringResource(R.string.login_sign_in_oidc))
             }
         }
     }

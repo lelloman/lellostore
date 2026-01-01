@@ -40,10 +40,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.ui.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,12 +76,12 @@ fun AppDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.app?.name ?: "App Details") },
+                title = { Text(state.app?.name ?: stringResource(R.string.app_details)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.content_description_back),
                         )
                     }
                 },
@@ -104,12 +106,12 @@ fun AppDetailScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            text = state.error ?: "Unknown error",
+                            text = state.error ?: stringResource(R.string.unknown_error),
                             color = MaterialTheme.colorScheme.error,
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = viewModel::onRetry) {
-                            Text("Retry")
+                            Text(stringResource(R.string.retry))
                         }
                     }
                 }
@@ -210,7 +212,7 @@ private fun AppDetailContent(
                         onClick = onInstallClick,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("Install")
+                        Text(stringResource(R.string.install))
                     }
                 }
                 if (app.canUpdate) {
@@ -218,7 +220,7 @@ private fun AppDetailContent(
                         onClick = onUpdateClick,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("Update")
+                        Text(stringResource(R.string.update))
                     }
                 }
                 if (app.canOpen) {
@@ -226,7 +228,7 @@ private fun AppDetailContent(
                         onClick = onOpenClick,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("Open")
+                        Text(stringResource(R.string.open))
                     }
                 }
             }
@@ -240,7 +242,7 @@ private fun AppDetailContent(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "Installed Version",
+                        text = stringResource(R.string.installed_version),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
@@ -255,7 +257,7 @@ private fun AppDetailContent(
         app.description?.let { description ->
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "About",
+                text = stringResource(R.string.about),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -269,7 +271,7 @@ private fun AppDetailContent(
         // Version info
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Latest Version",
+            text = stringResource(R.string.latest_version),
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -281,7 +283,7 @@ private fun AppDetailContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Version")
+                    Text(stringResource(R.string.version_label))
                     Text(app.latestVersion.versionName)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
@@ -289,7 +291,7 @@ private fun AppDetailContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Size")
+                    Text(stringResource(R.string.size_label))
                     Text(app.latestVersion.size)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
@@ -297,7 +299,7 @@ private fun AppDetailContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Released")
+                    Text(stringResource(R.string.released_label))
                     Text(app.latestVersion.uploadedAt)
                 }
             }
@@ -307,7 +309,7 @@ private fun AppDetailContent(
         if (app.versions.size > 1) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Version History",
+                text = stringResource(R.string.version_history),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -352,14 +354,14 @@ private fun DownloadProgressSection(
             ) {
                 Text(
                     text = when (downloadState) {
-                        DownloadState.PENDING -> "Preparing..."
-                        DownloadState.DOWNLOADING -> "Downloading... ${(progress * 100).toInt()}%"
-                        DownloadState.VERIFYING -> "Verifying..."
-                        DownloadState.INSTALLING -> "Installing..."
-                        DownloadState.COMPLETED -> "Completed"
-                        DownloadState.FAILED -> "Failed"
-                        DownloadState.CANCELLED -> "Cancelled"
-                        DownloadState.PERMISSION_REQUIRED -> "Permission required"
+                        DownloadState.PENDING -> stringResource(R.string.download_preparing)
+                        DownloadState.DOWNLOADING -> stringResource(R.string.download_downloading, (progress * 100).toInt())
+                        DownloadState.VERIFYING -> stringResource(R.string.download_verifying)
+                        DownloadState.INSTALLING -> stringResource(R.string.download_installing)
+                        DownloadState.COMPLETED -> stringResource(R.string.download_completed)
+                        DownloadState.FAILED -> stringResource(R.string.download_failed)
+                        DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
+                        DownloadState.PERMISSION_REQUIRED -> stringResource(R.string.download_permission_required)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -368,7 +370,7 @@ private fun DownloadProgressSection(
                     IconButton(onClick = onCancel) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Cancel download",
+                            contentDescription = stringResource(R.string.content_description_cancel_download),
                         )
                     }
                 }
@@ -406,12 +408,12 @@ private fun PermissionRequiredSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Permission Required",
+                text = stringResource(R.string.permission_required_title),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "This app needs permission to install apps from unknown sources.",
+                text = stringResource(R.string.permission_required_message),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -420,10 +422,10 @@ private fun PermissionRequiredSection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedButton(onClick = onGrantPermissionClick) {
-                    Text("Grant Permission")
+                    Text(stringResource(R.string.grant_permission))
                 }
                 Button(onClick = onRetryClick) {
-                    Text("Retry Install")
+                    Text(stringResource(R.string.retry_install))
                 }
             }
         }
