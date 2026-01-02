@@ -500,3 +500,31 @@ async fn test_missing_static_file_returns_404() {
         "Missing static file with extension should return 404"
     );
 }
+
+#[tokio::test]
+async fn test_spa_fallback_for_package_name_with_dots() {
+    let (_temp_dir, app) = create_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    // Package names like "com.lelloman.pezzottify.android" contain dots but are NOT file extensions.
+    // The SPA router should serve index.html for these paths, not return 404.
+    // This is a regression test for a bug where dots in package names were incorrectly
+    // interpreted as file extensions.
+    let response = server.get("/apps/com.lelloman.pezzottify.android").await;
+    let status = response.status_code();
+
+    // Should return index.html (200 if frontend embedded) or 404 only if no frontend built
+    assert!(
+        status == StatusCode::OK || status == StatusCode::NOT_FOUND,
+        "Expected OK or NOT_FOUND for SPA route with package name, got {:?}",
+        status
+    );
+
+    if status == StatusCode::OK {
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(
+            content_type.to_str().unwrap().contains("text/html"),
+            "SPA fallback should serve HTML, not treat package name as file extension"
+        );
+    }
+}

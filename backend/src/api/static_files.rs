@@ -19,11 +19,21 @@ pub async fn serve_static(uri: Uri) -> impl IntoResponse {
         return serve_file(path, &content.data);
     }
 
-    // For paths without extension (likely SPA routes), serve index.html
-    // Paths with extensions (like .js, .css) that weren't found should 404
-    let has_extension = path.rsplit_once('/').map(|(_, f)| f).unwrap_or(path).contains('.');
+    // For SPA routes, serve index.html
+    // Only return 404 for paths that look like static asset requests (ending with known extensions)
+    let filename = path.rsplit_once('/').map(|(_, f)| f).unwrap_or(path);
+    let is_static_asset = filename
+        .rsplit_once('.')
+        .map(|(_, ext)| {
+            matches!(
+                ext.to_lowercase().as_str(),
+                "js" | "css" | "html" | "json" | "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico"
+                    | "woff" | "woff2" | "ttf" | "eot" | "map" | "webp" | "avif"
+            )
+        })
+        .unwrap_or(false);
 
-    if !has_extension {
+    if !is_static_asset {
         if let Some(content) = Assets::get("index.html") {
             return serve_file("index.html", &content.data);
         }
