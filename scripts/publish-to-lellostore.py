@@ -25,9 +25,9 @@ from pathlib import Path
 # =============================================================================
 # CONFIGURATION (set via 'configure' subcommand)
 # =============================================================================
-STORE_URL = "__STORE_URL__"
-OIDC_ISSUER = "__OIDC_ISSUER__"
-CLIENT_ID = "__CLIENT_ID__"
+STORE_URL = "https://store.lelloman.com"
+OIDC_ISSUER = "https://auth.lelloman.com"
+CLIENT_ID = "22cd4a2d-a771-41e3-b76e-3f83ff8e9bbf"
 # =============================================================================
 
 CACHE_DIR = Path.home() / ".cache" / "lellostore"
