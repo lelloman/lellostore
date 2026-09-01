@@ -69,7 +69,7 @@ async function request<T>(
       ...options,
       headers,
     })
-  } catch (e) {
+  } catch {
     // Network error (offline, DNS failure, CORS, etc.)
     throw new ApiError(0, 'network_error', 'Unable to connect to server. Please check your connection.')
   }
