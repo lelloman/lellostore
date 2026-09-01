@@ -1,0 +1,30 @@
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+local.properties
+
+# Build and test output
+**/build/
+**/target/
+frontend/dist/
+frontend/node_modules/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+coverage/
+
+# Runtime data
+backend/data/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

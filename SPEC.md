@@ -1,312 +1,194 @@
-# lellostore - Project Specification
+# LelloStore specification
 
-## Overview
+## Purpose
 
-lellostore is a private system for distributing Android applications to authorized users. It consists of three components:
+LelloStore distributes Android applications to authenticated users. It hosts a
+catalog and APK files, gives administrators a web interface and command-line
+publisher, and lets Android users browse, install, and update applications.
 
-1. **Backend** - Rust/Axum API server that hosts APK files and manages app metadata
-2. **Frontend** - Vue 3 SPA for administrators to manage apps
-3. **Android App** - Client application for browsing, downloading, and installing apps
+All catalog and download operations require a valid OIDC bearer token. Upload,
+edit, icon, and delete operations also require the configured administrator
+role. Authentication failures fail closed; only health and embedded web assets
+remain public.
 
-All access requires authentication via OIDC.
+## Components
 
-## Goals
+- The Rust/Axum backend owns the SQLite catalog, filesystem storage, OIDC token
+  validation, APK metadata extraction, optional AAB conversion, and Prometheus
+  metrics.
+- The Vue 3 frontend provides authenticated catalog browsing and administrator
+  management. Its OIDC settings are compiled into the Vite bundle.
+- The Kotlin/Compose Android client stores a catalog cache and preferences,
+  discovers OIDC endpoints, downloads with authorization, verifies SHA-256, and
+  hands verified APKs to Android's installer.
+- The Python publisher uploads an APK through the OIDC device flow without
+  third-party Python packages.
 
-1. Provide a simple, user-friendly interface for browsing and installing APKs
-2. Detect and notify users of available app updates
-3. Ensure secure APK distribution with integrity verification
-4. Restrict access to authorized users only
+## Authentication and authorization
 
-## Target Users
+The backend validates JWT signature, issuer, audience, expiry, and not-before
+claims using keys from the issuer's discovery document and JWKS endpoint. JWKS
+refreshes are rate-limited. Roles are read from the dot-separated claim path in
+`OIDC_ROLE_CLAIM_PATH`; `OIDC_ADMIN_ROLE` selects the administrator value.
 
-- **Admins**: Upload and manage applications via the web frontend
-- **End Users**: Install and update applications via the Android app
+The frontend and Android app use Authorization Code with PKCE. The publisher
+uses Device Authorization Grant. Clients send access tokens as
+`Authorization: Bearer <token>`.
 
-## Core Features
+## HTTP API
 
-### Backend (Rust/Axum)
+The API uses JSON with snake_case field names. Successful delete operations
+return `204 No Content`. APK downloads support one byte range and return either
+`200 OK` or `206 Partial Content` as appropriate.
 
-1. **App Hosting**
-   - Store and serve APK files
-   - Manage app metadata (name, description, version, icon)
-   - Expose REST API for Android client and admin frontend
-   - Serve the Vue 3 frontend embedded as static files (single binary deployment)
+### Health and metrics
 
-2. **App Management**
-   - Upload APK or AAB files
-   - Convert AAB to universal APK using bundletool
-   - Extract metadata from APK (package name, version, icon, minSdk)
-   - Update app information
-   - Remove apps from the catalog
+| Method | Path | Authentication | Result |
+| --- | --- | --- | --- |
+| `GET` | `/health` | None | `{"status":"healthy"}` |
+| `GET` | `/metrics` | Network policy | Prometheus text on the separate metrics listener |
 
-3. **Authentication & Authorization**
-   - Validate OIDC access tokens on all API requests
-   - Role-based access control (admin vs regular user)
-   - Admin role required for upload/edit/delete operations
+### User routes
 
-### Frontend (Vue 3 SPA)
+| Method | Path | Result |
+| --- | --- | --- |
+| `GET` | `/api/apps` | Catalog with each application's latest version |
+| `GET` | `/api/apps/{package_name}` | Application details and all versions |
+| `GET` | `/api/apps/{package_name}/icon` | PNG icon |
+| `GET` | `/api/apps/{package_name}/versions/{version_code}/apk` | APK download |
 
-1. **Admin Dashboard**
-   - View all apps in the catalog
-   - Upload new APKs or AABs
-   - Edit app metadata (name, description)
-   - Delete apps or specific versions
-
-2. **Authentication**
-   - OIDC login flow (Authorization Code + PKCE)
-   - Admin-only access
-
-### Android App
-
-1. **Authentication**
-   - OIDC login flow via AppAuth (Authorization Code + PKCE)
-   - Secure token storage (EncryptedSharedPreferences)
-   - Automatic token refresh
-
-2. **App Catalog**
-   - Browse available applications
-   - View app details (name, description, version, size, icon)
-   - Search and filter apps
-   - Pull-to-refresh
-
-3. **APK Installation**
-   - Download APKs from the server
-   - Verify SHA-256 checksum before installation
-   - Trigger Android's package installer
-   - Track download progress
-
-4. **Update Detection**
-   - Compare installed app versions with server versions
-   - Display available updates
-   - One-tap update installation
-   - Background polling for updates (configurable interval)
-   - Local notification when updates are available
-
-## Technical Architecture
-
-### Backend
-
-- **Language**: Rust
-- **Framework**: Axum
-- **Database**: SQLite (via sqlx)
-- **File Storage**: Local filesystem
-- **AAB Processing**: bundletool (requires Java runtime)
-
-### Frontend
-
-- **Framework**: Vue 3 (Composition API)
-- **Build Tool**: Vite
-- **UI Library**: Vuetify 3
-- **State Management**: Pinia
-- **OIDC Client**: oidc-client-ts
-- **OIDC Configuration**: Build-time (issuer URL, client ID baked into bundle)
-
-### Android App
-
-- **Minimum SDK**: 26 (Android 8.0)
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose
-- **Networking**: Ktor Client
-- **Auth**: AppAuth for Android
-- **Local Database**: Room
-- **Preferences**: DataStore
-- **OIDC Configuration**: Build-time (issuer URL, client ID)
-- **Server URL**: Default at build-time, user-configurable at runtime
-
-### Architecture Diagram
-
-```
-                                    ┌──────────────┐
-                                    │    OIDC      │
-                                    │   Provider   │
-                                    └──────┬───────┘
-                                           │
-              ┌────────────────────────────┼────────────────────────────┐
-              │                            │                            │
-              ▼                            ▼                            ▼
-┌────────────────────┐         ┌────────────────────┐         ┌────────────────────┐
-│   Android App      │         │      Backend       │         │     Frontend       │
-│                    │         │    (Rust/Axum)     │         │    (Vue 3 SPA)     │
-│  ┌──────────────┐  │         │                    │         │                    │
-│  │   Compose UI │  │  HTTPS  │  ┌──────────────┐  │  HTTPS  │  ┌──────────────┐  │
-│  └──────────────┘  │◄───────►│  │   REST API   │  │◄───────►│  │  Vuetify UI  │  │
-│  ┌──────────────┐  │         │  └──────────────┘  │         │  └──────────────┘  │
-│  │  ViewModels  │  │         │  ┌──────────────┐  │         │  ┌──────────────┐  │
-│  └──────────────┘  │         │  │   Services   │  │         │  │    Pinia     │  │
-│  ┌──────────────┐  │         │  └──────────────┘  │         │  └──────────────┘  │
-│  │ Repositories │  │         │  ┌──────────────┐  │         └────────────────────┘
-│  └──────────────┘  │         │  │   Storage    │  │
-│  ┌──────────────┐  │         │  │ (SQLite + FS)│  │
-│  │  Room + Ktor │  │         │  └──────────────┘  │
-│  └──────────────┘  │         └────────────────────┘
-└────────────────────┘
-```
-
-### API Contract
-
-All `/api/*` endpoints require a valid Bearer token (OIDC access token).
-
-#### Apps (User)
-
-##### GET /api/apps
-Returns list of all available apps.
+`GET /api/apps` response:
 
 ```json
 {
   "apps": [
     {
-      "packageName": "com.example.app",
+      "package_name": "com.example.app",
       "name": "Example App",
       "description": "An example application",
-      "iconUrl": "/api/apps/com.example.app/icon",
-      "latestVersion": {
-        "versionCode": 10,
-        "versionName": "1.0.0",
-        "size": 5242880
+      "icon_url": "/api/apps/com.example.app/icon",
+      "latest_version": {
+        "version_code": 10,
+        "version_name": "1.0.0",
+        "size": 5242880,
+        "min_sdk": 24,
+        "uploaded_at": "2026-08-31T10:00:00Z"
       }
     }
   ]
 }
 ```
 
-##### GET /api/apps/{packageName}
-Returns detailed information about a specific app.
+`GET /api/apps/{package_name}` response:
 
 ```json
 {
-  "packageName": "com.example.app",
+  "package_name": "com.example.app",
   "name": "Example App",
   "description": "An example application",
-  "iconUrl": "/api/apps/com.example.app/icon",
+  "icon_url": "/api/apps/com.example.app/icon",
   "versions": [
     {
-      "versionCode": 10,
-      "versionName": "1.0.0",
-      "apkUrl": "/api/apps/com.example.app/versions/10/apk",
+      "version_code": 10,
+      "version_name": "1.0.0",
+      "apk_url": "/api/apps/com.example.app/versions/10/apk",
       "size": 5242880,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "minSdk": 26,
-      "uploadedAt": "2025-12-18T10:00:00Z"
+      "min_sdk": 24,
+      "uploaded_at": "2026-08-31T10:00:00Z"
     }
   ]
 }
 ```
 
-##### GET /api/apps/{packageName}/icon
-Returns the app icon image (PNG).
+### Administrator routes
 
-##### GET /api/apps/{packageName}/versions/{versionCode}/apk
-Downloads the APK file. Supports range requests for resumable downloads.
+| Method | Path | Input | Result |
+| --- | --- | --- | --- |
+| `POST` | `/api/admin/apps` | Multipart `file`, optional `name` and `description` | Extract and add one APK/AAB version |
+| `PUT` | `/api/admin/apps/{package_name}` | JSON `name` and/or `description` | Updated application details |
+| `POST` | `/api/admin/apps/{package_name}/icon` | Multipart `file` or `icon` | Replace icon with a normalized 192×192 PNG |
+| `DELETE` | `/api/admin/apps/{package_name}` | None | Delete catalog entry, versions, and stored files |
+| `DELETE` | `/api/admin/apps/{package_name}/versions/{version_code}` | None | Delete version; delete application if it was the last |
 
-#### Apps (Admin)
+Uploads accept exactly one `.apk` or `.aab` file. The backend streams the input
+to a private temporary location while enforcing `MAX_UPLOAD_SIZE`. It extracts
+the package, version, minimum SDK, and icon; computes SHA-256; then publishes the
+catalog and final files without allowing concurrent uploads to overwrite an
+existing version. AAB uploads require Java and bundletool.
 
-Admin endpoints require the user to have an admin role claim in their OIDC token.
-
-##### POST /api/admin/apps
-Upload a new app or new version. Accepts multipart form data with APK or AAB file.
-- AAB files are converted to universal APK on upload
-- Metadata (packageName, versionCode, versionName, minSdk, icon) is extracted automatically
-- Optional fields: `name`, `description` (can override extracted/default values)
-- If app exists: adds new version, inherits existing name/description unless overridden
-- If version already exists: returns error (delete first to re-upload)
-
-##### PUT /api/admin/apps/{packageName}
-Update app metadata (name, description).
+Upload response:
 
 ```json
 {
-  "name": "New App Name",
+  "package_name": "com.example.app",
+  "name": "Example App",
+  "description": null,
+  "icon_url": "/api/apps/com.example.app/icon",
+  "version": {
+    "version_code": 10,
+    "version_name": "1.0.0",
+    "apk_url": "/api/apps/com.example.app/versions/10/apk",
+    "size": 5242880,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "min_sdk": 24,
+    "uploaded_at": "2026-08-31T10:00:00Z"
+  }
+}
+```
+
+Metadata update request:
+
+```json
+{
+  "name": "New application name",
   "description": "Updated description"
 }
 ```
 
-##### DELETE /api/admin/apps/{packageName}
-Remove an app and all its versions from the catalog.
+Error responses contain an `error` identifier and a safe human-readable
+`message`. Depending on the failure, routes use `400`, `401`, `403`, `404`,
+`409`, `413`, `415`, `500`, or `503`.
 
-##### DELETE /api/admin/apps/{packageName}/versions/{versionCode}
-Remove a specific version of an app.
-
-### Database Schema
-
-```sql
-CREATE TABLE apps (
-    package_name TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    icon_path TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE app_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    package_name TEXT NOT NULL REFERENCES apps(package_name) ON DELETE CASCADE,
-    version_code INTEGER NOT NULL,
-    version_name TEXT NOT NULL,
-    apk_path TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    sha256 TEXT NOT NULL,
-    min_sdk INTEGER NOT NULL,
-    uploaded_at TEXT NOT NULL,
-    UNIQUE(package_name, version_code)
-);
+```json
+{
+  "error": "conflict",
+  "message": "Version already exists"
+}
 ```
 
-### Android App Data Storage
+## Persistence
 
-- **Room Database**: Cache app catalog, track installed app versions
-- **EncryptedSharedPreferences**: OIDC tokens (access token, refresh token)
-- **DataStore**: Server URL, user preferences
-- **Cache Directory**: Downloaded APKs (cleaned after installation)
+SQLite is authoritative for the catalog. `apps.package_name` is the primary key
+and `app_versions` has a unique `(package_name, version_code)` constraint with a
+cascading foreign key. APKs live below
+`{storage_path}/apks/{package_name}/{version_code}.apk`; icons live below
+`{storage_path}/icons/`.
 
-### Permissions Required (Android)
+Database mutations complete before best-effort cleanup of obsolete files, so a
+filesystem failure cannot leave catalog rows that point to files intentionally
+deleted by the same request.
 
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-```
+The Android client stores its catalog and installed-app observations in Room,
+preferences in DataStore, and authentication state in encrypted shared
+preferences. Catalog refreshes replace the cache transactionally.
 
-## Non-Functional Requirements
+## Security and operational requirements
 
-### Security
-- HTTPS required for all communication
-- OIDC token validation on every API request
-- SHA-256 checksum verification for APK downloads
-- Secure token storage on Android (EncryptedSharedPreferences)
-- Admin operations require admin role in OIDC token
+- Terminate TLS before the backend and expose clients only over HTTPS.
+- Use an exact trusted OIDC issuer and audience; never use the placeholder
+  issuer in production.
+- Keep the metrics listener private.
+- Persist both the SQLite database and storage directory together.
+- Back up catalog and APK data consistently.
+- Grant the administrator role only to users allowed to publish or delete apps.
+- Android verifies every downloaded APK against the catalog SHA-256 before
+  installation.
+- The Android client accepts only HTTPS store URLs.
 
-### Performance
-- App catalog API response < 500ms
-- Support resumable downloads for large APKs
+## Deliberate exclusions
 
-### Usability
-- Material Design 3 / Material You on Android
-- Vuetify Material Design on web
-- Support for light/dark themes on both platforms
-
-## Out of Scope
-
-- iOS client
-- Public/unauthenticated access
-- APK signing or modification
-- Delta/patch updates
-- Per-user app visibility (all authenticated users see all apps)
-- Push notifications via Firebase/FCM (uses local notifications from HTTP polling instead)
-
-## Open Questions
-
-None - all technical decisions have been made.
-
----
-
-## Revision History
-
-| Version | Date       | Changes                                              |
-|---------|------------|------------------------------------------------------|
-| 0.1     | 2025-12-18 | Initial draft                                        |
-| 0.2     | 2025-12-18 | Added server component, focused scope                |
-| 0.3     | 2025-12-18 | Rust/Axum + Vue3, OIDC auth, AAB support             |
-| 0.4     | 2025-12-18 | Finalized tech stack: SQLite, Vuetify 3              |
-| 1.0     | 2025-12-18 | Final review: added DB schema, clarified auth flows  |
-| 1.1     | 2025-12-18 | Added background polling, clarified OIDC config, upload behavior |
+LelloStore does not sign or modify uploaded APKs, provide delta updates, support
+iOS, expose an unauthenticated catalog, or implement per-user application
+visibility. Update notifications are generated by periodic client polling, not
+Firebase push messaging.
