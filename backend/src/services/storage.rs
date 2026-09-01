@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
@@ -13,6 +14,9 @@ pub enum StorageError {
 
     #[error("Invalid package name: {0}")]
     InvalidPackageName(String),
+
+    #[error("File already exists: {0}")]
+    AlreadyExists(String),
 }
 
 /// Validate that a package name is safe to use in file paths.
@@ -86,7 +90,23 @@ impl StorageService {
 
         let file_name = format!("{}.apk", version_code);
         let file_path = apk_dir.join(&file_name);
-        std::fs::write(&file_path, data)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&file_path)
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    StorageError::AlreadyExists(file_path.display().to_string())
+                } else {
+                    StorageError::Io(error)
+                }
+            })?;
+
+        if let Err(error) = file.write_all(data) {
+            drop(file);
+            let _ = std::fs::remove_file(&file_path);
+            return Err(StorageError::Io(error));
+        }
 
         Ok(format!("apks/{}/{}", package_name, file_name))
     }
@@ -231,6 +251,24 @@ mod tests {
 
         let read_data = std::fs::read(&abs_path).unwrap();
         assert_eq!(read_data, data);
+    }
+
+    #[test]
+    fn test_save_apk_never_overwrites_an_existing_version() {
+        let temp = tempdir().unwrap();
+        let storage = StorageService::new(temp.path().to_path_buf());
+
+        storage
+            .save_apk("com.example.app", 1, b"winning upload")
+            .unwrap();
+
+        let result = storage.save_apk("com.example.app", 1, b"racing upload");
+
+        assert!(matches!(result, Err(StorageError::AlreadyExists(_))));
+        assert_eq!(
+            std::fs::read(storage.get_apk_path("com.example.app", 1)).unwrap(),
+            b"winning upload"
+        );
     }
 
     #[test]

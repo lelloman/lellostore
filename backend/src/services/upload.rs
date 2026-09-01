@@ -149,9 +149,20 @@ impl UploadService {
         let is_new_app = existing_app.is_none();
 
         // 10. Save APK file
-        let apk_path =
-            self.storage
-                .save_apk(&metadata.package_name, metadata.version_code, &apk_data)?;
+        let apk_path = match self.storage.save_apk(
+            &metadata.package_name,
+            metadata.version_code,
+            &apk_data,
+        ) {
+            Ok(path) => path,
+            Err(StorageError::AlreadyExists(_)) => {
+                return Err(UploadError::VersionExists {
+                    package_name: metadata.package_name,
+                    version_code: metadata.version_code,
+                });
+            }
+            Err(error) => return Err(error.into()),
+        };
 
         // 11. Save icon if available (best-effort)
         let icon_path = if let Some(icon_data) = &metadata.icon_data {
