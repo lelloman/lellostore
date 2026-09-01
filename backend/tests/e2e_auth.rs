@@ -84,6 +84,9 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
     );
 
     let storage = Arc::new(StorageService::new(storage_path.clone()));
+    #[cfg(unix)]
+    let apk_parser = ApkParser::new(create_fake_aapt2(temp_dir.path()));
+    #[cfg(not(unix))]
     let apk_parser = ApkParser::new(std::path::PathBuf::from("aapt2"));
     let upload_service = Arc::new(UploadService::new(
         (*storage).clone(),
@@ -142,6 +145,20 @@ fn create_test_apk(package_name: &str, version_code: u32) -> Vec<u8> {
         zip.finish().unwrap();
     }
     buffer
+}
+
+#[cfg(unix)]
+fn create_fake_aapt2(temp_dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = temp_dir.join("fake-aapt2");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\ncat <<'EOF'\npackage: name='com.test.app' versionCode='1' versionName='1.0.0'\nsdkVersion:'24'\napplication-label:'Test App'\nEOF\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
 }
 
 // =============================================================================
@@ -212,18 +229,10 @@ async fn test_complete_app_lifecycle_with_auth() {
             axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
         ))
         .await;
-    // Note: This will likely fail because aapt2 isn't available,
-    // but we're testing the auth flow, not the upload itself
-    // Accept OK, CREATED, BAD_REQUEST (no aapt2), or INTERNAL_SERVER_ERROR (processing fails)
-    let status = response.status_code();
-    assert!(
-        status == StatusCode::OK
-            || status == StatusCode::CREATED
-            || status == StatusCode::BAD_REQUEST
-            || status == StatusCode::INTERNAL_SERVER_ERROR,
-        "Expected success or error from upload processing, got {:?}",
-        status
-    );
+    assert_eq!(response.status_code(), StatusCode::CREATED);
+    let uploaded: serde_json::Value = response.json();
+    assert_eq!(uploaded["package_name"], "com.test.app");
+    assert_eq!(uploaded["version"]["version_code"], 1);
 
     // =========================================================================
     // PHASE 4: Verify app appears in list (if upload succeeded)
@@ -237,6 +246,9 @@ async fn test_complete_app_lifecycle_with_auth() {
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["apps"].as_array().unwrap().len(), 1);
+    assert_eq!(body["apps"][0]["package_name"], "com.test.app");
 
     // =========================================================================
     // PHASE 5: Test unauthenticated access is denied

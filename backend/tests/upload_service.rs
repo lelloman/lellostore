@@ -1,7 +1,7 @@
 //! Integration tests for the upload service
 //!
-//! These tests require aapt2 to be available in PATH or configured.
-//! Run with: cargo test --test upload_service -- --ignored
+//! The suite uses a deterministic fake aapt2 executable, so it runs in CI
+//! without an Android SDK installation.
 
 use sqlx::sqlite::SqlitePoolOptions;
 use std::io::Cursor;
@@ -11,9 +11,7 @@ use zip::write::SimpleFileOptions;
 
 use lellostore_backend::services::{ApkParser, StorageService, UploadError, UploadService};
 
-/// Creates a minimal fake APK for testing.
-/// Note: This won't pass aapt2 parsing, but can be used to test file type detection.
-#[allow(dead_code)]
+/// Creates a minimal APK-shaped archive for testing.
 fn create_fake_apk() -> Vec<u8> {
     let mut buf = Vec::new();
     {
@@ -25,6 +23,33 @@ fn create_fake_apk() -> Vec<u8> {
         zip.finish().unwrap();
     }
     buf
+}
+
+#[cfg(unix)]
+fn create_fake_aapt2(
+    temp_dir: &TempDir,
+    package_name: &str,
+    version_code: i64,
+    version_name: &str,
+    app_name: &str,
+) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = temp_dir.path().join(format!("fake-aapt2-{version_code}"));
+    let output = format!(
+        "package: name='{package_name}' versionCode='{version_code}' versionName='{version_name}'\n\
+         sdkVersion:'24'\n\
+         application-label:'{app_name}'\n"
+    );
+    std::fs::write(&path, format!("#!/bin/sh\nprintf '%s' \"{output}\"\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn create_upload_file(temp_dir: &TempDir, name: &str) -> PathBuf {
+    let path = temp_dir.path().join(name);
+    std::fs::write(&path, create_fake_apk()).unwrap();
+    path
 }
 
 /// Creates a minimal fake AAB for testing.
@@ -151,66 +176,135 @@ async fn test_upload_aab_without_converter() {
     }
 }
 
-/// Test the full upload flow with a real APK.
-/// Requires aapt2 to be available.
-/// Run with: cargo test test_upload_real_apk -- --ignored
+/// Test the full upload flow, including database and file persistence.
+#[cfg(unix)]
 #[tokio::test]
-#[ignore]
-async fn test_upload_real_apk() {
-    let (_temp_dir, pool, storage) = setup_test_env().await;
+async fn test_upload_apk_persists_app_version_and_file() {
+    let (temp_dir, pool, storage) = setup_test_env().await;
+    let parser = ApkParser::new(create_fake_aapt2(
+        &temp_dir,
+        "com.example.upload",
+        1,
+        "1.0.0",
+        "Uploaded App",
+    ));
+    let upload_service = UploadService::new(storage, parser, None, pool.clone(), 100 * 1024 * 1024);
+    let upload_path = create_upload_file(&temp_dir, "upload.apk");
 
-    // Try to detect aapt2
-    let aapt2_path = match ApkParser::detect_aapt2() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("aapt2 not found, skipping test: {}", e);
-            return;
-        }
-    };
+    let result = upload_service
+        .process_upload_file(
+            "upload.apk",
+            &upload_path,
+            None,
+            Some("Test description".to_string()),
+        )
+        .await
+        .unwrap();
 
-    let apk_parser = ApkParser::new(aapt2_path);
-    let _upload_service =
-        UploadService::new(storage, apk_parser, None, pool.clone(), 100 * 1024 * 1024);
-
-    // This test would require a real APK file.
-    // For now, we just verify the service can be created.
-    // In a real test environment, you would:
-    // 1. Read a test APK from tests/fixtures/
-    // 2. Call process_upload_file
-    // 3. Verify database records were created
-    // 4. Verify files were stored correctly
-
-    // Placeholder: this shows the test structure
-    // let apk_data = std::fs::read("tests/fixtures/test.apk").expect("Test APK not found");
-    // let result = upload_service
-    //     .process_upload_file("test.apk", Path::new("tests/fixtures/test.apk"), None, None)
-    //     .await;
-    // assert!(result.is_ok());
-
-    println!("aapt2 found, upload service ready for real APK testing");
+    assert!(result.is_new_app);
+    assert_eq!(result.package_name, "com.example.upload");
+    assert_eq!(result.version_code, 1);
+    let app = lellostore_backend::db::get_app(&pool, "com.example.upload")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(app.name, "Uploaded App");
+    assert_eq!(app.description.as_deref(), Some("Test description"));
+    let versions = lellostore_backend::db::get_app_versions(&pool, "com.example.upload")
+        .await
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert!(temp_dir
+        .path()
+        .join("storage/apks/com.example.upload/1.apk")
+        .is_file());
 }
 
 /// Test duplicate version rejection
-/// Requires a real APK and aapt2
+#[cfg(unix)]
 #[tokio::test]
-#[ignore]
 async fn test_upload_duplicate_version() {
-    // This test would:
-    // 1. Upload an APK
-    // 2. Try to upload the same APK again
-    // 3. Expect VersionExists error
+    let (temp_dir, pool, storage) = setup_test_env().await;
+    let parser = ApkParser::new(create_fake_aapt2(
+        &temp_dir,
+        "com.example.duplicate",
+        7,
+        "7.0",
+        "Duplicate App",
+    ));
+    let upload_service = UploadService::new(storage, parser, None, pool, 100 * 1024 * 1024);
+    let upload_path = create_upload_file(&temp_dir, "duplicate.apk");
+    upload_service
+        .process_upload_file("duplicate.apk", &upload_path, None, None)
+        .await
+        .unwrap();
 
-    // Placeholder for when we have test fixtures
+    let result = upload_service
+        .process_upload_file("duplicate.apk", &upload_path, None, None)
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(UploadError::VersionExists {
+            package_name,
+            version_code: 7,
+        }) if package_name == "com.example.duplicate"
+    ));
 }
 
 /// Test uploading a new version of an existing app
-/// Requires real APKs with different version codes
+#[cfg(unix)]
 #[tokio::test]
-#[ignore]
 async fn test_upload_new_version() {
-    // This test would:
-    // 1. Upload version 1 of an app
-    // 2. Upload version 2 of the same app
-    // 3. Verify both versions exist in database
-    // 4. Verify is_new_app returns false for second upload
+    let (temp_dir, pool, storage) = setup_test_env().await;
+    let version_one = UploadService::new(
+        storage.clone(),
+        ApkParser::new(create_fake_aapt2(
+            &temp_dir,
+            "com.example.versioned",
+            1,
+            "1.0",
+            "Versioned App",
+        )),
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+    let first_upload = create_upload_file(&temp_dir, "version-1.apk");
+    let first = version_one
+        .process_upload_file("version-1.apk", &first_upload, None, None)
+        .await
+        .unwrap();
+    assert!(first.is_new_app);
+
+    let version_two = UploadService::new(
+        storage,
+        ApkParser::new(create_fake_aapt2(
+            &temp_dir,
+            "com.example.versioned",
+            2,
+            "2.0",
+            "Versioned App",
+        )),
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+    let second_upload = create_upload_file(&temp_dir, "version-2.apk");
+    let second = version_two
+        .process_upload_file("version-2.apk", &second_upload, None, None)
+        .await
+        .unwrap();
+
+    assert!(!second.is_new_app);
+    let versions = lellostore_backend::db::get_app_versions(&pool, "com.example.versioned")
+        .await
+        .unwrap();
+    assert_eq!(
+        versions
+            .iter()
+            .map(|version| version.version_code)
+            .collect::<Vec<_>>(),
+        vec![2, 1],
+    );
 }
