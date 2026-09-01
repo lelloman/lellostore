@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,12 +54,14 @@ class DownloadManagerImpl @Inject constructor(
         packageName: String,
         versionCode: Int,
     ): DownloadResult {
+        val downloadJob = currentCoroutineContext()[Job]
+            ?: error("Download must run in a coroutine with a Job")
         synchronized(downloadJobs) {
             if (downloadJobs.containsKey(packageName)) {
                 return DownloadResult.Failed("Download already in progress")
             }
-            // Mark as started immediately to prevent race conditions
-            downloadJobs[packageName] = Job()
+            // Store the job doing the work so cancelDownload cancels the actual request.
+            downloadJobs[packageName] = downloadJob
         }
 
         var destination: File? = null
@@ -124,8 +127,10 @@ class DownloadManagerImpl @Inject constructor(
                 downloadJobs.remove(packageName)
             }
             // Clear progress after delay to allow UI to show final state
-            delay(3000)
-            mutableActiveDownloads.update { it - packageName }
+            scope.launch {
+                delay(3000)
+                mutableActiveDownloads.update { it - packageName }
+            }
         }
 
         return when (finalState) {
@@ -137,7 +142,9 @@ class DownloadManagerImpl @Inject constructor(
     }
 
     override fun cancelDownload(packageName: String) {
-        downloadJobs[packageName]?.cancel()
+        synchronized(downloadJobs) {
+            downloadJobs[packageName]?.cancel()
+        }
     }
 
     override fun canInstallPackages(): Boolean {

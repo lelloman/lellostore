@@ -15,8 +15,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import org.junit.Before
@@ -109,6 +111,28 @@ class DownloadManagerImplTest {
         // Cancelling a non-existent download should not crash
         downloadManager.cancelDownload("com.nonexistent.app")
         // No exception means success
+    }
+
+    @Test
+    fun `cancelDownload cancels the coroutine performing the download`() = runTest {
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(createAppDetail())
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } coAnswers {
+            awaitCancellation()
+        }
+
+        val download = launch {
+            downloadManager.downloadAndInstall("com.test.app", 1)
+        }
+        runCurrent()
+
+        downloadManager.cancelDownload("com.test.app")
+        runCurrent()
+
+        try {
+            assertThat(download.isCancelled).isTrue()
+        } finally {
+            download.cancel()
+        }
     }
 
     private fun createAppDetail(
