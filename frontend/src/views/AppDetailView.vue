@@ -249,6 +249,8 @@ watch(packageName, async (name) => {
     hasFetched.value = false
     try {
       await appsStore.fetchApp(name)
+    } catch {
+      // The store exposes the fetch error and leaves currentApp empty.
     } finally {
       hasFetched.value = true
     }

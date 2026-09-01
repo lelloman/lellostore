@@ -34,6 +34,7 @@ export const useAppsStore = defineStore('apps', () => {
   async function fetchApp(packageName: string) {
     isLoading.value = true
     error.value = null
+    currentApp.value = null
     try {
       currentApp.value = await api.getApp(packageName)
     } catch (e) {

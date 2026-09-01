@@ -6,6 +6,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EditAppDialog from '@/components/EditAppDialog.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppsStore } from '@/stores/apps'
 import { api } from '@/services/api'
 
 vi.mock('vue-router', () => ({
@@ -72,5 +73,33 @@ describe('AppDetailView authorization', () => {
     expect(wrapper.findComponent(EditAppDialog).exists()).toBe(false)
     expect(wrapper.findComponent(UploadDialog).exists()).toBe(false)
     expect(wrapper.findAllComponents(ConfirmDialog)).toHaveLength(0)
+  })
+
+  it('does not render a cached app when the requested app fails to load', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const appsStore = useAppsStore()
+    appsStore.currentApp = {
+      package_name: 'com.stale.app',
+      name: 'Stale App',
+      icon_url: '/api/apps/com.stale.app/icon',
+      versions: [],
+    }
+    vi.mocked(api.getApp).mockRejectedValueOnce(new Error('Not found'))
+
+    const wrapper = shallowMount(AppDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          DefaultLayout: { template: '<main><slot /></main>' },
+          VBtn: { template: '<button><slot /></button>' },
+          VAlert: { template: '<aside><slot /></aside>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Stale App')
+    expect(wrapper.text()).toContain('The requested application could not be found.')
   })
 })
