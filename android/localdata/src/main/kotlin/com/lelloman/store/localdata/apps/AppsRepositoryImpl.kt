@@ -46,7 +46,7 @@ class AppsRepositoryImpl(
     override suspend fun refreshApps(): Result<Unit> {
         return remoteApiClient.getApps().map { apps ->
             val entities = apps.map { it.toEntity() }
-            appsDao.insertApps(entities)
+            appsDao.replaceApps(entities)
         }
     }
 

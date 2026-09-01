@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.lelloman.store.localdata.db.entity.CachedAppEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -20,6 +21,12 @@ interface AppsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertApps(apps: List<CachedAppEntity>)
+
+    @Transaction
+    suspend fun replaceApps(apps: List<CachedAppEntity>) {
+        deleteAll()
+        insertApps(apps)
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertApp(app: CachedAppEntity)
