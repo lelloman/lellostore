@@ -32,11 +32,11 @@
           <h1 class="text-h4">{{ app.name }}</h1>
           <p class="text-body-2 text-medium-emphasis">{{ app.package_name }}</p>
         </div>
-        <v-btn variant="outlined" class="mr-2" @click="showEditDialog = true">
+        <v-btn v-if="authStore.isAdmin" variant="outlined" class="mr-2" @click="showEditDialog = true">
           <v-icon start>mdi-pencil</v-icon>
           Edit
         </v-btn>
-        <v-btn color="error" variant="outlined" @click="showDeleteAppDialog = true">
+        <v-btn v-if="authStore.isAdmin" color="error" variant="outlined" @click="showDeleteAppDialog = true">
           <v-icon start>mdi-delete</v-icon>
           Delete
         </v-btn>
@@ -53,7 +53,7 @@
         <v-card-title class="d-flex align-center">
           Versions
           <v-spacer />
-          <v-btn size="small" color="primary" @click="showUploadDialog = true">
+          <v-btn v-if="authStore.isAdmin" size="small" color="primary" @click="showUploadDialog = true">
             <v-icon start>mdi-upload</v-icon>
             Upload Version
           </v-btn>
@@ -73,6 +73,7 @@
 
           <template #item.actions="{ item }">
             <v-btn
+              v-if="authStore.isAdmin"
               icon
               size="small"
               variant="text"
@@ -98,15 +99,18 @@
 
     <!-- Dialogs -->
     <EditAppDialog
+      v-if="authStore.isAdmin"
       v-model="showEditDialog"
       :app="app"
       @saved="onAppUpdated"
     />
     <UploadDialog
+      v-if="authStore.isAdmin"
       v-model="showUploadDialog"
       @uploaded="onVersionUploaded"
     />
     <ConfirmDialog
+      v-if="authStore.isAdmin"
       v-model="showDeleteAppDialog"
       title="Delete Application"
       :message="`Are you sure you want to delete '${app?.name}'? This will remove all versions and cannot be undone.`"
@@ -115,6 +119,7 @@
       @confirm="deleteApp"
     />
     <ConfirmDialog
+      v-if="authStore.isAdmin"
       v-model="showDeleteVersionDialog"
       title="Delete Version"
       :message="deleteVersionMessage"
@@ -134,12 +139,14 @@ import UploadDialog from '@/components/UploadDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
 import { useAppsStore } from '@/stores/apps'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { api, type AppVersion } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
 const appsStore = useAppsStore()
+const authStore = useAuthStore()
 const toast = useToast()
 
 const showEditDialog = ref(false)

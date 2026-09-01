@@ -9,6 +9,8 @@ FROM node:22-bookworm-slim AS frontend-builder
 # Build-time args for Vite (baked into the JS bundle)
 ARG VITE_OIDC_ISSUER_URL
 ARG VITE_OIDC_CLIENT_ID
+ARG VITE_OIDC_ADMIN_ROLE=admin
+ARG VITE_OIDC_ROLE_CLAIM_PATH=realm_access.roles
 ARG VITE_API_BASE_URL
 
 WORKDIR /app/frontend
@@ -21,6 +23,8 @@ RUN npm ci
 COPY frontend/ ./
 RUN VITE_OIDC_ISSUER_URL="$VITE_OIDC_ISSUER_URL" \
     VITE_OIDC_CLIENT_ID="$VITE_OIDC_CLIENT_ID" \
+    VITE_OIDC_ADMIN_ROLE="$VITE_OIDC_ADMIN_ROLE" \
+    VITE_OIDC_ROLE_CLAIM_PATH="$VITE_OIDC_ROLE_CLAIM_PATH" \
     VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     npm run build
 

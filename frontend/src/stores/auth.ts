@@ -14,19 +14,25 @@ export const useAuthStore = defineStore('auth', () => {
   const userProfile = computed(() => user.value?.profile ?? null)
 
   const userRoles = computed(() => {
-    // Extract roles from token claims
-    // Supports Keycloak-style realm_access.roles
     const profile = user.value?.profile as Record<string, unknown> | undefined
-    const realmAccess = profile?.realm_access as { roles?: string[] } | undefined
-    if (realmAccess?.roles) {
-      return realmAccess.roles
+    if (!profile) return []
+
+    const claimPath = import.meta.env.VITE_OIDC_ROLE_CLAIM_PATH || 'realm_access.roles'
+    let claim: unknown = profile
+    for (const segment of claimPath.split('.')) {
+      if (!claim || typeof claim !== 'object') return []
+      claim = (claim as Record<string, unknown>)[segment]
     }
-    // Also support flat roles array
-    const roles = profile?.roles as string[] | undefined
-    return roles ?? []
+
+    if (typeof claim === 'string') return [claim]
+    if (!Array.isArray(claim)) return []
+    return claim.filter((role): role is string => typeof role === 'string')
   })
 
-  const isAdmin = computed(() => userRoles.value.includes('admin'))
+  const isAdmin = computed(() => {
+    const adminRole = import.meta.env.VITE_OIDC_ADMIN_ROLE || 'admin'
+    return userRoles.value.includes(adminRole)
+  })
 
   // Actions
   async function initialize() {

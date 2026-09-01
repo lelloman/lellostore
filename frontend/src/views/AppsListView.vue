@@ -2,7 +2,7 @@
   <DefaultLayout>
     <div class="d-flex justify-space-between align-center mb-4">
       <h1 class="text-h4">Applications</h1>
-      <v-btn color="primary" @click="showUploadDialog = true">
+      <v-btn v-if="authStore.isAdmin" color="primary" @click="showUploadDialog = true">
         <v-icon start>mdi-upload</v-icon>
         Upload App
       </v-btn>
@@ -29,7 +29,7 @@
       <p class="text-body-2 text-medium-emphasis mb-4">
         Upload your first APK or AAB to get started.
       </p>
-      <v-btn color="primary" @click="showUploadDialog = true">
+      <v-btn v-if="authStore.isAdmin" color="primary" @click="showUploadDialog = true">
         <v-icon start>mdi-upload</v-icon>
         Upload App
       </v-btn>
@@ -70,7 +70,7 @@
     </v-data-table>
 
     <!-- Upload Dialog -->
-    <UploadDialog v-model="showUploadDialog" @uploaded="onUploaded" />
+    <UploadDialog v-if="authStore.isAdmin" v-model="showUploadDialog" @uploaded="onUploaded" />
   </DefaultLayout>
 </template>
 
@@ -81,10 +81,12 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
 import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
 import { useAppsStore } from '@/stores/apps'
+import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
 
 const router = useRouter()
 const appsStore = useAppsStore()
+const authStore = useAuthStore()
 
 const search = ref('')
 const showUploadDialog = ref(false)
