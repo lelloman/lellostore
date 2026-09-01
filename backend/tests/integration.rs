@@ -3,7 +3,9 @@ use axum_test::TestServer;
 
 mod common;
 
-use common::{create_test_app, create_test_context, create_test_metrics_app};
+use common::{
+    create_fail_closed_test_app, create_test_app, create_test_context, create_test_metrics_app,
+};
 
 /// Helper to insert a test app into the database
 async fn insert_test_app(
@@ -76,6 +78,16 @@ async fn test_apps_list_empty() {
 
     let body: serde_json::Value = response.json();
     assert_eq!(body["apps"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn test_api_fails_closed_when_auth_is_unavailable() {
+    let (_temp_dir, app) = create_fail_closed_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    let response = server.get("/api/apps").await;
+
+    assert_eq!(response.status_code(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]

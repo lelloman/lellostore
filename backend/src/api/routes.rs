@@ -12,6 +12,19 @@ use crate::auth::{auth_middleware, AuthState};
 use crate::metrics::track_metrics;
 
 pub fn create_router(state: AppState) -> Router {
+    create_router_inner(state, false)
+}
+
+/// Build an unauthenticated router for handler-level integration tests.
+///
+/// Production callers must use [`create_router`], which fails closed when
+/// OIDC is unavailable. This function exists only to isolate handler tests.
+#[doc(hidden)]
+pub fn create_test_router(state: AppState) -> Router {
+    create_router_inner(state, true)
+}
+
+fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -> Router {
     let max_upload_size = state.config.max_upload_size;
     let mut router = Router::new().route("/health", get(handlers::health_check));
 
@@ -20,10 +33,16 @@ pub fn create_router(state: AppState) -> Router {
         // User routes require authentication (any valid user)
         router = router.nest("/api", user_routes(auth_state.clone()));
         // Admin routes require authentication AND admin role
-        router = router.nest("/api/admin", admin_routes(auth_state.clone(), max_upload_size));
-    } else {
-        // No auth configured - make user routes public (dev/testing mode)
+        router = router.nest(
+            "/api/admin",
+            admin_routes(auth_state.clone(), max_upload_size),
+        );
+    } else if allow_unauthenticated_for_tests {
         router = router.nest("/api", public_routes());
+    } else {
+        // Authentication is mandatory. If initialization failed, keep health
+        // and static assets available but never expose catalog contents.
+        router = router.nest("/api", Router::new().fallback(handlers::auth_unavailable));
     }
 
     // Add static file serving for embedded frontend

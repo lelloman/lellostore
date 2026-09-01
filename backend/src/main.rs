@@ -102,14 +102,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 tracing::warn!(
-                    "Failed to initialize authentication: {}. Protected routes will be disabled.",
+                    "Failed to initialize authentication: {}. API routes will remain unavailable.",
                     e
                 );
                 None
             }
         }
     } else {
-        tracing::info!("OIDC not configured (using default issuer). Protected routes disabled.");
+        tracing::warn!("OIDC not configured (using default issuer). API routes are unavailable.");
         None
     };
 

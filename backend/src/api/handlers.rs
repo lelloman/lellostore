@@ -102,6 +102,16 @@ pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "healthy" }))
 }
 
+pub async fn auth_unavailable() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "error": "Service Unavailable",
+            "message": "Authentication service is unavailable"
+        })),
+    )
+}
+
 pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListResponse>, AppError> {
     let apps = db::get_all_apps(&state.db).await?;
 

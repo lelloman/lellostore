@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 
-use lellostore_backend::api::{routes::create_router, AppState};
+use lellostore_backend::api::{
+    routes::{create_router, create_test_router},
+    AppState,
+};
 use lellostore_backend::config::{Config, OidcConfig};
 use lellostore_backend::metrics::{metrics_handler, register_metrics};
 use lellostore_backend::services::{ApkParser, StorageService, UploadService};
@@ -25,6 +28,15 @@ pub async fn create_test_app() -> (TempDir, Router) {
 }
 
 pub async fn create_test_context() -> TestContext {
+    create_test_context_inner(true).await
+}
+
+pub async fn create_fail_closed_test_app() -> (TempDir, Router) {
+    let ctx = create_test_context_inner(false).await;
+    (ctx.temp_dir, ctx.router)
+}
+
+async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let storage_path = temp_dir.path().join("storage");
@@ -85,7 +97,11 @@ pub async fn create_test_context() -> TestContext {
         storage,
     };
 
-    let router = create_router(state);
+    let router = if allow_unauthenticated_for_tests {
+        create_test_router(state)
+    } else {
+        create_router(state)
+    };
 
     TestContext {
         temp_dir,
