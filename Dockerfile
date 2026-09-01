@@ -49,7 +49,7 @@ RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/bin/mock_oidc.rs
 
 # Build dependencies only (this layer is cached)
-RUN cargo build --release && rm -rf src
+RUN cargo build --release --features embed-frontend && rm -rf src
 
 # Copy frontend build output (required for rust-embed)
 COPY --from=frontend-builder /app/frontend/dist ../frontend/dist
@@ -63,7 +63,7 @@ COPY backend/tests tests
 RUN touch src/main.rs
 
 # Build the actual application
-RUN cargo build --release
+RUN cargo build --release --features embed-frontend
 
 # =============================================================================
 # Runtime Stage

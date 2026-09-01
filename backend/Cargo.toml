@@ -3,6 +3,10 @@ name = "lellostore-backend"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+embed-frontend = ["dep:rust-embed"]
+
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["multipart", "macros"] }
@@ -41,7 +45,7 @@ thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Static file embedding
-rust-embed = "8"
+rust-embed = { version = "8", optional = true }
 mime_guess = "2"
 
 # Authentication (OIDC/JWT)

@@ -25,3 +25,14 @@ fn container_enables_the_tools_it_installs_for_aab_uploads() {
         "the installed Android package tool must be configured for APK parsing",
     );
 }
+
+#[test]
+fn container_enables_frontend_embedding_for_release_builds() {
+    let dockerfile = include_str!("../../Dockerfile");
+
+    assert_eq!(
+        dockerfile.matches("cargo build --release --features embed-frontend").count(),
+        2,
+        "both cached and final release builds must use the same frontend feature",
+    );
+}

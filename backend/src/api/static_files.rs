@@ -3,11 +3,24 @@ use axum::{
     http::{header, HeaderValue, Response, StatusCode, Uri},
     response::IntoResponse,
 };
+#[cfg(feature = "embed-frontend")]
 use rust_embed::Embed;
+use std::borrow::Cow;
 
+#[cfg(feature = "embed-frontend")]
 #[derive(Embed)]
 #[folder = "../frontend/dist"]
 struct Assets;
+
+#[cfg(feature = "embed-frontend")]
+fn embedded_file(path: &str) -> Option<Cow<'static, [u8]>> {
+    Assets::get(path).map(|file| file.data)
+}
+
+#[cfg(not(feature = "embed-frontend"))]
+fn embedded_file(_path: &str) -> Option<Cow<'static, [u8]>> {
+    None
+}
 
 /// Serves embedded static files from the frontend dist folder.
 /// For SPA routing, returns index.html for paths that don't match a static file.
@@ -15,8 +28,8 @@ pub async fn serve_static(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
     // Try to serve the exact file path
-    if let Some(content) = Assets::get(path) {
-        return serve_file(path, &content.data);
+    if let Some(content) = embedded_file(path) {
+        return serve_file(path, &content);
     }
 
     // For SPA routes, serve index.html
@@ -34,8 +47,8 @@ pub async fn serve_static(uri: Uri) -> impl IntoResponse {
         .unwrap_or(false);
 
     if !is_static_asset {
-        if let Some(content) = Assets::get("index.html") {
-            return serve_file("index.html", &content.data);
+        if let Some(content) = embedded_file("index.html") {
+            return serve_file("index.html", &content);
         }
     }
 
@@ -59,8 +72,8 @@ fn serve_file(path: &str, data: &[u8]) -> Response<Body> {
 
 /// Handler for the root path
 pub async fn serve_index() -> impl IntoResponse {
-    if let Some(content) = Assets::get("index.html") {
-        serve_file("index.html", &content.data)
+    if let Some(content) = embedded_file("index.html") {
+        serve_file("index.html", &content)
     } else {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
