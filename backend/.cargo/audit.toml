@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # SQLx records its optional MySQL backend in Cargo.lock even though this
+    # application enables SQLite only. `cargo tree -i rsa --target all` is
+    # empty, so the vulnerable private-key operation is not compiled.
+    "RUSTSEC-2023-0071",
+]
