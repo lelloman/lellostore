@@ -44,7 +44,8 @@ async function refreshAccessToken(): Promise<string | null> {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  isRetry = false
+  isRetry = false,
+  parseResponse: (response: Response) => Promise<T> = (response) => response.json()
 ): Promise<T> {
   const authStore = useAuthStore()
 
@@ -80,7 +81,7 @@ async function request<T>(
       const newToken = await refreshAccessToken()
       if (newToken) {
         // Retry the request with the new token
-        return request<T>(path, options, true)
+        return request<T>(path, options, true, parseResponse)
       }
     }
     // Refresh failed or this was already a retry - logout
@@ -133,7 +134,7 @@ async function request<T>(
     return undefined as T
   }
 
-  return response.json()
+  return parseResponse(response)
 }
 
 // API Types (matching backend responses - snake_case)
@@ -203,6 +204,15 @@ export const api = {
 
   getApkUrl(packageName: string, versionCode: number): string {
     return `${API_BASE}/api/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/apk`
+  },
+
+  async downloadApk(packageName: string, versionCode: number): Promise<Blob> {
+    return request(
+      `/api/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/apk`,
+      {},
+      false,
+      (response) => response.blob()
+    )
   },
 
   // Admin endpoints

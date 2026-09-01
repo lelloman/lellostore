@@ -76,8 +76,7 @@
               icon
               size="small"
               variant="text"
-              :href="item.apk_url"
-              download
+              @click="downloadVersion(item)"
               title="Download APK"
             >
               <v-icon>mdi-download</v-icon>
@@ -208,6 +207,22 @@ async function deleteVersion() {
     }
   } catch {
     toast.error('Failed to delete version')
+  }
+}
+
+async function downloadVersion(version: AppVersion) {
+  if (!app.value) return
+
+  try {
+    const blob = await api.downloadApk(app.value.package_name, version.version_code)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${app.value.package_name}-${version.version_name}.apk`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    toast.error('Failed to download APK')
   }
 }
 
