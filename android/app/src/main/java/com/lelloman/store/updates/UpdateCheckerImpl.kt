@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,7 +44,12 @@ class UpdateCheckerImpl @Inject constructor(
         return runCatching {
             appsRepository.refreshApps().getOrThrow()
             installedAppsRepository.refreshInstalledApps()
-            availableUpdates.value
+            val updates = findUpdates(
+                appsRepository.watchApps().first(),
+                installedAppsRepository.watchInstalledApps().first(),
+            )
+            mutableUpdates.value = updates
+            updates
         }
     }
 

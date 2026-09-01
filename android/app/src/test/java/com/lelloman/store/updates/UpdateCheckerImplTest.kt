@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -134,6 +135,38 @@ class UpdateCheckerImplTest {
 
         assertThat(result.isSuccess).isTrue()
         assertThat(result.getOrNull()).hasSize(1)
+        testScope.cancel()
+    }
+
+    @Test
+    fun `checkForUpdates returns refreshed values before background collector runs`() = runTest {
+        val testScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val appsFlow = MutableStateFlow<List<App>>(emptyList())
+        val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
+        val app = createApp("com.test.app", versionCode = 2)
+        val installed = InstalledApp("com.test.app", versionCode = 1, versionName = "1.0")
+        val appsRepository: AppsRepository = mockk {
+            every { watchApps() } returns appsFlow
+            coEvery { refreshApps() } coAnswers {
+                appsFlow.value = listOf(app)
+                Result.success(Unit)
+            }
+        }
+        val installedAppsRepository: InstalledAppsRepository = mockk {
+            every { watchInstalledApps() } returns installedAppsFlow
+            coEvery { refreshInstalledApps() } coAnswers {
+                installedAppsFlow.value = listOf(installed)
+            }
+        }
+        val updateChecker = UpdateCheckerImpl(
+            appsRepository = appsRepository,
+            installedAppsRepository = installedAppsRepository,
+            scope = testScope,
+        )
+
+        val result = updateChecker.checkForUpdates()
+
+        assertThat(result.getOrThrow()).hasSize(1)
         testScope.cancel()
     }
 
