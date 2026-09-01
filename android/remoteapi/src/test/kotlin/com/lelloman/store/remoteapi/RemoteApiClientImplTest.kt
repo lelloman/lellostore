@@ -24,7 +24,35 @@ class RemoteApiClientImplTest {
                 json(Json { ignoreUnknownKeys = true })
             }
         }
-        return RemoteApiClientImpl(httpClient, baseUrl)
+        return RemoteApiClientImpl(httpClient) { baseUrl }
+    }
+
+    @Test
+    fun `requests use the current server URL after settings change`() = runTest {
+        var currentBaseUrl = "https://first.example.com"
+        val requestedUrls = mutableListOf<String>()
+        val mockEngine = MockEngine { request ->
+            requestedUrls += request.url.toString()
+            respond(
+                content = "{\"apps\":[]}",
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        val client = RemoteApiClientImpl(httpClient) { currentBaseUrl }
+
+        client.getApps().getOrThrow()
+        currentBaseUrl = "https://second.example.com"
+        client.getApps().getOrThrow()
+
+        assertThat(requestedUrls).containsExactly(
+            "https://first.example.com/api/apps",
+            "https://second.example.com/api/apps",
+        ).inOrder()
     }
 
     @Test

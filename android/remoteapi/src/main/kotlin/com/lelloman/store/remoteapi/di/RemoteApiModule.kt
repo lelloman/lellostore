@@ -83,6 +83,6 @@ object RemoteApiModule {
         configStore: ConfigStore,
     ): RemoteApiClient = RemoteApiClientImpl(
         httpClient = httpClient,
-        baseUrl = configStore.serverUrl.value,
+        baseUrlProvider = { configStore.serverUrl.value },
     )
 }

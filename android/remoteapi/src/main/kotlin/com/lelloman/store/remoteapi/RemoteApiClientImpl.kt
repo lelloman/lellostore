@@ -16,8 +16,11 @@ import java.io.InputStream
 
 internal class RemoteApiClientImpl(
     private val httpClient: HttpClient,
-    private val baseUrl: String,
+    private val baseUrlProvider: () -> String,
 ) : RemoteApiClient {
+
+    private val baseUrl: String
+        get() = baseUrlProvider().trimEnd('/')
 
     override suspend fun getApps(): Result<List<App>> = runCatching {
         val response = httpClient.get("$baseUrl/api/apps")
