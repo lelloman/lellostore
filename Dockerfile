@@ -102,6 +102,9 @@ USER lellostore
 # Containers need to listen beyond their own loopback interface. The native
 # binary keeps its safer loopback default for non-container deployments.
 ENV LISTEN_ADDR=0.0.0.0:8080
+ENV BUNDLETOOL_PATH=/usr/local/lib/bundletool.jar
+ENV JAVA_PATH=/usr/bin/java
+ENV AAPT2_PATH=/usr/bin/aapt
 
 # Expose default port
 EXPOSE 8080
