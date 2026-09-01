@@ -124,15 +124,38 @@ metrics port private unless it is intentionally scraped.
 
 ## Publisher
 
-The dependency-free publisher uses the OIDC device authorization flow:
+The dependency-free publisher is the authoritative client for repository build
+scripts and agents. It uses the OIDC device authorization flow and accepts
+configuration through options or environment variables:
 
 ```sh
-python scripts/publish-to-lellostore.py configure
-python scripts/publish-to-lellostore.py path/to/app.apk
+export LELLOSTORE_URL=https://store.example.com
+export LELLOSTORE_OIDC_ISSUER=https://auth.example.com/realms/store
+export LELLOSTORE_CLIENT_ID=lellostore-publisher
+
+python scripts/publish-to-lellostore.py upload path/to/app.apk --dry-run --json
+python scripts/publish-to-lellostore.py upload path/to/app.apk
 ```
 
-Configuration rewrites the script's three endpoint constants; review that diff
-before committing or keep it as a local change.
+The equivalent options are `--store-url`, `--issuer`, and `--client-id`. Use
+`--name` or `--description` to override extracted metadata, `--json` for
+machine-readable results, and `logout` to clear the token cached for one issuer
+and client. HTTPS is required unless `--allow-insecure-http` is explicitly used
+for local development.
+
+Application repositories should keep ownership of building and locating their
+artifact, then invoke this script rather than copying it. A wrapper can resolve
+the authoritative checkout through one configurable path:
+
+```sh
+publisher=${LELLOSTORE_PUBLISHER:-$HOME/lelloprojects/lellostore/scripts/publish-to-lellostore.py}
+"$publisher" upload app/build/outputs/apk/release/app-release.apk --yes --json
+```
+
+Only pass `--yes` after the upload has already been authorized; without it the
+publisher asks for interactive confirmation immediately before authentication
+and upload. Direct invocation with only an artifact path remains supported for
+older wrappers.
 
 ## Verification
 
