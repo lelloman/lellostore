@@ -19,6 +19,10 @@ val localProperties = Properties().apply {
 val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
 
 android {
+    lint {
+        warningsAsErrors = true
+        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable", "OldTargetApi")
+    }
     namespace = "com.lelloman.store"
     compileSdk = 36
 

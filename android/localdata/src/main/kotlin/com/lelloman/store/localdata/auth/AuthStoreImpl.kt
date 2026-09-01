@@ -3,7 +3,8 @@ package com.lelloman.store.localdata.auth
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.lelloman.store.domain.auth.AuthResult
@@ -102,7 +103,7 @@ class AuthStoreImpl(
             if (parts.size >= 2) {
                 val payload = String(android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE))
                 val json = JSONObject(payload)
-                json.optString("email", null)
+                json.optString("email").takeIf { it.isNotEmpty() }
             } else {
                 null
             }
@@ -130,7 +131,7 @@ class AuthStoreImpl(
 
     override suspend fun logout() {
         appAuthState = null
-        encryptedPrefs.edit().remove(KEY_AUTH_STATE).apply()
+        encryptedPrefs.edit { remove(KEY_AUTH_STATE) }
         mutableAuthState.value = AuthState.NotAuthenticated
     }
 
@@ -141,7 +142,7 @@ class AuthStoreImpl(
             serviceConfig,
             oidcConfig.clientId,
             ResponseTypeValues.CODE,
-            Uri.parse(oidcConfig.redirectUri)
+            oidcConfig.redirectUri.toUri()
         )
             .setScopes(oidcConfig.scopes)
             .build()
@@ -152,7 +153,7 @@ class AuthStoreImpl(
     private suspend fun discoverServiceConfiguration(): AuthorizationServiceConfiguration =
         suspendCancellableCoroutine { continuation ->
             AuthorizationServiceConfiguration.fetchFromIssuer(
-                Uri.parse(oidcConfig.issuerUrl),
+                oidcConfig.issuerUrl.toUri(),
             ) { configuration, exception ->
                 if (!continuation.isActive) return@fetchFromIssuer
                 if (configuration != null) {
@@ -219,9 +220,7 @@ class AuthStoreImpl(
     }
 
     private fun saveAuthState(state: net.openid.appauth.AuthState) {
-        encryptedPrefs.edit()
-            .putString(KEY_AUTH_STATE, state.jsonSerializeString())
-            .apply()
+        encryptedPrefs.edit { putString(KEY_AUTH_STATE, state.jsonSerializeString()) }
     }
 
     companion object {

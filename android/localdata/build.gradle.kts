@@ -6,6 +6,10 @@ plugins {
 }
 
 android {
+    lint {
+        warningsAsErrors = true
+        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable", "OldTargetApi")
+    }
     namespace = "com.lelloman.store.localdata"
     compileSdk = 36
 
@@ -41,6 +45,7 @@ ksp {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":logger"))
+    implementation(libs.androidx.core.ktx)
 
     // Room
     implementation(libs.androidx.room.runtime)

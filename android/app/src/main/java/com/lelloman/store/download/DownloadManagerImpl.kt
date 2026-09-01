@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.download.DownloadManager
@@ -159,7 +160,7 @@ class DownloadManagerImpl @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val intent = Intent(
                 android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}")
+                "package:${context.packageName}".toUri()
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

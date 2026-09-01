@@ -8,6 +8,10 @@ plugins {
 }
 
 android {
+    lint {
+        warningsAsErrors = true
+        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable", "OldTargetApi")
+    }
     namespace = "com.lelloman.store.ui"
     compileSdk = 36
 

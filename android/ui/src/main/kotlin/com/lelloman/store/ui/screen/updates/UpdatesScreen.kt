@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -153,11 +154,11 @@ private fun UpdatesList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (updates.size == 1) {
-                    stringResource(R.string.updates_available_one)
-                } else {
-                    stringResource(R.string.updates_available_many, updates.size)
-                },
+                text = pluralStringResource(
+                    R.plurals.updates_available,
+                    updates.size,
+                    updates.size,
+                ),
                 style = MaterialTheme.typography.titleMedium,
             )
             if (isRefreshing) {

@@ -76,8 +76,10 @@
     <string name="all_apps_up_to_date">Tutte le app sono aggiornate</string>
     <string name="check_back_later">Controlla più tardi per nuovi aggiornamenti</string>
     <string name="content_description_check_updates">Controlla aggiornamenti</string>
-    <string name="updates_available_one">1 aggiornamento disponibile</string>
-    <string name="updates_available_many">%1$d aggiornamenti disponibili</string>
+    <plurals name="updates_available">
+        <item quantity="one">%1$d aggiornamento disponibile</item>
+        <item quantity="other">%1$d aggiornamenti disponibili</item>
+    </plurals>
 
     <!-- Settings Screen -->
     <string name="settings_appearance">Aspetto</string>

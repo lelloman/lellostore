@@ -7,6 +7,10 @@ plugins {
 }
 
 android {
+    lint {
+        warningsAsErrors = true
+        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable", "OldTargetApi")
+    }
     namespace = "com.lelloman.store.remoteapi"
     compileSdk = 36
 
