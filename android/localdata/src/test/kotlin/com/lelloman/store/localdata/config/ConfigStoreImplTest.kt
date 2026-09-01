@@ -52,10 +52,10 @@ class ConfigStoreImplTest {
     }
 
     @Test
-    fun `setServerUrl with valid HTTP URL returns Success`() = testScope.runTest {
+    fun `setServerUrl with HTTP URL returns InvalidUrl`() = testScope.runTest {
         val result = configStore.setServerUrl("http://local.example.com")
 
-        assertThat(result).isEqualTo(SetServerUrlResult.Success)
+        assertThat(result).isEqualTo(SetServerUrlResult.InvalidUrl)
     }
 
     @Test

@@ -24,19 +24,18 @@ class ConfigStoreImpl(
         .stateIn(scope, SharingStarted.Eagerly, defaultServerUrl)
 
     override suspend fun setServerUrl(url: String): SetServerUrlResult {
-        if (!isValidHttpUrl(url)) return SetServerUrlResult.InvalidUrl
+        if (!isValidHttpsUrl(url)) return SetServerUrlResult.InvalidUrl
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.SERVER_URL] = url
         }
         return SetServerUrlResult.Success
     }
 
-    private fun isValidHttpUrl(url: String): Boolean {
+    private fun isValidHttpsUrl(url: String): Boolean {
         if (url.isBlank()) return false
         return try {
             val uri = URI(url)
-            val scheme = uri.scheme?.lowercase()
-            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+            uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
         } catch (_: Exception) {
             false
         }
