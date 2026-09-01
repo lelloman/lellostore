@@ -111,6 +111,41 @@ impl StorageService {
         Ok(format!("apks/{}/{}", package_name, file_name))
     }
 
+    /// Copy an APK from a temporary upload without buffering it in memory.
+    pub fn save_apk_file(
+        &self,
+        package_name: &str,
+        version_code: i64,
+        source_path: &Path,
+    ) -> Result<String, StorageError> {
+        validate_package_name(package_name)?;
+
+        let apk_dir = self.base_path.join("apks").join(package_name);
+        std::fs::create_dir_all(&apk_dir)?;
+        let file_name = format!("{}.apk", version_code);
+        let file_path = apk_dir.join(&file_name);
+        let mut source = std::fs::File::open(source_path)?;
+        let mut destination = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&file_path)
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    StorageError::AlreadyExists(file_path.display().to_string())
+                } else {
+                    StorageError::Io(error)
+                }
+            })?;
+
+        if let Err(error) = std::io::copy(&mut source, &mut destination) {
+            drop(destination);
+            let _ = std::fs::remove_file(&file_path);
+            return Err(StorageError::Io(error));
+        }
+
+        Ok(format!("apks/{}/{}", package_name, file_name))
+    }
+
     /// Save icon to permanent storage, returns the relative path
     pub fn save_icon(&self, package_name: &str, data: &[u8]) -> Result<String, StorageError> {
         validate_package_name(package_name)?;
@@ -263,6 +298,25 @@ mod tests {
             .unwrap();
 
         let result = storage.save_apk("com.example.app", 1, b"racing upload");
+
+        assert!(matches!(result, Err(StorageError::AlreadyExists(_))));
+        assert_eq!(
+            std::fs::read(storage.get_apk_path("com.example.app", 1)).unwrap(),
+            b"winning upload"
+        );
+    }
+
+    #[test]
+    fn test_save_apk_file_streams_without_overwriting_existing_version() {
+        let temp = tempdir().unwrap();
+        let storage = StorageService::new(temp.path().join("storage"));
+        let first = temp.path().join("first.apk");
+        let second = temp.path().join("second.apk");
+        std::fs::write(&first, b"winning upload").unwrap();
+        std::fs::write(&second, b"racing upload").unwrap();
+
+        storage.save_apk_file("com.example.app", 1, &first).unwrap();
+        let result = storage.save_apk_file("com.example.app", 1, &second);
 
         assert!(matches!(result, Err(StorageError::AlreadyExists(_))));
         assert_eq!(

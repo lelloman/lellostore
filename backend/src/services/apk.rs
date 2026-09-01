@@ -1,8 +1,9 @@
 use image::imageops::FilterType;
 use image::ImageFormat;
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::process::Command;
 use tracing::warn;
@@ -15,6 +16,9 @@ pub enum ApkError {
 
     #[error("aapt2 execution failed: {0}")]
     Aapt2Failed(String),
+
+    #[error("aapt2 execution timed out")]
+    TimedOut,
 
     #[error("Failed to parse APK metadata: {0}")]
     ParseError(String),
@@ -41,12 +45,23 @@ pub struct ApkMetadata {
 
 pub struct ApkParser {
     aapt2_path: PathBuf,
+    command_timeout: Duration,
 }
+
+const DEFAULT_AAPT2_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_ICON_SIZE: u64 = 10 * 1024 * 1024;
 
 impl ApkParser {
     /// Create a new APK parser with explicit aapt2 path
     pub fn new(aapt2_path: PathBuf) -> Self {
-        Self { aapt2_path }
+        Self::with_timeout(aapt2_path, DEFAULT_AAPT2_TIMEOUT)
+    }
+
+    pub fn with_timeout(aapt2_path: PathBuf, command_timeout: Duration) -> Self {
+        Self {
+            aapt2_path,
+            command_timeout,
+        }
     }
 
     /// Detect aapt2 location from common paths or PATH
@@ -116,14 +131,17 @@ impl ApkParser {
     /// Parse APK metadata using aapt2
     pub async fn parse(&self, apk_path: &Path) -> Result<ApkMetadata, ApkError> {
         // Run aapt2 dump badging
-        let output = Command::new(&self.aapt2_path)
+        let mut command = Command::new(&self.aapt2_path);
+        command
             .arg("dump")
             .arg("badging")
             .arg(apk_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .await?;
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(self.command_timeout, command.output())
+            .await
+            .map_err(|_| ApkError::TimedOut)??;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -158,21 +176,32 @@ impl ApkParser {
 
     /// Extract icon from APK (which is a ZIP file)
     async fn extract_icon(&self, apk_path: &Path, icon_path: &str) -> Result<Vec<u8>, ApkError> {
-        let apk_data = tokio::fs::read(apk_path).await?;
-
-        // Open APK as ZIP
-        let cursor = Cursor::new(apk_data);
-        let mut archive =
-            ZipArchive::new(cursor).map_err(|e| ApkError::InvalidApk(e.to_string()))?;
+        // Open the archive from disk instead of buffering the whole APK again.
+        let file = std::fs::File::open(apk_path)?;
+        let mut archive = ZipArchive::new(file).map_err(|e| ApkError::InvalidApk(e.to_string()))?;
 
         // Find and read the icon file
         let mut icon_file = archive
             .by_name(icon_path)
             .map_err(|e| ApkError::IconError(format!("Icon not found: {}", e)))?;
 
-        let mut icon_data = Vec::new();
-        std::io::Read::read_to_end(&mut icon_file, &mut icon_data)
+        if icon_file.size() > MAX_ICON_SIZE {
+            return Err(ApkError::IconError(format!(
+                "Icon expands beyond the {} byte limit",
+                MAX_ICON_SIZE
+            )));
+        }
+
+        let mut icon_data = Vec::with_capacity(icon_file.size() as usize);
+        std::io::Read::take(&mut icon_file, MAX_ICON_SIZE + 1)
+            .read_to_end(&mut icon_data)
             .map_err(|e| ApkError::IconError(e.to_string()))?;
+        if icon_data.len() as u64 > MAX_ICON_SIZE {
+            return Err(ApkError::IconError(format!(
+                "Icon expands beyond the {} byte limit",
+                MAX_ICON_SIZE
+            )));
+        }
 
         // Convert to PNG and resize to 192x192
         let processed = process_icon(&icon_data)?;
@@ -362,6 +391,8 @@ fn process_icon(data: &[u8]) -> Result<Vec<u8>, ApkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
+    use tempfile::tempdir;
 
     #[test]
     fn test_extract_quoted_value() {
@@ -453,5 +484,25 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
         assert_eq!(parsed.min_sdk, 21); // Default
         assert_eq!(parsed.app_name, "com.test"); // Falls back to package name
         assert_eq!(parsed.icon_path, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn aapt2_process_is_terminated_when_it_times_out() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().unwrap();
+        let fake_aapt2 = temp.path().join("slow-aapt2");
+        std::fs::write(&fake_aapt2, "#!/bin/sh\nexec sleep 10\n").unwrap();
+        std::fs::set_permissions(&fake_aapt2, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let apk = temp.path().join("app.apk");
+        std::fs::write(&apk, b"PK").unwrap();
+        let parser = ApkParser::with_timeout(fake_aapt2, Duration::from_millis(50));
+
+        let started = Instant::now();
+        let result = parser.parse(&apk).await;
+
+        assert!(matches!(result, Err(ApkError::TimedOut)));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

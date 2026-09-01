@@ -1,6 +1,8 @@
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use std::io::Cursor;
+use std::path::Path;
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 use tracing::warn;
 use zip::ZipArchive;
 
@@ -78,16 +80,16 @@ impl UploadService {
         }
     }
 
-    /// Process an uploaded file (APK or AAB)
-    pub async fn process_upload(
+    /// Process an uploaded file (APK or AAB) from a bounded temporary file.
+    pub async fn process_upload_file(
         &self,
         file_name: &str,
-        data: Vec<u8>,
+        upload_path: &Path,
         override_name: Option<String>,
         override_description: Option<String>,
     ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
-        let size = data.len() as u64;
+        let size = tokio::fs::metadata(upload_path).await?.len();
         if size > self.max_size {
             return Err(UploadError::FileTooLarge {
                 max: self.max_size,
@@ -96,14 +98,14 @@ impl UploadService {
         }
 
         // 2. Detect file type
-        let file_type = detect_file_type(&data, file_name);
+        let file_type = detect_file_type(upload_path, file_name);
 
         // 3. Create temp directory for processing
         let temp_dir = self.storage.create_temp_dir()?;
 
-        // 4. Get APK data (convert if AAB)
-        let apk_data = match file_type {
-            FileType::Apk => data,
+        // 4. Get APK path (convert if AAB)
+        let apk_path = match file_type {
+            FileType::Apk => upload_path.to_path_buf(),
             FileType::Aab => {
                 let converter = self.aab_converter.as_ref().ok_or_else(|| {
                     UploadError::AabNotSupported(
@@ -111,27 +113,26 @@ impl UploadService {
                     )
                 })?;
 
-                // Write AAB to temp directory
-                let aab_path = temp_dir.path().join("input.aab");
-                tokio::fs::write(&aab_path, &data).await?;
-
                 // Convert to APK
-                let apk_path = converter.convert(&aab_path, temp_dir.path()).await?;
-
-                // Read the resulting APK
-                tokio::fs::read(&apk_path).await?
+                converter
+                    .convert(upload_path, temp_dir.path(), self.max_size)
+                    .await?
             }
             FileType::Unknown => {
                 return Err(UploadError::InvalidFileType);
             }
         };
 
-        // 5. Write APK to temp dir for parsing
-        let temp_apk_path = temp_dir.path().join("app.apk");
-        tokio::fs::write(&temp_apk_path, &apk_data).await?;
+        let apk_size = tokio::fs::metadata(&apk_path).await?.len();
+        if apk_size > self.max_size {
+            return Err(UploadError::FileTooLarge {
+                max: self.max_size,
+                actual: apk_size,
+            });
+        }
 
         // 6. Parse APK metadata
-        let metadata = self.apk_parser.parse(&temp_apk_path).await?;
+        let metadata = self.apk_parser.parse(&apk_path).await?;
 
         // 7. Check for existing version
         if db::version_exists(&self.db, &metadata.package_name, metadata.version_code).await? {
@@ -142,17 +143,17 @@ impl UploadService {
         }
 
         // 8. Calculate SHA-256
-        let sha256 = StorageService::calculate_sha256(&apk_data);
+        let sha256 = calculate_sha256_file(&apk_path).await?;
 
         // 9. Check if this is a new app
         let existing_app = db::get_app(&self.db, &metadata.package_name).await?;
         let is_new_app = existing_app.is_none();
 
         // 10. Save APK file
-        let apk_path = match self.storage.save_apk(
+        let stored_apk_path = match self.storage.save_apk_file(
             &metadata.package_name,
             metadata.version_code,
-            &apk_data,
+            &apk_path,
         ) {
             Ok(path) => path,
             Err(StorageError::AlreadyExists(_)) => {
@@ -188,8 +189,8 @@ impl UploadService {
                 &metadata.package_name,
                 metadata.version_code,
                 &metadata.version_name,
-                &apk_path,
-                apk_data.len() as i64,
+                &stored_apk_path,
+                apk_size as i64,
                 &sha256,
                 metadata.min_sdk,
                 &app_name,
@@ -306,16 +307,13 @@ enum FileType {
     Unknown,
 }
 
-/// Detect file type from magic bytes and/or filename
-fn detect_file_type(data: &[u8], filename: &str) -> FileType {
-    // Both APK and AAB are ZIP files, so check for ZIP header first
-    if data.len() < 4 || &data[0..2] != b"PK" {
-        return FileType::Unknown;
-    }
-
-    // Try to open as ZIP and check contents
-    let cursor = Cursor::new(data);
-    let archive = match ZipArchive::new(cursor) {
+/// Detect file type from the archive directory and/or filename.
+fn detect_file_type(path: &Path, filename: &str) -> FileType {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return FileType::Unknown,
+    };
+    let archive = match ZipArchive::new(file) {
         Ok(a) => a,
         Err(_) => return FileType::Unknown,
     };
@@ -345,9 +343,27 @@ fn detect_file_type(data: &[u8], filename: &str) -> FileType {
     }
 }
 
+async fn calculate_sha256_file(path: &Path) -> Result<String, std::io::Error> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        let bytes_read = file.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hex::encode(hasher.finalize()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+    use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
     fn create_fake_apk() -> Vec<u8> {
@@ -379,24 +395,31 @@ mod tests {
     #[test]
     fn test_detect_file_type_apk() {
         let data = create_fake_apk();
-        assert_eq!(detect_file_type(&data, "app.apk"), FileType::Apk);
-        assert_eq!(detect_file_type(&data, "app.zip"), FileType::Apk);
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("upload");
+        std::fs::write(&path, data).unwrap();
+        assert_eq!(detect_file_type(&path, "app.apk"), FileType::Apk);
+        assert_eq!(detect_file_type(&path, "app.zip"), FileType::Apk);
     }
 
     #[test]
     fn test_detect_file_type_aab() {
         let data = create_fake_aab();
-        assert_eq!(detect_file_type(&data, "app.aab"), FileType::Aab);
-        assert_eq!(detect_file_type(&data, "app.zip"), FileType::Aab);
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("upload");
+        std::fs::write(&path, data).unwrap();
+        assert_eq!(detect_file_type(&path, "app.aab"), FileType::Aab);
+        assert_eq!(detect_file_type(&path, "app.zip"), FileType::Aab);
     }
 
     #[test]
     fn test_detect_file_type_unknown() {
-        assert_eq!(
-            detect_file_type(b"not a zip", "test.txt"),
-            FileType::Unknown
-        );
-        assert_eq!(detect_file_type(b"", "empty"), FileType::Unknown);
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("upload");
+        std::fs::write(&path, b"not a zip").unwrap();
+        assert_eq!(detect_file_type(&path, "test.txt"), FileType::Unknown);
+        std::fs::write(&path, b"").unwrap();
+        assert_eq!(detect_file_type(&path, "empty"), FileType::Unknown);
     }
 
     #[test]
@@ -412,8 +435,11 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        assert_eq!(detect_file_type(&buf, "app.apk"), FileType::Apk);
-        assert_eq!(detect_file_type(&buf, "app.aab"), FileType::Aab);
-        assert_eq!(detect_file_type(&buf, "app.zip"), FileType::Unknown);
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("upload");
+        std::fs::write(&path, buf).unwrap();
+        assert_eq!(detect_file_type(&path, "app.apk"), FileType::Apk);
+        assert_eq!(detect_file_type(&path, "app.aab"), FileType::Aab);
+        assert_eq!(detect_file_type(&path, "app.zip"), FileType::Unknown);
     }
 }

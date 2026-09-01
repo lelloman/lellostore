@@ -69,7 +69,7 @@ async fn setup_test_env() -> (TempDir, sqlx::SqlitePool, StorageService) {
 
 #[tokio::test]
 async fn test_upload_file_too_large() {
-    let (_temp_dir, pool, storage) = setup_test_env().await;
+    let (temp_dir, pool, storage) = setup_test_env().await;
 
     // Create upload service with very small max size
     let upload_service = UploadService::new(
@@ -82,9 +82,11 @@ async fn test_upload_file_too_large() {
 
     // Create data larger than max size
     let large_data = vec![0u8; 200];
+    let upload_path = temp_dir.path().join("upload.apk");
+    std::fs::write(&upload_path, large_data).unwrap();
 
     let result = upload_service
-        .process_upload("test.apk", large_data, None, None)
+        .process_upload_file("test.apk", &upload_path, None, None)
         .await;
 
     match result {
@@ -98,7 +100,7 @@ async fn test_upload_file_too_large() {
 
 #[tokio::test]
 async fn test_upload_invalid_file_type() {
-    let (_temp_dir, pool, storage) = setup_test_env().await;
+    let (temp_dir, pool, storage) = setup_test_env().await;
 
     let upload_service = UploadService::new(
         storage,
@@ -110,9 +112,11 @@ async fn test_upload_invalid_file_type() {
 
     // Create invalid data (not a ZIP)
     let invalid_data = b"this is not an apk or aab file".to_vec();
+    let upload_path = temp_dir.path().join("upload.txt");
+    std::fs::write(&upload_path, invalid_data).unwrap();
 
     let result = upload_service
-        .process_upload("test.txt", invalid_data, None, None)
+        .process_upload_file("test.txt", &upload_path, None, None)
         .await;
 
     match result {
@@ -123,7 +127,7 @@ async fn test_upload_invalid_file_type() {
 
 #[tokio::test]
 async fn test_upload_aab_without_converter() {
-    let (_temp_dir, pool, storage) = setup_test_env().await;
+    let (temp_dir, pool, storage) = setup_test_env().await;
 
     let upload_service = UploadService::new(
         storage,
@@ -134,9 +138,11 @@ async fn test_upload_aab_without_converter() {
     );
 
     let aab_data = create_fake_aab();
+    let upload_path = temp_dir.path().join("upload.aab");
+    std::fs::write(&upload_path, aab_data).unwrap();
 
     let result = upload_service
-        .process_upload("test.aab", aab_data, None, None)
+        .process_upload_file("test.aab", &upload_path, None, None)
         .await;
 
     match result {
@@ -170,13 +176,15 @@ async fn test_upload_real_apk() {
     // For now, we just verify the service can be created.
     // In a real test environment, you would:
     // 1. Read a test APK from tests/fixtures/
-    // 2. Call process_upload
+    // 2. Call process_upload_file
     // 3. Verify database records were created
     // 4. Verify files were stored correctly
 
     // Placeholder: this shows the test structure
     // let apk_data = std::fs::read("tests/fixtures/test.apk").expect("Test APK not found");
-    // let result = upload_service.process_upload("test.apk", apk_data, None, None).await;
+    // let result = upload_service
+    //     .process_upload_file("test.apk", Path::new("tests/fixtures/test.apk"), None, None)
+    //     .await;
     // assert!(result.is_ok());
 
     println!("aapt2 found, upload service ready for real APK testing");

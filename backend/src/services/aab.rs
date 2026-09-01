@@ -1,6 +1,9 @@
+#[cfg(test)]
 use std::io::Cursor;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::process::Command;
 use zip::ZipArchive;
@@ -16,6 +19,12 @@ pub enum AabError {
     #[error("AAB conversion failed: {0}")]
     ConversionFailed(String),
 
+    #[error("AAB conversion timed out")]
+    TimedOut,
+
+    #[error("Converted APK is too large (max: {max} bytes, got at least: {actual} bytes)")]
+    OutputTooLarge { max: u64, actual: u64 },
+
     #[error("Invalid AAB file: not a valid Android App Bundle")]
     InvalidAab,
 
@@ -26,14 +35,26 @@ pub enum AabError {
 pub struct AabConverter {
     bundletool_path: PathBuf,
     java_path: PathBuf,
+    command_timeout: Duration,
 }
+
+const DEFAULT_BUNDLETOOL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 impl AabConverter {
     /// Create a new AAB converter with explicit paths
     pub fn new(bundletool_path: PathBuf, java_path: PathBuf) -> Self {
+        Self::with_timeout(bundletool_path, java_path, DEFAULT_BUNDLETOOL_TIMEOUT)
+    }
+
+    pub fn with_timeout(
+        bundletool_path: PathBuf,
+        java_path: PathBuf,
+        command_timeout: Duration,
+    ) -> Self {
         Self {
             bundletool_path,
             java_path,
+            command_timeout,
         }
     }
 
@@ -88,7 +109,12 @@ impl AabConverter {
 
     /// Convert AAB to universal APK
     /// Returns path to the generated APK (in output_dir)
-    pub async fn convert(&self, aab_path: &Path, output_dir: &Path) -> Result<PathBuf, AabError> {
+    pub async fn convert(
+        &self,
+        aab_path: &Path,
+        output_dir: &Path,
+        max_output_size: u64,
+    ) -> Result<PathBuf, AabError> {
         // Validate input is an AAB
         if !is_valid_aab(aab_path).await? {
             return Err(AabError::InvalidAab);
@@ -98,7 +124,8 @@ impl AabConverter {
         let apk_path = output_dir.join("universal.apk");
 
         // Run bundletool to create .apks file
-        let output = Command::new(&self.java_path)
+        let mut command = Command::new(&self.java_path);
+        command
             .arg("-jar")
             .arg(&self.bundletool_path)
             .arg("build-apks")
@@ -107,8 +134,10 @@ impl AabConverter {
             .arg("--mode=universal")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .await?;
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(self.command_timeout, command.output())
+            .await
+            .map_err(|_| AabError::TimedOut)??;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -116,7 +145,7 @@ impl AabConverter {
         }
 
         // Extract universal.apk from the .apks file (which is a ZIP)
-        extract_universal_apk(&apks_path, &apk_path).await?;
+        extract_universal_apk(&apks_path, &apk_path, max_output_size).await?;
 
         // Clean up the .apks file
         let _ = tokio::fs::remove_file(&apks_path).await;
@@ -132,33 +161,81 @@ impl AabConverter {
 
 /// Check if a file is a valid AAB by looking for BundleConfig.pb
 async fn is_valid_aab(path: &Path) -> Result<bool, AabError> {
-    let data = tokio::fs::read(path).await?;
-    let cursor = Cursor::new(data);
-
-    let archive = match ZipArchive::new(cursor) {
-        Ok(a) => a,
-        Err(_) => return Ok(false),
-    };
-
-    // AAB files contain BundleConfig.pb
-    let has_bundle_config = archive.file_names().any(|name| name == "BundleConfig.pb");
-    Ok(has_bundle_config)
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(path)?;
+        let archive = match ZipArchive::new(file) {
+            Ok(archive) => archive,
+            Err(_) => return Ok(false),
+        };
+        let has_bundle_config = archive.file_names().any(|name| name == "BundleConfig.pb");
+        Ok(has_bundle_config)
+    })
+    .await
+    .map_err(|error| AabError::ConversionFailed(format!("AAB validation task failed: {error}")))?
 }
 
 /// Extract universal.apk from the .apks archive
-async fn extract_universal_apk(apks_path: &Path, output_path: &Path) -> Result<(), AabError> {
-    let data = tokio::fs::read(apks_path).await?;
+async fn extract_universal_apk(
+    apks_path: &Path,
+    output_path: &Path,
+    max_size: u64,
+) -> Result<(), AabError> {
+    let apks_path = apks_path.to_path_buf();
+    let output_path = output_path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let archive_file = std::fs::File::open(&apks_path)?;
+        let mut archive = ZipArchive::new(archive_file)
+            .map_err(|error| AabError::ConversionFailed(format!("Invalid .apks file: {error}")))?;
 
-    // Extract APK data synchronously to avoid Send issues with ZipFile
-    let apk_data = extract_apk_from_archive(&data)?;
+        for index in 0..archive.len() {
+            let file = archive.by_index(index).map_err(|error| {
+                AabError::ConversionFailed(format!("Failed to read .apks archive: {error}"))
+            })?;
+            if file.name() != "universal.apk" {
+                continue;
+            }
+            if file.size() > max_size {
+                return Err(AabError::OutputTooLarge {
+                    max: max_size,
+                    actual: file.size(),
+                });
+            }
 
-    tokio::fs::write(output_path, &apk_data).await?;
+            let mut output = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&output_path)?;
+            let copied = match std::io::copy(&mut file.take(max_size + 1), &mut output) {
+                Ok(copied) => copied,
+                Err(error) => {
+                    drop(output);
+                    let _ = std::fs::remove_file(&output_path);
+                    return Err(AabError::Io(error));
+                }
+            };
+            if copied > max_size {
+                drop(output);
+                let _ = std::fs::remove_file(&output_path);
+                return Err(AabError::OutputTooLarge {
+                    max: max_size,
+                    actual: copied,
+                });
+            }
+            return Ok(());
+        }
 
-    Ok(())
+        Err(AabError::ConversionFailed(
+            "universal.apk not found in .apks archive".to_string(),
+        ))
+    })
+    .await
+    .map_err(|error| AabError::ConversionFailed(format!("APK extraction task failed: {error}")))?
 }
 
 /// Synchronously extract universal.apk from archive data
-fn extract_apk_from_archive(data: &[u8]) -> Result<Vec<u8>, AabError> {
+#[cfg(test)]
+fn extract_apk_from_archive(data: &[u8], max_size: u64) -> Result<Vec<u8>, AabError> {
     let cursor = Cursor::new(data);
 
     let mut archive = ZipArchive::new(cursor)
@@ -171,9 +248,23 @@ fn extract_apk_from_archive(data: &[u8]) -> Result<Vec<u8>, AabError> {
         })?;
 
         if file.name() == "universal.apk" {
-            let mut apk_data = Vec::new();
-            std::io::Read::read_to_end(&mut file, &mut apk_data)
+            if file.size() > max_size {
+                return Err(AabError::OutputTooLarge {
+                    max: max_size,
+                    actual: file.size(),
+                });
+            }
+            let mut apk_data = Vec::with_capacity(file.size() as usize);
+            std::io::Read::take(&mut file, max_size + 1)
+                .read_to_end(&mut apk_data)
                 .map_err(|e| AabError::ConversionFailed(format!("Failed to extract APK: {}", e)))?;
+
+            if apk_data.len() as u64 > max_size {
+                return Err(AabError::OutputTooLarge {
+                    max: max_size,
+                    actual: apk_data.len() as u64,
+                });
+            }
 
             return Ok(apk_data);
         }
@@ -187,6 +278,7 @@ fn extract_apk_from_archive(data: &[u8]) -> Result<Vec<u8>, AabError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
@@ -236,5 +328,48 @@ mod tests {
 
         let result = is_valid_aab(&fake_aab).await.unwrap();
         assert!(result);
+    }
+
+    #[test]
+    fn test_extract_universal_apk_enforces_decompressed_size_limit() {
+        let mut archive_data = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut archive_data));
+            zip.start_file("universal.apk", SimpleFileOptions::default())
+                .unwrap();
+            std::io::Write::write_all(&mut zip, &[0_u8; 1025]).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let result = extract_apk_from_archive(&archive_data, 1024);
+
+        assert!(matches!(result, Err(AabError::OutputTooLarge { .. })));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bundletool_process_is_terminated_when_it_times_out() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().unwrap();
+        let fake_java = temp.path().join("slow-java");
+        std::fs::write(&fake_java, "#!/bin/sh\nexec sleep 10\n").unwrap();
+        std::fs::set_permissions(&fake_java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let bundletool = temp.path().join("bundletool.jar");
+        std::fs::write(&bundletool, b"fake").unwrap();
+        let aab = temp.path().join("app.aab");
+        let file = std::fs::File::create(&aab).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("BundleConfig.pb", SimpleFileOptions::default())
+            .unwrap();
+        zip.finish().unwrap();
+        let converter =
+            AabConverter::with_timeout(bundletool, fake_java, Duration::from_millis(50));
+
+        let started = Instant::now();
+        let result = converter.convert(&aab, temp.path(), 1024).await;
+
+        assert!(matches!(result, Err(AabError::TimedOut)));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

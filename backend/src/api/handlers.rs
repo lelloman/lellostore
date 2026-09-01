@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{multipart::Field, Multipart, Path, State},
     http::{header::RANGE, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::io::AsyncWriteExt;
 
 use crate::auth::AdminUser;
 use crate::db::{self, models::AppVersion};
@@ -13,6 +14,9 @@ use crate::error::AppError;
 
 use super::file_response::serve_file;
 use super::AppState;
+
+const MAX_METADATA_FIELD_SIZE: u64 = 64 * 1024;
+const MAX_ICON_UPLOAD_SIZE: u64 = 5 * 1024 * 1024;
 
 // ============================================================================
 // API Response Types (snake_case format)
@@ -92,6 +96,30 @@ fn to_version_info(v: &AppVersion) -> AppVersionInfo {
         min_sdk: v.min_sdk,
         uploaded_at: v.uploaded_at.clone(),
     }
+}
+
+async fn read_bounded_field(mut field: Field<'_>, max_size: u64) -> Result<Vec<u8>, AppError> {
+    let mut data = Vec::new();
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|error| AppError::BadRequest(format!("Failed to read field: {error}")))?
+    {
+        let new_size = (data.len() as u64)
+            .checked_add(chunk.len() as u64)
+            .ok_or(AppError::PayloadTooLarge)?;
+        if new_size > max_size {
+            return Err(AppError::PayloadTooLarge);
+        }
+        data.extend_from_slice(&chunk);
+    }
+    Ok(data)
+}
+
+async fn read_metadata_text(field: Field<'_>) -> Result<String, AppError> {
+    let data = read_bounded_field(field, MAX_METADATA_FIELD_SIZE).await?;
+    String::from_utf8(data)
+        .map_err(|error| AppError::BadRequest(format!("Metadata must be UTF-8: {error}")))
 }
 
 // ============================================================================
@@ -237,12 +265,16 @@ pub async fn upload_app(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
-    let mut file_data: Option<(String, Vec<u8>)> = None;
+    let upload_temp = state
+        .storage
+        .create_temp_dir()
+        .map_err(|error| AppError::Internal(format!("Failed to prepare upload: {error}")))?;
+    let mut uploaded_file: Option<(String, std::path::PathBuf)> = None;
     let mut override_name: Option<String> = None;
     let mut override_description: Option<String> = None;
 
     // Process multipart fields
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(format!("Failed to read multipart field: {}", e)))?
@@ -251,40 +283,51 @@ pub async fn upload_app(
 
         match field_name.as_deref() {
             Some("file") => {
+                if uploaded_file.is_some() {
+                    return Err(AppError::BadRequest(
+                        "Only one upload file is allowed".to_string(),
+                    ));
+                }
                 let filename = field
                     .file_name()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "upload.apk".to_string());
 
-                // Stream chunks to vec, checking size
-                let mut data = Vec::new();
                 let max_size = state.config.max_upload_size;
-
-                let bytes = field
-                    .bytes()
+                let upload_path = upload_temp.path().join("upload.bin");
+                let mut output = tokio::fs::File::create(&upload_path)
                     .await
-                    .map_err(|e| AppError::BadRequest(format!("Failed to read file: {}", e)))?;
+                    .map_err(|error| {
+                        AppError::Internal(format!("Failed to create upload file: {error}"))
+                    })?;
+                let mut bytes_written = 0_u64;
 
-                if bytes.len() as u64 > max_size {
-                    return Err(AppError::PayloadTooLarge);
+                while let Some(chunk) = field.chunk().await.map_err(|error| {
+                    AppError::BadRequest(format!("Failed to read file: {error}"))
+                })? {
+                    bytes_written = bytes_written
+                        .checked_add(chunk.len() as u64)
+                        .ok_or(AppError::PayloadTooLarge)?;
+                    if bytes_written > max_size {
+                        return Err(AppError::PayloadTooLarge);
+                    }
+                    output.write_all(&chunk).await.map_err(|error| {
+                        AppError::Internal(format!("Failed to store upload: {error}"))
+                    })?;
                 }
-
-                data.extend_from_slice(&bytes);
-                file_data = Some((filename, data));
+                output.flush().await.map_err(|error| {
+                    AppError::Internal(format!("Failed to finish upload: {error}"))
+                })?;
+                uploaded_file = Some((filename, upload_path));
             }
             Some("name") => {
-                let text = field
-                    .text()
-                    .await
-                    .map_err(|e| AppError::BadRequest(format!("Failed to read name: {}", e)))?;
+                let text = read_metadata_text(field).await?;
                 if !text.is_empty() {
                     override_name = Some(text);
                 }
             }
             Some("description") => {
-                let text = field.text().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to read description: {}", e))
-                })?;
+                let text = read_metadata_text(field).await?;
                 if !text.is_empty() {
                     override_description = Some(text);
                 }
@@ -296,7 +339,7 @@ pub async fn upload_app(
     }
 
     // Ensure file was provided
-    let (filename, data) = file_data.ok_or_else(|| {
+    let (filename, upload_path) = uploaded_file.ok_or_else(|| {
         AppError::BadRequest(
             "No file provided. Expected 'file' field in multipart form.".to_string(),
         )
@@ -305,10 +348,13 @@ pub async fn upload_app(
     // Process the upload using UploadService
     let result = state
         .upload_service
-        .process_upload(&filename, data, override_name, override_description)
+        .process_upload_file(&filename, &upload_path, override_name, override_description)
         .await
         .map_err(|e| match e {
             crate::services::UploadError::FileTooLarge { .. } => AppError::PayloadTooLarge,
+            crate::services::UploadError::AabError(crate::services::AabError::OutputTooLarge {
+                ..
+            }) => AppError::PayloadTooLarge,
             crate::services::UploadError::InvalidFileType => AppError::InvalidFileType,
             crate::services::UploadError::VersionExists {
                 package_name,
@@ -440,19 +486,7 @@ pub async fn upload_icon(
         let field_name = field.name().map(|s| s.to_string());
 
         if field_name.as_deref() == Some("file") || field_name.as_deref() == Some("icon") {
-            let bytes = field
-                .bytes()
-                .await
-                .map_err(|e| AppError::BadRequest(format!("Failed to read file: {}", e)))?;
-
-            // Limit icon size to 5MB
-            if bytes.len() > 5 * 1024 * 1024 {
-                return Err(AppError::BadRequest(
-                    "Icon file too large (max 5MB)".to_string(),
-                ));
-            }
-
-            file_data = Some(bytes.to_vec());
+            file_data = Some(read_bounded_field(field, MAX_ICON_UPLOAD_SIZE).await?);
         }
     }
 

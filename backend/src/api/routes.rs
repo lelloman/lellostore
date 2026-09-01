@@ -85,6 +85,9 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 
 /// Admin routes (requires authentication and admin role)
 fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState> {
+    let multipart_body_limit = max_upload_size
+        .saturating_add(1024 * 1024)
+        .min(usize::MAX as u64) as usize;
     Router::new()
         .route("/apps", post(handlers::upload_app))
         .route("/apps/:package_name", put(handlers::update_app))
@@ -94,7 +97,7 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/apps/:package_name/versions/:version_code",
             delete(handlers::delete_version),
         )
-        .layer(DefaultBodyLimit::max(max_upload_size as usize))
+        .layer(DefaultBodyLimit::max(multipart_body_limit))
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
