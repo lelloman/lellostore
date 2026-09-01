@@ -118,6 +118,18 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun `onLoginClick shows OIDC discovery failure`() = runTest {
+        fakeInteractor.authIntentError = IllegalStateException("OIDC discovery failed")
+        viewModel.onServerUrlChanged("https://valid.example.com")
+
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.isLoading).isFalse()
+        assertThat(viewModel.state.value.error).isEqualTo("OIDC discovery failed")
+    }
+
+    @Test
     fun `auth state change to Authenticated emits NavigateToMain when auth flow in progress`() = runTest {
         fakeInteractor.setServerUrlResult = SetServerUrlResult.Success
         viewModel.onServerUrlChanged("https://valid.example.com")
@@ -165,6 +177,7 @@ class FakeLoginInteractor : LoginViewModel.Interactor {
     var _initialServerUrl = "https://default.example.com"
     var setServerUrlResult: SetServerUrlResult = SetServerUrlResult.Success
     var authIntent: Intent = Intent()
+    var authIntentError: RuntimeException? = null
     val mutableAuthState = MutableStateFlow<AuthState>(AuthState.NotAuthenticated)
     val mutableServerUrl = MutableStateFlow("https://default.example.com")
 
@@ -175,5 +188,8 @@ class FakeLoginInteractor : LoginViewModel.Interactor {
 
     override suspend fun setServerUrl(url: String) = setServerUrlResult
 
-    override fun createAuthIntent() = authIntent
+    override suspend fun createAuthIntent(): Intent {
+        authIntentError?.let { throw it }
+        return authIntent
+    }
 }

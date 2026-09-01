@@ -90,9 +90,17 @@ class LoginViewModel @Inject constructor(
                 SetServerUrlResult.Success -> {}
             }
 
-            authFlowInProgress = true
-            val authIntent = interactor.createAuthIntent()
-            mutableEvents.emit(LoginScreenEvent.LaunchAuth(authIntent))
+            runCatching { interactor.createAuthIntent() }
+                .onSuccess { authIntent ->
+                    authFlowInProgress = true
+                    mutableEvents.emit(LoginScreenEvent.LaunchAuth(authIntent))
+                }
+                .onFailure { error ->
+                    mutableState.value = mutableState.value.copy(
+                        isLoading = false,
+                        error = error.message ?: "OIDC discovery failed",
+                    )
+                }
         }
     }
 
@@ -122,6 +130,6 @@ class LoginViewModel @Inject constructor(
         val serverUrl: StateFlow<String>
         fun getInitialServerUrl(): String
         suspend fun setServerUrl(url: String): SetServerUrlResult
-        fun createAuthIntent(): Intent
+        suspend fun createAuthIntent(): Intent
     }
 }

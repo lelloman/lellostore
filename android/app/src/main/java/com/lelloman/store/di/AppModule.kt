@@ -61,7 +61,7 @@ object AppModule {
     @Singleton
     fun provideAuthIntentProvider(authStoreImpl: AuthStoreImpl): AuthIntentProvider {
         return object : AuthIntentProvider {
-            override fun createAuthIntent() = authStoreImpl.createAuthIntent()
+            override suspend fun createAuthIntent() = authStoreImpl.createAuthIntent()
         }
     }
 

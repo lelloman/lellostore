@@ -49,7 +49,7 @@ class LoginInteractorImpl @Inject constructor(
         }
     }
 
-    override fun createAuthIntent(): Intent {
+    override suspend fun createAuthIntent(): Intent {
         return authIntentProvider.createAuthIntent()
     }
 }

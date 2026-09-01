@@ -28,6 +28,7 @@ import net.openid.appauth.ResponseTypeValues
 import net.openid.appauth.TokenResponse
 import org.json.JSONObject
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class AuthStoreImpl(
     context: Context,
@@ -133,11 +134,8 @@ class AuthStoreImpl(
         mutableAuthState.value = AuthState.NotAuthenticated
     }
 
-    fun createAuthIntent(): Intent {
-        val serviceConfig = AuthorizationServiceConfiguration(
-            Uri.parse("${oidcConfig.issuerUrl}/authorize"),
-            Uri.parse("${oidcConfig.issuerUrl}/token")
-        )
+    suspend fun createAuthIntent(): Intent {
+        val serviceConfig = discoverServiceConfiguration()
 
         val authRequest = AuthorizationRequest.Builder(
             serviceConfig,
@@ -150,6 +148,22 @@ class AuthStoreImpl(
 
         return authService.getAuthorizationRequestIntent(authRequest)
     }
+
+    private suspend fun discoverServiceConfiguration(): AuthorizationServiceConfiguration =
+        suspendCancellableCoroutine { continuation ->
+            AuthorizationServiceConfiguration.fetchFromIssuer(
+                Uri.parse(oidcConfig.issuerUrl),
+            ) { configuration, exception ->
+                if (!continuation.isActive) return@fetchFromIssuer
+                if (configuration != null) {
+                    continuation.resume(configuration)
+                } else {
+                    continuation.resumeWithException(
+                        IllegalStateException("OIDC discovery failed", exception),
+                    )
+                }
+            }
+        }
 
     fun handleAuthResponse(
         response: AuthorizationResponse?,

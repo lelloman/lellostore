@@ -112,7 +112,7 @@ object TestAppModule {
     @Provides
     @Singleton
     fun provideAuthIntentProvider(): AuthIntentProvider = object : AuthIntentProvider {
-        override fun createAuthIntent(): Intent = Intent()
+        override suspend fun createAuthIntent(): Intent = Intent()
     }
 
     @Provides
