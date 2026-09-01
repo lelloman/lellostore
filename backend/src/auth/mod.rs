@@ -24,6 +24,10 @@ pub use user::User;
 pub use validator::{TokenClaims, TokenValidator};
 
 use std::sync::Arc;
+use std::time::Duration;
+
+const OIDC_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const OIDC_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Shared state for authentication middleware
 #[derive(Clone)]
@@ -74,7 +78,13 @@ async fn init_auth_with_retries(
     max_retries: u32,
     initial_delay_ms: u64,
 ) -> Result<AuthState, AuthError> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(OIDC_CONNECT_TIMEOUT)
+        .timeout(OIDC_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|error| {
+            AuthError::DiscoveryFailed(format!("HTTP client setup failed: {error}"))
+        })?;
     let mut last_error = None;
 
     for attempt in 0..=max_retries {

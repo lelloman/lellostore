@@ -1,10 +1,15 @@
 use jsonwebtoken::{Algorithm, DecodingKey};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, warn};
 
 use super::error::AuthError;
+
+const UNKNOWN_KEY_REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
+const JWKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_KEY_ID_LENGTH: usize = 256;
 
 /// A single JWK from the JWKS response
 #[derive(Debug, Clone, Deserialize)]
@@ -30,6 +35,7 @@ pub struct JwksCache {
     keys: RwLock<HashMap<String, CachedKey>>,
     /// Mutex to prevent concurrent JWKS refreshes (avoids thundering herd)
     refresh_lock: Mutex<()>,
+    last_unknown_key_refresh: Mutex<Option<Instant>>,
     jwks_uri: String,
     client: reqwest::Client,
 }
@@ -46,6 +52,7 @@ impl JwksCache {
         let cache = Self {
             keys: RwLock::new(HashMap::new()),
             refresh_lock: Mutex::new(()),
+            last_unknown_key_refresh: Mutex::new(None),
             jwks_uri,
             client,
         };
@@ -56,6 +63,10 @@ impl JwksCache {
 
     /// Get a decoding key and algorithm by key ID
     pub async fn get_key(&self, kid: &str) -> Result<(DecodingKey, Algorithm), AuthError> {
+        if kid.len() > MAX_KEY_ID_LENGTH {
+            return Err(AuthError::KeyNotFound("invalid key id".to_string()));
+        }
+
         // First try to get from cache
         {
             let keys = self.keys.read().await;
@@ -78,6 +89,17 @@ impl JwksCache {
                 );
                 return Ok((cached.decoding_key.clone(), cached.algorithm));
             }
+        }
+
+        // A different unknown key must not force another network request during
+        // the cooldown. Explicit refreshes remain available for operators.
+        {
+            let mut last_refresh = self.last_unknown_key_refresh.lock().await;
+            if last_refresh.is_some_and(|instant| instant.elapsed() < UNKNOWN_KEY_REFRESH_COOLDOWN)
+            {
+                return Err(AuthError::KeyNotFound(kid.to_string()));
+            }
+            *last_refresh = Some(Instant::now());
         }
 
         // Still not found, actually refresh
@@ -104,6 +126,7 @@ impl JwksCache {
         let response = self
             .client
             .get(&self.jwks_uri)
+            .timeout(JWKS_REQUEST_TIMEOUT)
             .send()
             .await
             .map_err(|e| AuthError::JwksFailed(format!("Request failed: {}", e)))?;
@@ -202,6 +225,52 @@ impl JwksCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{extract::State, routing::get, Json, Router};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    const TEST_RSA_MODULUS: &str = "wD0oMRsg1c8QsNYFJg5KLEvU0CvYsHMNkVPP7u8FGbk4i5BfGVyy6PyjJjS0GNlNv9OLUDW82yw-n-3kKoCU0GgfKueRclmKemOaN1DPrwyicUSVVw2LMudjVuepvrZdzdgnw9u0-4u4CJCziOesmEMmxei-rR4GJggYWtk8ztyw0w9Jx68ny77oNPPAiHx9_fTvI90wOQY37fWZBBzpZmqKFTqV8cHHT2-Rg-SlHnTyAAD01VDG33zAQbNh4ouw64uZNjyxBNtqbs1-_ngFz9PuoHAdsE1qL8YaG1NPPsQG0b4tv2v1CeXS-RRd4ugAYjffi1aM7itotmd98wLeqw";
+
+    async fn counted_jwks(State(requests): State<Arc<AtomicUsize>>) -> Json<serde_json::Value> {
+        requests.fetch_add(1, Ordering::SeqCst);
+        Json(serde_json::json!({
+            "keys": [{
+                "kty": "RSA",
+                "kid": "known-key",
+                "use": "sig",
+                "alg": "RS256",
+                "n": TEST_RSA_MODULUS,
+                "e": "AQAB"
+            }]
+        }))
+    }
+
+    #[tokio::test]
+    async fn unknown_key_ids_only_trigger_one_refresh_during_cooldown() {
+        let requests = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/jwks", get(counted_jwks))
+            .with_state(requests.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let cache = JwksCache::new(format!("http://{address}/jwks"), reqwest::Client::new())
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            cache.get_key("attacker-key-1").await,
+            Err(AuthError::KeyNotFound(_))
+        ));
+        assert!(matches!(
+            cache.get_key("attacker-key-2").await,
+            Err(AuthError::KeyNotFound(_))
+        ));
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn test_jwks_response_deserialize() {
