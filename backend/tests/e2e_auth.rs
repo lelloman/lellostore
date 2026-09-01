@@ -8,6 +8,7 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use std::sync::Arc;
 
+#[allow(dead_code)]
 mod common;
 mod mock_oidc;
 
@@ -67,15 +68,20 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
 
     // Initialize auth using mock OIDC
     let client = reqwest::Client::new();
-    let discovery =
-        lellostore_backend::auth::fetch_discovery(&client, &mock_oidc.issuer_url()).await.unwrap();
+    let discovery = lellostore_backend::auth::fetch_discovery(&client, &mock_oidc.issuer_url())
+        .await
+        .unwrap();
     let jwks = Arc::new(JwksCache::new(discovery.jwks_uri, client).await.unwrap());
     let validator = Arc::new(TokenValidator::new(
         jwks,
         discovery.issuer,
         "lellostore".to_string(),
     ));
-    let auth_state = AuthState::new(validator, "realm_access.roles".to_string(), "admin".to_string());
+    let auth_state = AuthState::new(
+        validator,
+        "realm_access.roles".to_string(),
+        "admin".to_string(),
+    );
 
     let storage = Arc::new(StorageService::new(storage_path.clone()));
     let apk_parser = ApkParser::new(std::path::PathBuf::from("aapt2"));
@@ -159,7 +165,10 @@ async fn test_complete_app_lifecycle_with_auth() {
     // User can list apps (empty)
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -173,13 +182,20 @@ async fn test_complete_app_lifecycle_with_auth() {
     let apk_data = create_test_apk("com.test.app", 1);
     let response = server
         .post("/api/admin/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .multipart(axum_test::multipart::MultipartForm::new().add_part(
             "file",
             axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
         ))
         .await;
-    assert_eq!(response.status_code(), StatusCode::FORBIDDEN, "User should not be able to upload");
+    assert_eq!(
+        response.status_code(),
+        StatusCode::FORBIDDEN,
+        "User should not be able to upload"
+    );
 
     // =========================================================================
     // PHASE 3: Admin uploads first app
@@ -187,7 +203,10 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .post("/api/admin/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .multipart(axum_test::multipart::MultipartForm::new().add_part(
             "file",
             axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
@@ -198,8 +217,10 @@ async fn test_complete_app_lifecycle_with_auth() {
     // Accept OK, CREATED, BAD_REQUEST (no aapt2), or INTERNAL_SERVER_ERROR (processing fails)
     let status = response.status_code();
     assert!(
-        status == StatusCode::OK || status == StatusCode::CREATED
-        || status == StatusCode::BAD_REQUEST || status == StatusCode::INTERNAL_SERVER_ERROR,
+        status == StatusCode::OK
+            || status == StatusCode::CREATED
+            || status == StatusCode::BAD_REQUEST
+            || status == StatusCode::INTERNAL_SERVER_ERROR,
         "Expected success or error from upload processing, got {:?}",
         status
     );
@@ -210,7 +231,10 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -219,7 +243,11 @@ async fn test_complete_app_lifecycle_with_auth() {
     // =========================================================================
 
     let response = server.get("/api/apps").await;
-    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED, "Unauthenticated request should be denied");
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Unauthenticated request should be denied"
+    );
 
     let response = server.post("/api/admin/apps").await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
@@ -230,7 +258,10 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), "Bearer invalid.token.here".parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            "Bearer invalid.token.here".parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
@@ -253,7 +284,7 @@ async fn test_multi_app_database_operations() {
     // Insert test data directly into database (bypassing aapt2 requirement)
     sqlx::query(
         "INSERT INTO apps (package_name, name, description, icon_path, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind("com.example.app1")
     .bind("App One")
@@ -265,7 +296,7 @@ async fn test_multi_app_database_operations() {
 
     sqlx::query(
         "INSERT INTO apps (package_name, name, description, icon_path, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind("com.example.app2")
     .bind("App Two")
@@ -277,7 +308,7 @@ async fn test_multi_app_database_operations() {
 
     sqlx::query(
         "INSERT INTO apps (package_name, name, description, icon_path, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind("com.example.app3")
     .bind("App Three")
@@ -327,7 +358,10 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -335,14 +369,23 @@ async fn test_multi_app_database_operations() {
     assert_eq!(apps.len(), 3, "Should have 3 apps");
 
     // Verify app1 has latest version info
-    let app1 = apps.iter().find(|a| a["package_name"] == "com.example.app1").unwrap();
+    let app1 = apps
+        .iter()
+        .find(|a| a["package_name"] == "com.example.app1")
+        .unwrap();
     assert_eq!(app1["name"], "App One");
     assert!(app1["latest_version"].is_object());
     assert_eq!(app1["latest_version"]["version_code"], 3);
 
     // Verify app3 has no versions
-    let app3 = apps.iter().find(|a| a["package_name"] == "com.example.app3").unwrap();
-    assert!(app3["latest_version"].is_null(), "App3 should have no versions");
+    let app3 = apps
+        .iter()
+        .find(|a| a["package_name"] == "com.example.app3")
+        .unwrap();
+    assert!(
+        app3["latest_version"].is_null(),
+        "App3 should have no versions"
+    );
 
     // =========================================================================
     // PHASE 2: Get app details with versions
@@ -350,7 +393,10 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -370,7 +416,10 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .json(&serde_json::json!({
             "name": "Updated App One",
             "description": "New description"
@@ -384,7 +433,10 @@ async fn test_multi_app_database_operations() {
     // Verify change persisted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     let body: serde_json::Value = response.json();
     assert_eq!(body["name"], "Updated App One");
@@ -395,7 +447,10 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .json(&serde_json::json!({
             "name": "Hacker Was Here"
         }))
@@ -405,10 +460,16 @@ async fn test_multi_app_database_operations() {
     // Verify name unchanged
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     let body: serde_json::Value = response.json();
-    assert_eq!(body["name"], "Updated App One", "Name should not have changed");
+    assert_eq!(
+        body["name"], "Updated App One",
+        "Name should not have changed"
+    );
 
     // =========================================================================
     // PHASE 5: Admin deletes a version
@@ -416,14 +477,20 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify version deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     let body: serde_json::Value = response.json();
     let versions = body["versions"].as_array().unwrap();
@@ -435,21 +502,30 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app2")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify app deleted
     let response = server
         .get("/api/apps/com.example.app2")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 
     // Verify list updated
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
@@ -461,20 +537,29 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     // Verify nothing deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -485,23 +570,36 @@ async fn test_multi_app_database_operations() {
     // Delete version 2
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Delete version 3 (last one) - should also delete the app
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/3")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", admin_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify app auto-deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
-    assert_eq!(response.status_code(), StatusCode::NOT_FOUND, "App should be auto-deleted when last version is removed");
+    assert_eq!(
+        response.status_code(),
+        StatusCode::NOT_FOUND,
+        "App should be auto-deleted when last version is removed"
+    );
 
     // =========================================================================
     // PHASE 9: Final state check
@@ -509,7 +607,10 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", user_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
         .await;
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
@@ -529,7 +630,10 @@ async fn test_token_expiration_handling() {
     // Test with valid token works
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", valid_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", valid_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -537,22 +641,39 @@ async fn test_token_expiration_handling() {
     let expired_token = mock_oidc.get_expired_token();
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", expired_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", expired_token).parse().unwrap(),
+        )
         .await;
-    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED, "Expired token should be rejected");
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Expired token should be rejected"
+    );
 
     // Test with wrong audience
     let wrong_aud_token = mock_oidc.get_token_with_audience("wrong-app");
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", wrong_aud_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", wrong_aud_token).parse().unwrap(),
+        )
         .await;
-    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED, "Wrong audience should be rejected");
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Wrong audience should be rejected"
+    );
 
     // Valid token should still work
     let response = server
         .get("/api/apps")
-        .add_header("Authorization".parse().unwrap(), format!("Bearer {}", valid_token).parse().unwrap())
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", valid_token).parse().unwrap(),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 }
@@ -600,12 +721,11 @@ async fn failed_database_delete_does_not_remove_app_files() {
         .await;
 
     assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
-    let app_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM apps WHERE package_name = 'com.example.atomic'",
-    )
-    .fetch_one(&ctx.pool)
-    .await
-    .unwrap();
+    let app_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM apps WHERE package_name = 'com.example.atomic'")
+            .fetch_one(&ctx.pool)
+            .await
+            .unwrap();
     assert_eq!(app_count, 1);
     assert!(
         apk_path.exists(),

@@ -31,7 +31,9 @@ fn container_enables_frontend_embedding_for_release_builds() {
     let dockerfile = include_str!("../../Dockerfile");
 
     assert_eq!(
-        dockerfile.matches("cargo build --release --features embed-frontend").count(),
+        dockerfile
+            .matches("cargo build --release --features embed-frontend")
+            .count(),
         2,
         "both cached and final release builds must use the same frontend feature",
     );

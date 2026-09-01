@@ -104,7 +104,13 @@ impl MockOidc {
         self.generate_token(false, "test-user", audience, 3600)
     }
 
-    fn generate_token(&self, is_admin: bool, subject: &str, audience: &str, expires_in_secs: i64) -> String {
+    fn generate_token(
+        &self,
+        is_admin: bool,
+        subject: &str,
+        audience: &str,
+        expires_in_secs: i64,
+    ) -> String {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

@@ -266,7 +266,7 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
     }
 
     // Choose the highest density icon
-    icon_paths.sort_by(|a, b| b.0.cmp(&a.0));
+    icon_paths.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
     let icon_path = icon_paths.into_iter().next().map(|(_, path)| path);
 
     let package_name =

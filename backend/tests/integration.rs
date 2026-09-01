@@ -228,9 +228,7 @@ async fn test_download_apk_success() {
     )
     .await;
 
-    let response = server
-        .get("/api/apps/com.example.app/versions/1/apk")
-        .await;
+    let response = server.get("/api/apps/com.example.app/versions/1/apk").await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // Check headers

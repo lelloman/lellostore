@@ -22,7 +22,12 @@ fn main() {
     let dist_dir = frontend_dir.join("dist");
 
     // Check if dist exists and has content - skip rebuild if already built
-    if dist_dir.exists() && dist_dir.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false) {
+    if dist_dir.exists()
+        && dist_dir
+            .read_dir()
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
+    {
         return;
     }
 

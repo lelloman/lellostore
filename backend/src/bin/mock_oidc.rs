@@ -87,7 +87,6 @@ fn default_subject() -> String {
 }
 
 fn get_public_key_components() -> (String, String) {
-
     // These are the n and e values extracted from the public key
     // n (modulus) - extracted from the public key
     let n = "2a2rwplBQLF5bZrFaHMz4Dv-sxX0qyMje3TCgwe8NfEOTCpH5gXBCGvJhKWxkhMsySH-S2PJfBgXmyFxOCVp3PjLVnxXdOxwetpFdPRxxgfKGgqjFKxKUzShN5PwagMgVOqnfBkgquEf3bkDLBxgwGCvPT0KTGE-oYJiPmVqS_YyihjtQrJLmXBz0vkEuPM7rLWFzxN7EGOrGqwj6txkY7P7ZwcFtKDKljBgDyDc0cFHaPnPn1vsyMiyg-E4azu6E3xJjrrGvaZ3EOWK6uFgbKmFjkWwNhPMpEqPl_pXkGpPvfBBt5Mkn_lODnKcVbJPqwfUSDXpYxLvjSMBaddxBw";
@@ -199,6 +198,8 @@ async fn main() {
         .route("/jwks", get(jwks))
         .route("/token", get(get_token));
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:9999").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:9999")
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
 }

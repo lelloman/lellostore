@@ -40,8 +40,22 @@ pub async fn serve_static(uri: Uri) -> impl IntoResponse {
         .map(|(_, ext)| {
             matches!(
                 ext.to_lowercase().as_str(),
-                "js" | "css" | "html" | "json" | "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico"
-                    | "woff" | "woff2" | "ttf" | "eot" | "map" | "webp" | "avif"
+                "js" | "css"
+                    | "html"
+                    | "json"
+                    | "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "svg"
+                    | "ico"
+                    | "woff"
+                    | "woff2"
+                    | "ttf"
+                    | "eot"
+                    | "map"
+                    | "webp"
+                    | "avif"
             )
         })
         .unwrap_or(false);
