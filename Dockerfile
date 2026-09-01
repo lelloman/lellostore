@@ -95,6 +95,10 @@ COPY --from=backend-builder /app/target/release/lellostore-backend /usr/local/bi
 # Switch to non-root user
 USER lellostore
 
+# Containers need to listen beyond their own loopback interface. The native
+# binary keeps its safer loopback default for non-container deployments.
+ENV LISTEN_ADDR=0.0.0.0:8080
+
 # Expose default port
 EXPOSE 8080
 
