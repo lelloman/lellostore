@@ -276,10 +276,11 @@ def upload_apk(apk_path: Path, token: str, name: str = None, description: str = 
     try:
         with urllib.request.urlopen(req, timeout=300) as resp:
             result = json.loads(resp.read().decode())
+            version = result.get("version", {})
             print(f"\nSuccess!")
-            print(f"  Package: {result.get('packageName')}")
+            print(f"  Package: {result.get('package_name')}")
             print(f"  Name:    {result.get('name')}")
-            print(f"  Version: {result.get('version', {}).get('versionName')} ({result.get('version', {}).get('versionCode')})")
+            print(f"  Version: {version.get('version_name')} ({version.get('version_code')})")
             return result
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
