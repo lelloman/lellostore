@@ -401,14 +401,18 @@ pub async fn delete_app(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
 
-    // Delete all storage files
-    state
-        .storage
-        .delete_package(&package_name)
-        .map_err(|e| AppError::Internal(format!("Failed to delete files: {}", e)))?;
-
     // Delete from database (cascades to versions due to FK)
     db::delete_app(&state.db, &package_name).await?;
+
+    // The database is authoritative. Clean files only after its atomic delete
+    // succeeds so a database failure cannot leave broken download records.
+    if let Err(error) = state.storage.delete_package(&package_name) {
+        tracing::warn!(
+            package_name,
+            %error,
+            "App was deleted from the catalog but its files could not be cleaned up"
+        );
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -526,22 +530,31 @@ pub async fn delete_version(
     // Check if this is the last version
     let is_last_version = versions.len() == 1;
 
-    // Delete APK file
-    state
-        .storage
-        .delete_apk(&package_name, version_code)
-        .map_err(|e| AppError::Internal(format!("Failed to delete APK: {}", e)))?;
-
-    // Delete from database
-    db::delete_app_version(&state.db, &package_name, version_code).await?;
-
-    // If this was the last version, also delete the app
+    // Commit the catalog change first. Deleting the app directly when this is
+    // its final version lets the foreign-key cascade make it one DB operation.
     if is_last_version {
-        state
-            .storage
-            .delete_icon(&package_name)
-            .map_err(|e| AppError::Internal(format!("Failed to delete icon: {}", e)))?;
         db::delete_app(&state.db, &package_name).await?;
+    } else {
+        db::delete_app_version(&state.db, &package_name, version_code).await?;
+    }
+
+    if let Err(error) = state.storage.delete_apk(&package_name, version_code) {
+        tracing::warn!(
+            package_name,
+            version_code,
+            %error,
+            "Version was deleted from the catalog but its APK could not be cleaned up"
+        );
+    }
+
+    if is_last_version {
+        if let Err(error) = state.storage.delete_icon(&package_name) {
+            tracing::warn!(
+                package_name,
+                %error,
+                "App was deleted from the catalog but its icon could not be cleaned up"
+            );
+        }
     }
 
     Ok(StatusCode::NO_CONTENT)

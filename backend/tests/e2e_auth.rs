@@ -556,3 +556,59 @@ async fn test_token_expiration_handling() {
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn failed_database_delete_does_not_remove_app_files() {
+    let (ctx, mock_oidc) = create_auth_test_context().await;
+    let apk_dir = ctx.storage_path.join("apks/com.example.atomic");
+    std::fs::create_dir_all(&apk_dir).unwrap();
+    let apk_path = apk_dir.join("1.apk");
+    std::fs::write(&apk_path, b"apk contents").unwrap();
+
+    sqlx::query(
+        "INSERT INTO apps (package_name, name, created_at, updated_at) \
+         VALUES ('com.example.atomic', 'Atomic App', datetime('now'), datetime('now'))",
+    )
+    .execute(&ctx.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO app_versions \
+         (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, uploaded_at) \
+         VALUES ('com.example.atomic', 1, '1.0', 'apks/com.example.atomic/1.apk', 12, 'hash', 21, datetime('now'))",
+    )
+    .execute(&ctx.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER prevent_app_delete BEFORE DELETE ON apps \
+         BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END",
+    )
+    .execute(&ctx.pool)
+    .await
+    .unwrap();
+
+    let server = TestServer::new(ctx.router).unwrap();
+    let response = server
+        .delete("/api/admin/apps/com.example.atomic")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", mock_oidc.get_admin_token())
+                .parse()
+                .unwrap(),
+        )
+        .await;
+
+    assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    let app_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM apps WHERE package_name = 'com.example.atomic'",
+    )
+    .fetch_one(&ctx.pool)
+    .await
+    .unwrap();
+    assert_eq!(app_count, 1);
+    assert!(
+        apk_path.exists(),
+        "a database failure must not leave a record pointing to a deleted APK",
+    );
+}
