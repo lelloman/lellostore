@@ -96,8 +96,12 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/apps",
             get(handlers::list_admin_apps).post(handlers::upload_app),
         )
-        .route("/apps/:package_name", put(handlers::update_app))
-        .route("/apps/:package_name", delete(handlers::delete_app))
+        .route(
+            "/apps/:package_name",
+            get(handlers::get_admin_app)
+                .put(handlers::update_app)
+                .delete(handlers::delete_app),
+        )
         .route("/apps/:package_name/icon", post(handlers::upload_icon))
         .route(
             "/apps/:package_name/versions/:version_code",

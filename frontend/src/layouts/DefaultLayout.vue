@@ -18,6 +18,16 @@
           Catalog
         </v-btn>
 
+        <v-btn
+          v-if="authStore.isAdmin"
+          class="catalog-link d-none d-sm-flex ml-2"
+          :to="{ name: 'access-admin' }"
+          variant="text"
+          prepend-icon="mdi-account-key-outline"
+        >
+          Access
+        </v-btn>
+
         <v-spacer />
 
         <v-chip

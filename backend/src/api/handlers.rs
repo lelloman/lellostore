@@ -219,6 +219,14 @@ pub async fn list_admin_apps(
     list_apps(State(state)).await
 }
 
+pub async fn get_admin_app(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Path(package_name): Path<String>,
+) -> Result<Json<AppDetailResponse>, AppError> {
+    get_app(State(state), Path(package_name)).await
+}
+
 pub async fn get_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,

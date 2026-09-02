@@ -51,3 +51,42 @@ describe('api.downloadApk', () => {
     )
   })
 })
+
+describe('api access administration', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    authStore.accessToken = 'access-token'
+  })
+
+  it('encodes direct-grant targets and sends the selected access level', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 204,
+      ok: true,
+    } as Response)
+
+    await api.setDirectGrant('oidc/user 1', 'com.example.app', 'beta')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/users/oidc%2Fuser%201/apps/com.example.app',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ access_level: 'beta' }),
+      })
+    )
+  })
+
+  it('uses the dedicated complete catalogue for administration', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: vi.fn().mockResolvedValue({ apps: [] }),
+    } as unknown as Response)
+
+    await api.getAdminApps()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/apps',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer access-token' }) })
+    )
+  })
+})

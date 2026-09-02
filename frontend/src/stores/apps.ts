@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api, type App, type AppListItem } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 export const useAppsStore = defineStore('apps', () => {
   // State
@@ -21,7 +22,7 @@ export const useAppsStore = defineStore('apps', () => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await api.getApps()
+      const response = useAuthStore().isAdmin ? await api.getAdminApps() : await api.getApps()
       apps.value = response.apps
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch apps'
@@ -36,7 +37,9 @@ export const useAppsStore = defineStore('apps', () => {
     error.value = null
     currentApp.value = null
     try {
-      currentApp.value = await api.getApp(packageName)
+      currentApp.value = useAuthStore().isAdmin
+        ? await api.getAdminApp(packageName)
+        : await api.getApp(packageName)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch app'
       throw e

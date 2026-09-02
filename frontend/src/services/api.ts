@@ -146,7 +146,10 @@ export interface AppVersion {
   min_sdk: number
   uploaded_at: string
   apk_url: string
+  is_beta?: boolean
 }
+
+export type AccessLevel = 'stable' | 'beta'
 
 // Version info in list endpoint (subset of full version)
 export interface LatestVersionInfo {
@@ -155,6 +158,7 @@ export interface LatestVersionInfo {
   size: number
   min_sdk: number
   uploaded_at: string
+  is_beta?: boolean
 }
 
 // App in list response
@@ -165,6 +169,7 @@ export interface AppListItem {
   icon_url: string
   total_size: number
   latest_version?: LatestVersionInfo
+  access_level?: AccessLevel
 }
 
 // App in detail response
@@ -174,6 +179,35 @@ export interface App {
   description?: string
   icon_url: string
   versions: AppVersion[]
+  access_level?: AccessLevel
+}
+
+export interface KnownUser {
+  subject: string
+  email?: string
+  first_seen_at: string
+  last_seen_at: string
+}
+
+export interface AppGrant {
+  package_name: string
+  access_level: AccessLevel
+}
+
+export interface AppGroup {
+  id: number
+  name: string
+  created_at: string
+  updated_at: string
+  grants: AppGrant[]
+  user_subjects: string[]
+}
+
+export interface UserAccess {
+  user: KnownUser
+  direct_grants: AppGrant[]
+  groups: Array<Omit<AppGroup, 'grants' | 'user_subjects'>>
+  effective_access: AppGrant[]
 }
 
 export interface AppsResponse {
@@ -217,15 +251,100 @@ export const api = {
   },
 
   // Admin endpoints
+  async getAdminApps(): Promise<AppsResponse> {
+    return request('/api/admin/apps')
+  },
+
+  async getAdminApp(packageName: string): Promise<App> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}`)
+  },
+
+  async getAdminUsers(): Promise<{ users: KnownUser[] }> {
+    return request('/api/admin/users')
+  },
+
+  async getUserAccess(subject: string): Promise<UserAccess> {
+    return request(`/api/admin/users/${encodeURIComponent(subject)}/access`)
+  },
+
+  async setDirectGrant(subject: string, packageName: string, accessLevel: AccessLevel): Promise<void> {
+    return request(`/api/admin/users/${encodeURIComponent(subject)}/apps/${encodeURIComponent(packageName)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ access_level: accessLevel }),
+    })
+  },
+
+  async removeDirectGrant(subject: string, packageName: string): Promise<void> {
+    return request(`/api/admin/users/${encodeURIComponent(subject)}/apps/${encodeURIComponent(packageName)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getAppGroups(): Promise<{ groups: AppGroup[] }> {
+    return request('/api/admin/app-groups')
+  },
+
+  async createAppGroup(name: string): Promise<Omit<AppGroup, 'grants' | 'user_subjects'>> {
+    return request('/api/admin/app-groups', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    })
+  },
+
+  async renameAppGroup(groupId: number, name: string): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    })
+  },
+
+  async deleteAppGroup(groupId: number): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}`, { method: 'DELETE' })
+  },
+
+  async setGroupGrant(groupId: number, packageName: string, accessLevel: AccessLevel): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}/apps/${encodeURIComponent(packageName)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ access_level: accessLevel }),
+    })
+  },
+
+  async removeGroupGrant(groupId: number, packageName: string): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}/apps/${encodeURIComponent(packageName)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async addGroupMember(groupId: number, subject: string): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}/users/${encodeURIComponent(subject)}`, {
+      method: 'PUT',
+    })
+  },
+
+  async removeGroupMember(groupId: number, subject: string): Promise<void> {
+    return request(`/api/admin/app-groups/${groupId}/users/${encodeURIComponent(subject)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async setReleaseChannel(packageName: string, versionCode: number, isBeta: boolean): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/versions/${versionCode}`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_beta: isBeta }),
+    })
+  },
+
   async uploadApp(
     file: File,
     name?: string,
-    description?: string
+    description?: string,
+    isBeta = false
   ): Promise<UploadResponse> {
     const formData = new FormData()
     formData.append('file', file)
     if (name) formData.append('name', name)
     if (description) formData.append('description', description)
+    formData.append('is_beta', String(isBeta))
 
     return request('/api/admin/apps', {
       method: 'POST',

@@ -4,6 +4,12 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/access',
+    name: 'access-admin',
+    component: () => import('@/views/AdminAccessView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
     path: '/',
     redirect: { name: 'apps' },
   },
@@ -69,6 +75,11 @@ router.beforeEach(async (to, _from, next) => {
     // Save intended destination for after login
     sessionStorage.setItem('redirectPath', to.fullPath)
     next({ name: 'login' })
+    return
+  }
+
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    next({ name: 'apps' })
     return
   }
 
