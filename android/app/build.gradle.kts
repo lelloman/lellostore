@@ -18,6 +18,13 @@ val localProperties = Properties().apply {
 
 val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
 
+val signingProperties = Properties().apply {
+    val signingPropertiesFile = rootProject.file("signing.properties")
+    if (signingPropertiesFile.exists()) {
+        signingPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     lint {
         warningsAsErrors = true
@@ -39,6 +46,19 @@ android {
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServerUrl\"")
     }
+    signingConfigs {
+        getByName("debug") {
+            // Uses the default debug keystore.
+        }
+        if (signingProperties.containsKey("storeFile")) {
+            create("release") {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
 
     buildTypes {
         debug {
@@ -52,6 +72,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+        create("releaseDebugSigned") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {
