@@ -26,4 +26,5 @@ pub struct AppVersion {
     pub sha256: String,
     pub min_sdk: i64,
     pub uploaded_at: String,
+    pub is_beta: bool,
 }
