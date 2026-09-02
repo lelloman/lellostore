@@ -268,21 +268,23 @@ private fun AppDetailContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.app_update_preferences),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        PolicyItem(
-            title = stringResource(R.string.app_auto_update),
-            value = app.autoUpdateOverride.displayName(app.effectiveAutoUpdate),
-            onClick = { showAutoUpdateDialog = true },
-        )
-        PolicyItem(
-            title = stringResource(R.string.app_release_channel),
-            value = app.releaseChannelOverride.displayName(app.effectiveReleaseChannel),
-            onClick = { showReleaseChannelDialog = true },
-        )
+        if (app.isPolicyConfigurable) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.app_update_preferences),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            PolicyItem(
+                title = stringResource(R.string.app_auto_update),
+                value = app.autoUpdateOverride.displayName(app.effectiveAutoUpdate),
+                onClick = { showAutoUpdateDialog = true },
+            )
+            PolicyItem(
+                title = stringResource(R.string.app_release_channel),
+                value = app.releaseChannelOverride.displayName(app.effectiveReleaseChannel),
+                onClick = { showReleaseChannelDialog = true },
+            )
+        }
 
         // Description
         app.description?.let { description ->

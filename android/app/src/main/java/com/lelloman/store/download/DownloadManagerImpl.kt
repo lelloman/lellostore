@@ -71,6 +71,7 @@ class DownloadManagerImpl @Inject constructor(
 
         var destination: File? = null
         var finalState = DownloadState.FAILED
+        var retainVerifiedApk = false
 
         try {
             updateProgress(packageName, DownloadState.PENDING, 0f, 0, 0)
@@ -91,9 +92,16 @@ class DownloadManagerImpl @Inject constructor(
 
             destination = File(apksDir, "$packageName-$versionCode.apk")
 
-            // Download APK
-            val inputStream = remoteApiClient.downloadApk(packageName, versionCode).getOrThrow()
-            downloadToFile(inputStream, destination, packageName, expectedSize)
+            val cachedApkIsValid = destination.isFile &&
+                destination.length() == expectedSize &&
+                calculateSha256(destination).equals(expectedSha256, ignoreCase = true)
+            if (!cachedApkIsValid) {
+                destination.delete()
+                val inputStream = remoteApiClient.downloadApk(packageName, versionCode).getOrThrow()
+                downloadToFile(inputStream, destination, packageName, expectedSize)
+            } else {
+                logger.i(tag, "Reusing verified APK for $packageName")
+            }
 
             // Verify SHA256
             updateProgress(packageName, DownloadState.VERIFYING, 1f, destination.length(), destination.length())
@@ -122,6 +130,11 @@ class DownloadManagerImpl @Inject constructor(
                     finalState = DownloadState.PERMISSION_REQUIRED
                     updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
                 }
+                is InstallationResult.UserActionRequired -> {
+                    retainVerifiedApk = true
+                    finalState = DownloadState.PERMISSION_REQUIRED
+                    updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
+                }
                 is InstallationResult.Failed -> {
                     throw IllegalStateException(
                         installResult.reasons.joinToString("; ").ifEmpty { "Installation failed" }
@@ -132,7 +145,7 @@ class DownloadManagerImpl @Inject constructor(
         } catch (e: CancellationException) {
             finalState = DownloadState.CANCELLED
             updateProgress(packageName, DownloadState.CANCELLED, 0f, 0, 0)
-            destination?.delete()
+            if (!retainVerifiedApk) destination?.delete()
             throw e
         } catch (e: Exception) {
             finalState = DownloadState.FAILED
@@ -153,7 +166,11 @@ class DownloadManagerImpl @Inject constructor(
         return when (finalState) {
             DownloadState.COMPLETED -> DownloadResult.Success
             DownloadState.CANCELLED -> DownloadResult.Cancelled
-            DownloadState.PERMISSION_REQUIRED -> DownloadResult.PermissionRequired
+            DownloadState.PERMISSION_REQUIRED -> if (retainVerifiedApk) {
+                DownloadResult.UserActionRequired
+            } else {
+                DownloadResult.PermissionRequired
+            }
             else -> DownloadResult.Failed("Download failed")
         }
     }

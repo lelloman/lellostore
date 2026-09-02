@@ -16,6 +16,7 @@ import com.lelloman.store.domain.preferences.AppUpdatePolicyResolver
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
+import com.lelloman.store.domain.updates.ProtectedStorePackages
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,7 +105,7 @@ class AppDetailViewModel @Inject constructor(
         )
         val channelVersions = when (policy.effectiveChannel) {
             ReleaseChannel.Stable -> app.versions.filterNot { it.isBeta }
-            ReleaseChannel.Beta -> app.versions.filter { it.isBeta }
+            ReleaseChannel.Beta -> app.versions
         }
         val latestVersion = (channelVersions.ifEmpty { app.versions }).maxByOrNull { it.versionCode } ?: return null
         val installedVersionUi = installed?.let { inst ->
@@ -133,6 +134,7 @@ class AppDetailViewModel @Inject constructor(
             effectiveAutoUpdate = policy.autoUpdateEnabled,
             effectiveReleaseChannel = policy.effectiveChannel,
             hasBetaAccess = app.accessLevel == AppAccessLevel.Beta,
+            isPolicyConfigurable = !ProtectedStorePackages.contains(app.packageName),
         )
     }
 
@@ -226,10 +228,12 @@ class AppDetailViewModel @Inject constructor(
     }
 
     fun onAutoUpdateOverrideChanged(override: AutoUpdateOverride) {
+        if (mutableState.value.app?.isPolicyConfigurable != true) return
         viewModelScope.launch { interactor.setAutoUpdateOverride(packageName, override) }
     }
 
     fun onReleaseChannelOverrideChanged(override: ReleaseChannelOverride) {
+        if (mutableState.value.app?.isPolicyConfigurable != true) return
         if (override == ReleaseChannelOverride.Beta && mutableState.value.app?.hasBetaAccess != true) return
         viewModelScope.launch { interactor.setReleaseChannelOverride(packageName, override) }
     }

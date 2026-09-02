@@ -30,7 +30,11 @@ class InstallationCoordinator @Inject constructor(
                 InstallationMode.FOREGROUND -> "No installation channels are registered"
                 InstallationMode.BACKGROUND -> "No background installation channels are available"
             }
-            return InstallationResult.Failed(listOf(reason))
+            return if (request.mode == InstallationMode.BACKGROUND) {
+                InstallationResult.UserActionRequired(listOf(reason))
+            } else {
+                InstallationResult.Failed(listOf(reason))
+            }
         }
 
         val failures = mutableListOf<String>()
@@ -66,7 +70,11 @@ class InstallationCoordinator @Inject constructor(
             }
         }
 
-        return permissionRequired ?: InstallationResult.Failed(failures)
+        return if (request.mode == InstallationMode.BACKGROUND) {
+            InstallationResult.UserActionRequired(failures)
+        } else {
+            permissionRequired ?: InstallationResult.Failed(failures)
+        }
     }
 
     private companion object {
@@ -81,5 +89,6 @@ sealed interface InstallationResult {
         val channel: InstallationChannelMetadata,
         val reason: String,
     ) : InstallationResult
+    data class UserActionRequired(val reasons: List<String>) : InstallationResult
     data class Failed(val reasons: List<String>) : InstallationResult
 }

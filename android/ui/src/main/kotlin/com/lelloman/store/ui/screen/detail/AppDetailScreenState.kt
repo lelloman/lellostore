@@ -29,6 +29,7 @@ data class AppDetailUiModel(
     val effectiveAutoUpdate: Boolean,
     val effectiveReleaseChannel: ReleaseChannel,
     val hasBetaAccess: Boolean,
+    val isPolicyConfigurable: Boolean,
 )
 
 data class AppVersionUiModel(

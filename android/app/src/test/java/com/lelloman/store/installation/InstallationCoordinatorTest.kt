@@ -38,8 +38,8 @@ class InstallationCoordinatorTest {
 
         val result = coordinator.install(request(InstallationMode.BACKGROUND))
 
-        assertThat(result).isInstanceOf(InstallationResult.Failed::class.java)
-        assertThat((result as InstallationResult.Failed).reasons)
+        assertThat(result).isInstanceOf(InstallationResult.UserActionRequired::class.java)
+        assertThat((result as InstallationResult.UserActionRequired).reasons)
             .containsExactly("No background installation channels are available")
         assertThat(interactive.attempts).isEqualTo(0)
     }
@@ -63,6 +63,30 @@ class InstallationCoordinatorTest {
         assertThat(result).isEqualTo(InstallationResult.UserActionStarted(interactive.metadata))
         assertThat(silent.attempts).isEqualTo(1)
         assertThat(interactive.attempts).isEqualTo(1)
+    }
+
+    @Test
+    fun `background request fails over between non-interactive channels only`() = runTest {
+        val legacy = fakeChannel(
+            id = "legacy-adb",
+            requiresUser = false,
+            priority = 10,
+            result = ChannelInstallationResult.Unavailable("port closed"),
+        )
+        val wireless = fakeChannel(
+            id = "wireless-tls-adb",
+            requiresUser = false,
+            priority = 20,
+        )
+        val interactive = fakeChannel("package-installer", requiresUser = true, priority = 100)
+        val coordinator = InstallationCoordinator(setOf(interactive, wireless, legacy), logger)
+
+        val result = coordinator.install(request(InstallationMode.BACKGROUND))
+
+        assertThat(result).isEqualTo(InstallationResult.Installed(wireless.metadata))
+        assertThat(legacy.attempts).isEqualTo(1)
+        assertThat(wireless.attempts).isEqualTo(1)
+        assertThat(interactive.attempts).isEqualTo(0)
     }
 
     @Test

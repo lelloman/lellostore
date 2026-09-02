@@ -7,11 +7,15 @@ import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
+import com.lelloman.store.installation.InstallationResult
+import com.lelloman.store.installation.InstallationChannelMetadata
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -139,9 +143,41 @@ class DownloadManagerImplTest {
         }
     }
 
+    @Test
+    fun `background fallback retains verified apk for foreground retry`() = runTest {
+        val bytes = "apk".toByteArray()
+        val detail = createAppDetail(
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong(),
+        )
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } returns
+            Result.success(ByteArrayInputStream(bytes))
+        coEvery {
+            installationCoordinator.install(match { it.mode == InstallationMode.BACKGROUND })
+        } returns InstallationResult.UserActionRequired(listOf("No silent channel"))
+        coEvery {
+            installationCoordinator.install(match { it.mode == InstallationMode.FOREGROUND })
+        } returns InstallationResult.UserActionStarted(
+            InstallationChannelMetadata("package-installer", "Package installer", true, 100)
+        )
+
+        val backgroundResult = downloadManager.downloadAndInstall(
+            "com.test.app",
+            1,
+            InstallationMode.BACKGROUND,
+        )
+        val foregroundResult = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(backgroundResult).isEqualTo(DownloadResult.UserActionRequired)
+        assertThat(foregroundResult).isEqualTo(DownloadResult.Success)
+        coVerify(exactly = 1) { remoteApiClient.downloadApk("com.test.app", 1) }
+    }
+
     private fun createAppDetail(
         packageName: String = "com.test.app",
         sha256: String = "abc123",
+        size: Long = 1000,
     ) = AppDetail(
         packageName = packageName,
         name = "Test App",
@@ -151,7 +187,7 @@ class DownloadManagerImplTest {
             AppVersion(
                 versionCode = 1,
                 versionName = "1.0.0",
-                size = 1000,
+                size = size,
                 sha256 = sha256,
                 minSdk = 21,
                 uploadedAt = Instant.parse("2024-01-01T00:00:00Z"),

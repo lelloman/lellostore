@@ -42,5 +42,7 @@ sealed interface DownloadResult {
     data object Success : DownloadResult
     data object Cancelled : DownloadResult
     data object PermissionRequired : DownloadResult
+    /** The verified APK is retained for a later foreground installation. */
+    data object UserActionRequired : DownloadResult
     data class Failed(val reason: String) : DownloadResult
 }

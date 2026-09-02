@@ -4,8 +4,16 @@ import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.model.App
+import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.domain.model.InstalledApp
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.AppAccessLevel
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
+import com.lelloman.store.domain.preferences.ThemeMode
+import com.lelloman.store.domain.preferences.UpdateCheckInterval
+import com.lelloman.store.domain.preferences.UserPreferencesStore
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -33,7 +41,7 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = mockk { every { watchApps() } returns appsFlow },
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = testScope,
+            userPreferencesStore = createPreferences(),
         )
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
@@ -51,11 +59,8 @@ class UpdateCheckerImplTest {
         val appsFlow = MutableStateFlow(listOf(app))
         val installedAppsFlow = MutableStateFlow(listOf(installed))
 
-        val updateChecker = UpdateCheckerImpl(
-            appsRepository = mockk { every { watchApps() } returns appsFlow },
-            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = testScope,
-        )
+        val updateChecker = createChecker(appsFlow, installedAppsFlow)
+        updateChecker.checkForUpdates().getOrThrow()
 
         assertThat(updateChecker.availableUpdates.value).hasSize(1)
         val update = updateChecker.availableUpdates.value.first()
@@ -75,11 +80,8 @@ class UpdateCheckerImplTest {
         val appsFlow = MutableStateFlow(listOf(app))
         val installedAppsFlow = MutableStateFlow(listOf(installed))
 
-        val updateChecker = UpdateCheckerImpl(
-            appsRepository = mockk { every { watchApps() } returns appsFlow },
-            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = testScope,
-        )
+        val updateChecker = createChecker(appsFlow, installedAppsFlow)
+        updateChecker.checkForUpdates().getOrThrow()
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
         testScope.cancel()
@@ -95,11 +97,8 @@ class UpdateCheckerImplTest {
         val appsFlow = MutableStateFlow(listOf(app))
         val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
 
-        val updateChecker = UpdateCheckerImpl(
-            appsRepository = mockk { every { watchApps() } returns appsFlow },
-            installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
-            scope = testScope,
-        )
+        val updateChecker = createChecker(appsFlow, installedAppsFlow)
+        updateChecker.checkForUpdates().getOrThrow()
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
         testScope.cancel()
@@ -119,6 +118,7 @@ class UpdateCheckerImplTest {
         val appsRepository: AppsRepository = mockk {
             every { watchApps() } returns appsFlow
             coEvery { refreshApps() } returns Result.success(Unit)
+            coEvery { refreshApp(app.packageName) } returns Result.success(app.toDetail())
         }
         val installedAppsRepository: InstalledAppsRepository = mockk {
             every { watchInstalledApps() } returns installedAppsFlow
@@ -128,7 +128,7 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
-            scope = testScope,
+            userPreferencesStore = createPreferences(),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -151,6 +151,7 @@ class UpdateCheckerImplTest {
                 appsFlow.value = listOf(app)
                 Result.success(Unit)
             }
+            coEvery { refreshApp(app.packageName) } returns Result.success(app.toDetail())
         }
         val installedAppsRepository: InstalledAppsRepository = mockk {
             every { watchInstalledApps() } returns installedAppsFlow
@@ -161,7 +162,7 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
-            scope = testScope,
+            userPreferencesStore = createPreferences(),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -189,13 +190,56 @@ class UpdateCheckerImplTest {
         val updateChecker = UpdateCheckerImpl(
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
-            scope = testScope,
+            userPreferencesStore = createPreferences(),
         )
 
         val result = updateChecker.checkForUpdates()
 
         assertThat(result.isFailure).isTrue()
         testScope.cancel()
+    }
+
+    @Test
+    fun `stable policy selects stable release and preserves disabled auto update`() = runTest {
+        val catalogApp = createApp("com.test.app", versionCode = 4).copy(
+            accessLevel = AppAccessLevel.Beta,
+            latestVersion = createVersion(4, beta = true),
+        )
+        val detail = catalogApp.toDetail().copy(
+            versions = listOf(createVersion(4, beta = true), createVersion(3)),
+        )
+        val checker = createChecker(
+            apps = MutableStateFlow(listOf(catalogApp)),
+            installed = MutableStateFlow(listOf(InstalledApp("com.test.app", 1, "1"))),
+            preferences = createPreferences(autoUpdate = false, channel = ReleaseChannel.Stable),
+            details = mapOf(catalogApp.packageName to detail),
+        )
+
+        val update = checker.checkForUpdates().getOrThrow().single()
+
+        assertThat(update.app.latestVersion.versionCode).isEqualTo(3)
+        assertThat(update.autoUpdateEnabled).isFalse()
+    }
+
+    @Test
+    fun `beta policy selects newest stable or beta release`() = runTest {
+        val catalogApp = createApp("com.test.app", versionCode = 5).copy(
+            accessLevel = AppAccessLevel.Beta,
+            latestVersion = createVersion(5),
+        )
+        val detail = catalogApp.toDetail().copy(
+            versions = listOf(createVersion(5), createVersion(4, beta = true)),
+        )
+        val checker = createChecker(
+            apps = MutableStateFlow(listOf(catalogApp)),
+            installed = MutableStateFlow(listOf(InstalledApp("com.test.app", 1, "1"))),
+            preferences = createPreferences(channel = ReleaseChannel.Beta),
+            details = mapOf(catalogApp.packageName to detail),
+        )
+
+        val update = checker.checkForUpdates().getOrThrow().single()
+
+        assertThat(update.app.latestVersion.versionCode).isEqualTo(5)
     }
 
     private fun createApp(packageName: String, versionCode: Int): App {
@@ -213,5 +257,57 @@ class UpdateCheckerImplTest {
                 uploadedAt = Instant.parse("2024-01-01T00:00:00Z"),
             ),
         )
+    }
+
+    private fun createChecker(
+        apps: MutableStateFlow<List<App>>,
+        installed: MutableStateFlow<List<InstalledApp>>,
+        preferences: UserPreferencesStore = createPreferences(),
+        details: Map<String, AppDetail> = apps.value.associate { it.packageName to it.toDetail() },
+    ): UpdateCheckerImpl {
+        val appsRepository: AppsRepository = mockk {
+            every { watchApps() } returns apps
+            coEvery { refreshApps() } returns Result.success(Unit)
+            details.forEach { (packageName, detail) ->
+                coEvery { refreshApp(packageName) } returns Result.success(detail)
+            }
+        }
+        val installedRepository: InstalledAppsRepository = mockk {
+            every { watchInstalledApps() } returns installed
+            coEvery { refreshInstalledApps() } returns Unit
+        }
+        return UpdateCheckerImpl(appsRepository, installedRepository, preferences)
+    }
+
+    private fun App.toDetail() = AppDetail(
+        packageName = packageName,
+        name = name,
+        description = description,
+        iconUrl = iconUrl,
+        versions = listOf(latestVersion),
+        accessLevel = accessLevel,
+    )
+
+    private fun createVersion(code: Int, beta: Boolean = false) = AppVersion(
+        versionCode = code,
+        versionName = code.toString(),
+        size = 1000,
+        sha256 = "abc123",
+        minSdk = 21,
+        uploadedAt = Instant.parse("2024-01-01T00:00:00Z"),
+        isBeta = beta,
+    )
+
+    private fun createPreferences(
+        autoUpdate: Boolean = true,
+        channel: ReleaseChannel = ReleaseChannel.Stable,
+    ): UserPreferencesStore = mockk {
+        every { themeMode } returns MutableStateFlow(ThemeMode.System)
+        every { updateCheckInterval } returns MutableStateFlow(UpdateCheckInterval.Hours24)
+        every { wifiOnlyDownloads } returns MutableStateFlow(true)
+        every { autoUpdateDefault } returns MutableStateFlow(autoUpdate)
+        every { releaseChannelDefault } returns MutableStateFlow(channel)
+        every { autoUpdateOverride(any()) } returns MutableStateFlow(AutoUpdateOverride.Inherit)
+        every { releaseChannelOverride(any()) } returns MutableStateFlow(ReleaseChannelOverride.Inherit)
     }
 }

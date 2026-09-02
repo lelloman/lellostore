@@ -41,4 +41,5 @@ data class AvailableUpdate(
     val app: App,
     val installedVersionCode: Int,
     val installedVersionName: String,
+    val autoUpdateEnabled: Boolean = false,
 )

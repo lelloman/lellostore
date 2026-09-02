@@ -5,6 +5,9 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.lelloman.store.domain.updates.UpdateChecker
+import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadResult
+import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.notification.NotificationHelper
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -14,6 +17,7 @@ class UpdateCheckWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val updateChecker: UpdateChecker,
+    private val downloadManager: DownloadManager,
     private val notificationHelper: NotificationHelper,
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -22,10 +26,29 @@ class UpdateCheckWorker @AssistedInject constructor(
             val result = updateChecker.checkForUpdates()
             result.fold(
                 onSuccess = { updates ->
-                    if (updates.isNotEmpty()) {
-                        notificationHelper.showUpdatesAvailableNotification(updates.size)
+                    var retryNeeded = false
+                    var remainingUpdates = updates.count { !it.autoUpdateEnabled }
+                    updates.filter { it.autoUpdateEnabled }.forEach { update ->
+                        when (downloadManager.downloadAndInstall(
+                            packageName = update.app.packageName,
+                            versionCode = update.app.latestVersion.versionCode,
+                            installationMode = InstallationMode.BACKGROUND,
+                        )) {
+                            DownloadResult.Success -> Unit
+                            DownloadResult.UserActionRequired,
+                            DownloadResult.PermissionRequired -> remainingUpdates += 1
+                            DownloadResult.Cancelled,
+                            is DownloadResult.Failed -> retryNeeded = true
+                        }
                     }
-                    Result.success()
+                    if (remainingUpdates > 0) {
+                        notificationHelper.showUpdatesAvailableNotification(remainingUpdates)
+                    }
+                    when {
+                        !retryNeeded -> Result.success()
+                        runAttemptCount < MAX_RETRIES -> Result.retry()
+                        else -> Result.failure()
+                    }
                 },
                 onFailure = {
                     if (runAttemptCount < MAX_RETRIES) {
