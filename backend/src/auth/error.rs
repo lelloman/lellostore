@@ -31,6 +31,9 @@ pub enum AuthError {
 
     #[error("Insufficient permissions")]
     Forbidden,
+
+    #[error("Authenticated user directory unavailable: {0}")]
+    UserRegistryUnavailable(String),
 }
 
 impl IntoResponse for AuthError {
@@ -45,7 +48,9 @@ impl IntoResponse for AuthError {
             AuthError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden"),
 
             // Don't leak internal errors
-            AuthError::DiscoveryFailed(_) | AuthError::JwksFailed(_) => {
+            AuthError::DiscoveryFailed(_)
+            | AuthError::JwksFailed(_)
+            | AuthError::UserRegistryUnavailable(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error")
             }
         };

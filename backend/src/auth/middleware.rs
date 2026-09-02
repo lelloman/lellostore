@@ -61,6 +61,12 @@ pub async fn auth_middleware(
     // Create user from claims
     let user = User::from_claims(&claims, &auth.role_claim_path, &auth.admin_role);
 
+    if let Some(pool) = &auth.user_registry {
+        crate::db::admin::observe_user(pool, &user)
+            .await
+            .map_err(|error| AuthError::UserRegistryUnavailable(error.to_string()))?;
+    }
+
     debug!(
         user = %user.subject,
         is_admin = user.is_admin,

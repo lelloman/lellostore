@@ -95,7 +95,32 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .route("/apps/:package_name/icon", post(handlers::upload_icon))
         .route(
             "/apps/:package_name/versions/:version_code",
-            delete(handlers::delete_version),
+            delete(handlers::delete_version).put(handlers::set_admin_release_channel),
+        )
+        .route("/users", get(handlers::list_admin_users))
+        .route(
+            "/users/:subject/access",
+            get(handlers::get_admin_user_access),
+        )
+        .route(
+            "/users/:subject/apps/:package_name",
+            put(handlers::set_admin_direct_grant).delete(handlers::remove_admin_direct_grant),
+        )
+        .route(
+            "/app-groups",
+            get(handlers::list_admin_groups).post(handlers::create_admin_group),
+        )
+        .route(
+            "/app-groups/:group_id",
+            put(handlers::rename_admin_group).delete(handlers::delete_admin_group),
+        )
+        .route(
+            "/app-groups/:group_id/apps/:package_name",
+            put(handlers::set_admin_group_grant).delete(handlers::remove_admin_group_grant),
+        )
+        .route(
+            "/app-groups/:group_id/users/:subject",
+            put(handlers::add_admin_group_member).delete(handlers::remove_admin_group_member),
         )
         .layer(DefaultBodyLimit::max(multipart_body_limit))
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))

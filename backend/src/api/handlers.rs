@@ -9,6 +9,8 @@ use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
 
 use crate::auth::AdminUser;
+use crate::db::access::AppAccessLevel;
+use crate::db::admin::{GroupDetail, KnownUser, UserAccessDetail};
 use crate::db::{self, models::AppVersion};
 use crate::error::AppError;
 
@@ -31,6 +33,7 @@ pub struct LatestVersionInfo {
     pub size: i64,
     pub min_sdk: i64,
     pub uploaded_at: String,
+    pub is_beta: bool,
 }
 
 /// App info for list endpoint
@@ -56,6 +59,7 @@ pub struct AppVersionInfo {
     pub sha256: String,
     pub min_sdk: i64,
     pub uploaded_at: String,
+    pub is_beta: bool,
 }
 
 /// App detail response
@@ -96,6 +100,7 @@ fn to_version_info(v: &AppVersion) -> AppVersionInfo {
         sha256: v.sha256.clone(),
         min_sdk: v.min_sdk,
         uploaded_at: v.uploaded_at.clone(),
+        is_beta: v.is_beta,
     }
 }
 
@@ -163,6 +168,7 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
                 size: v.size,
                 min_sdk: v.min_sdk,
                 uploaded_at: v.uploaded_at,
+                is_beta: v.is_beta,
             }),
         });
     }
@@ -275,6 +281,7 @@ pub async fn upload_app(
     let mut uploaded_file: Option<(String, std::path::PathBuf)> = None;
     let mut override_name: Option<String> = None;
     let mut override_description: Option<String> = None;
+    let mut is_beta = false;
 
     // Process multipart fields
     while let Some(mut field) = multipart
@@ -335,6 +342,18 @@ pub async fn upload_app(
                     override_description = Some(text);
                 }
             }
+            Some("is_beta") => {
+                let text = read_metadata_text(field).await?;
+                is_beta = match text.as_str() {
+                    "true" => true,
+                    "false" => false,
+                    _ => {
+                        return Err(AppError::BadRequest(
+                            "is_beta must be 'true' or 'false'".to_string(),
+                        ))
+                    }
+                };
+            }
             _ => {
                 // Ignore unknown fields
             }
@@ -351,7 +370,13 @@ pub async fn upload_app(
     // Process the upload using UploadService
     let result = state
         .upload_service
-        .process_upload_file(&filename, &upload_path, override_name, override_description)
+        .process_upload_file(
+            &filename,
+            &upload_path,
+            override_name,
+            override_description,
+            is_beta,
+        )
         .await
         .map_err(|e| match e {
             crate::services::UploadError::FileTooLarge { .. } => AppError::PayloadTooLarge,
@@ -594,5 +619,171 @@ pub async fn delete_version(
         }
     }
 
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccessLevelRequest {
+    pub access_level: AppAccessLevel,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupNameRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReleaseChannelRequest {
+    pub is_beta: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UsersResponse {
+    pub users: Vec<KnownUser>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GroupsResponse {
+    pub groups: Vec<GroupDetail>,
+}
+
+pub async fn list_admin_users(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> Result<Json<UsersResponse>, AppError> {
+    Ok(Json(UsersResponse {
+        users: db::admin::list_users(&state.db).await?,
+    }))
+}
+
+pub async fn get_admin_user_access(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Path(subject): Path<String>,
+) -> Result<Json<UserAccessDetail>, AppError> {
+    Ok(Json(db::admin::get_user_access(&state.db, &subject).await?))
+}
+
+pub async fn set_admin_direct_grant(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((subject, package_name)): Path<(String, String)>,
+    Json(request): Json<AccessLevelRequest>,
+) -> Result<StatusCode, AppError> {
+    db::admin::set_direct_grant(
+        &state.db,
+        &admin.0.subject,
+        &subject,
+        &package_name,
+        request.access_level,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_admin_direct_grant(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((subject, package_name)): Path<(String, String)>,
+) -> Result<StatusCode, AppError> {
+    db::admin::remove_direct_grant(&state.db, &admin.0.subject, &subject, &package_name).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_admin_groups(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> Result<Json<GroupsResponse>, AppError> {
+    Ok(Json(GroupsResponse {
+        groups: db::admin::list_groups(&state.db).await?,
+    }))
+}
+
+pub async fn create_admin_group(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Json(request): Json<GroupNameRequest>,
+) -> Result<(StatusCode, Json<db::access::AppGroup>), AppError> {
+    let group = db::admin::create_group(&state.db, &admin.0.subject, &request.name).await?;
+    Ok((StatusCode::CREATED, Json(group)))
+}
+
+pub async fn rename_admin_group(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path(group_id): Path<i64>,
+    Json(request): Json<GroupNameRequest>,
+) -> Result<StatusCode, AppError> {
+    db::admin::rename_group(&state.db, &admin.0.subject, group_id, &request.name).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_admin_group(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path(group_id): Path<i64>,
+) -> Result<StatusCode, AppError> {
+    db::admin::delete_group(&state.db, &admin.0.subject, group_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn set_admin_group_grant(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((group_id, package_name)): Path<(i64, String)>,
+    Json(request): Json<AccessLevelRequest>,
+) -> Result<StatusCode, AppError> {
+    db::admin::set_group_grant(
+        &state.db,
+        &admin.0.subject,
+        group_id,
+        &package_name,
+        request.access_level,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_admin_group_grant(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((group_id, package_name)): Path<(i64, String)>,
+) -> Result<StatusCode, AppError> {
+    db::admin::remove_group_grant(&state.db, &admin.0.subject, group_id, &package_name).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_admin_group_member(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((group_id, subject)): Path<(i64, String)>,
+) -> Result<StatusCode, AppError> {
+    db::admin::set_membership(&state.db, &admin.0.subject, group_id, &subject, true).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_admin_group_member(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((group_id, subject)): Path<(i64, String)>,
+) -> Result<StatusCode, AppError> {
+    db::admin::set_membership(&state.db, &admin.0.subject, group_id, &subject, false).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn set_admin_release_channel(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Path((package_name, version_code)): Path<(String, i64)>,
+    Json(request): Json<ReleaseChannelRequest>,
+) -> Result<StatusCode, AppError> {
+    db::admin::set_release_channel(
+        &state.db,
+        &admin.0.subject,
+        &package_name,
+        version_code,
+        request.is_beta,
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }

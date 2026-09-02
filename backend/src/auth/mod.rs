@@ -23,6 +23,7 @@ pub use middleware::auth_middleware;
 pub use user::User;
 pub use validator::{TokenClaims, TokenValidator};
 
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -38,6 +39,8 @@ pub struct AuthState {
     pub role_claim_path: String,
     /// Role name that grants admin access
     pub admin_role: String,
+    /// Optional local directory populated only after successful token validation.
+    pub user_registry: Option<SqlitePool>,
 }
 
 impl AuthState {
@@ -51,7 +54,13 @@ impl AuthState {
             validator,
             role_claim_path,
             admin_role,
+            user_registry: None,
         }
+    }
+
+    pub fn with_user_registry(mut self, pool: SqlitePool) -> Self {
+        self.user_registry = Some(pool);
+        self
     }
 }
 

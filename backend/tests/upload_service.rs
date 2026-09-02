@@ -111,7 +111,7 @@ async fn test_upload_file_too_large() {
     std::fs::write(&upload_path, large_data).unwrap();
 
     let result = upload_service
-        .process_upload_file("test.apk", &upload_path, None, None)
+        .process_upload_file("test.apk", &upload_path, None, None, false)
         .await;
 
     match result {
@@ -141,7 +141,7 @@ async fn test_upload_invalid_file_type() {
     std::fs::write(&upload_path, invalid_data).unwrap();
 
     let result = upload_service
-        .process_upload_file("test.txt", &upload_path, None, None)
+        .process_upload_file("test.txt", &upload_path, None, None, false)
         .await;
 
     match result {
@@ -167,7 +167,7 @@ async fn test_upload_aab_without_converter() {
     std::fs::write(&upload_path, aab_data).unwrap();
 
     let result = upload_service
-        .process_upload_file("test.aab", &upload_path, None, None)
+        .process_upload_file("test.aab", &upload_path, None, None, false)
         .await;
 
     match result {
@@ -197,6 +197,7 @@ async fn test_upload_apk_persists_app_version_and_file() {
             &upload_path,
             None,
             Some("Test description".to_string()),
+            true,
         )
         .await
         .unwrap();
@@ -214,6 +215,7 @@ async fn test_upload_apk_persists_app_version_and_file() {
         .await
         .unwrap();
     assert_eq!(versions.len(), 1);
+    assert!(versions[0].is_beta);
     assert!(temp_dir
         .path()
         .join("storage/apks/com.example.upload/1.apk")
@@ -235,12 +237,12 @@ async fn test_upload_duplicate_version() {
     let upload_service = UploadService::new(storage, parser, None, pool, 100 * 1024 * 1024);
     let upload_path = create_upload_file(&temp_dir, "duplicate.apk");
     upload_service
-        .process_upload_file("duplicate.apk", &upload_path, None, None)
+        .process_upload_file("duplicate.apk", &upload_path, None, None, false)
         .await
         .unwrap();
 
     let result = upload_service
-        .process_upload_file("duplicate.apk", &upload_path, None, None)
+        .process_upload_file("duplicate.apk", &upload_path, None, None, false)
         .await;
 
     assert!(matches!(
@@ -272,7 +274,7 @@ async fn test_upload_new_version() {
     );
     let first_upload = create_upload_file(&temp_dir, "version-1.apk");
     let first = version_one
-        .process_upload_file("version-1.apk", &first_upload, None, None)
+        .process_upload_file("version-1.apk", &first_upload, None, None, false)
         .await
         .unwrap();
     assert!(first.is_new_app);
@@ -292,7 +294,7 @@ async fn test_upload_new_version() {
     );
     let second_upload = create_upload_file(&temp_dir, "version-2.apk");
     let second = version_two
-        .process_upload_file("version-2.apk", &second_upload, None, None)
+        .process_upload_file("version-2.apk", &second_upload, None, None, false)
         .await
         .unwrap();
 

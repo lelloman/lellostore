@@ -81,7 +81,8 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
         validator,
         "realm_access.roles".to_string(),
         "admin".to_string(),
-    );
+    )
+    .with_user_registry(pool.clone());
 
     let storage = Arc::new(StorageService::new(storage_path.clone()));
     #[cfg(unix)]
@@ -743,4 +744,170 @@ async fn failed_database_delete_does_not_remove_app_files() {
         apk_path.exists(),
         "a database failure must not leave a record pointing to a deleted APK",
     );
+}
+
+#[tokio::test]
+async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
+    let (ctx, mock_oidc) = create_auth_test_context().await;
+    sqlx::query("INSERT INTO apps (package_name, name) VALUES ('com.example.media', 'Media')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"INSERT INTO app_versions
+           (package_name, version_code, version_name, apk_path, size, sha256, min_sdk)
+           VALUES ('com.example.media', 7, '7.0', 'media.apk', 10, 'original-hash', 24)"#,
+    )
+    .execute(&ctx.pool)
+    .await
+    .unwrap();
+
+    let server = TestServer::new(ctx.router).unwrap();
+    let admin_token = mock_oidc.get_admin_token();
+    let user_token = mock_oidc.get_user_token();
+
+    // Successful authenticated requests populate the small OIDC-backed user directory.
+    assert_eq!(
+        server
+            .get("/api/apps")
+            .add_header(
+                "Authorization".parse().unwrap(),
+                format!("Bearer {user_token}").parse().unwrap(),
+            )
+            .await
+            .status_code(),
+        StatusCode::OK
+    );
+
+    let denied = server
+        .post("/api/admin/app-groups")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"name": "Media apps"}))
+        .await;
+    assert_eq!(denied.status_code(), StatusCode::FORBIDDEN);
+
+    let created = server
+        .post("/api/admin/app-groups")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"name": "Media apps"}))
+        .await;
+    assert_eq!(created.status_code(), StatusCode::CREATED);
+    let group: serde_json::Value = created.json();
+    let group_id = group["id"].as_i64().unwrap();
+
+    let duplicate = server
+        .post("/api/admin/app-groups")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"name": "media APPS"}))
+        .await;
+    assert_eq!(duplicate.status_code(), StatusCode::CONFLICT);
+
+    let set_group_grant = server
+        .put(&format!(
+            "/api/admin/app-groups/{group_id}/apps/com.example.media"
+        ))
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "stable"}))
+        .await;
+    assert_eq!(set_group_grant.status_code(), StatusCode::NO_CONTENT);
+
+    let add_member = server
+        .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
+
+    let stable_access = server
+        .get("/api/admin/users/test-user/access")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(stable_access.status_code(), StatusCode::OK);
+    let access: serde_json::Value = stable_access.json();
+    assert_eq!(access["effective_access"][0]["access_level"], "stable");
+    assert_eq!(access["groups"][0]["name"], "Media apps");
+
+    let set_direct_beta = server
+        .put("/api/admin/users/test-user/apps/com.example.media")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "beta"}))
+        .await;
+    assert_eq!(set_direct_beta.status_code(), StatusCode::NO_CONTENT);
+
+    let beta_access = server
+        .get("/api/admin/users/test-user/access")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    let access: serde_json::Value = beta_access.json();
+    assert_eq!(access["effective_access"][0]["access_level"], "beta");
+
+    let mark_beta = server
+        .put("/api/admin/apps/com.example.media/versions/7")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"is_beta": true}))
+        .await;
+    assert_eq!(mark_beta.status_code(), StatusCode::NO_CONTENT);
+    let row: (bool, String, String) = sqlx::query_as(
+        "SELECT is_beta, apk_path, sha256 FROM app_versions WHERE package_name = 'com.example.media' AND version_code = 7",
+    )
+    .fetch_one(&ctx.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (true, "media.apk".to_string(), "original-hash".to_string())
+    );
+
+    // Promotion changes only model visibility, retaining the same artifact.
+    let promote = server
+        .put("/api/admin/apps/com.example.media/versions/7")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"is_beta": false}))
+        .await;
+    assert_eq!(promote.status_code(), StatusCode::NO_CONTENT);
+    let row: (bool, String, String) = sqlx::query_as(
+        "SELECT is_beta, apk_path, sha256 FROM app_versions WHERE package_name = 'com.example.media' AND version_code = 7",
+    )
+    .fetch_one(&ctx.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (false, "media.apk".to_string(), "original-hash".to_string())
+    );
+
+    let audit_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM access_audit_log")
+        .fetch_one(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(audit_count, 6);
 }

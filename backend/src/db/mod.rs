@@ -1,4 +1,5 @@
 pub mod access;
+pub mod admin;
 pub mod models;
 
 use sqlx::sqlite::{SqliteConnection, SqlitePool, SqlitePoolOptions};
@@ -161,11 +162,12 @@ pub async fn insert_app_version(
     size: i64,
     sha256: &str,
     min_sdk: i64,
+    is_beta: bool,
 ) -> Result<(), AppError> {
     sqlx::query(
         r#"
-        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, uploaded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         "#,
     )
     .bind(package_name)
@@ -175,6 +177,7 @@ pub async fn insert_app_version(
     .bind(size)
     .bind(sha256)
     .bind(min_sdk)
+    .bind(is_beta)
     .execute(pool)
     .await
     .map_err(AppError::Database)?;
@@ -330,11 +333,12 @@ pub async fn insert_app_version_tx(
     size: i64,
     sha256: &str,
     min_sdk: i64,
+    is_beta: bool,
 ) -> Result<(), AppError> {
     sqlx::query(
         r#"
-        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, uploaded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        INSERT INTO app_versions (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         "#,
     )
     .bind(package_name)
@@ -344,6 +348,7 @@ pub async fn insert_app_version_tx(
     .bind(size)
     .bind(sha256)
     .bind(min_sdk)
+    .bind(is_beta)
     .execute(conn)
     .await
     .map_err(AppError::Database)?;

@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "Authentication initialized with issuer: {}",
                     config.oidc.issuer_url
                 );
-                Some(auth)
+                Some(auth.with_user_registry(db.clone()))
             }
             Err(e) => {
                 tracing::warn!(

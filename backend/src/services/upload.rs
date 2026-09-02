@@ -87,6 +87,7 @@ impl UploadService {
         upload_path: &Path,
         override_name: Option<String>,
         override_description: Option<String>,
+        is_beta: bool,
     ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
         let size = tokio::fs::metadata(upload_path).await?.len();
@@ -198,6 +199,7 @@ impl UploadService {
                 override_description.as_deref(),
                 icon_path.as_deref(),
                 is_new_app,
+                is_beta,
             )
             .await;
 
@@ -240,6 +242,7 @@ impl UploadService {
         override_description: Option<&str>,
         icon_path: Option<&str>,
         is_new_app: bool,
+        is_beta: bool,
     ) -> Result<(), UploadError> {
         // Start a transaction
         let mut tx = self.db.begin().await.map_err(AppError::Database)?;
@@ -275,6 +278,7 @@ impl UploadService {
             size,
             sha256,
             min_sdk,
+            is_beta,
         )
         .await?;
 
