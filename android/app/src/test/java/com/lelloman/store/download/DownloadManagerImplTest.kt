@@ -10,6 +10,7 @@ import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.logger.Logger
+import com.lelloman.store.installation.InstallationCoordinator
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -37,6 +38,7 @@ class DownloadManagerImplTest {
     private lateinit var remoteApiClient: RemoteApiClient
     private lateinit var appsRepository: AppsRepository
     private lateinit var logger: Logger
+    private lateinit var installationCoordinator: InstallationCoordinator
     private lateinit var downloadManager: DownloadManagerImpl
 
     @Before
@@ -45,6 +47,7 @@ class DownloadManagerImplTest {
         remoteApiClient = mockk()
         appsRepository = mockk()
         logger = mockk(relaxed = true)
+        installationCoordinator = mockk(relaxed = true)
 
         val cacheDir = tempFolder.newFolder("cache")
         every { context.cacheDir } returns cacheDir
@@ -58,6 +61,7 @@ class DownloadManagerImplTest {
             remoteApiClient = remoteApiClient,
             appsRepository = appsRepository,
             logger = logger,
+            installationCoordinator = installationCoordinator,
         )
     }
 

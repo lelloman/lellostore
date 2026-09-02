@@ -4,10 +4,19 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface DownloadManager {
     val activeDownloads: StateFlow<Map<String, DownloadProgress>>
-    suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult
+    suspend fun downloadAndInstall(
+        packageName: String,
+        versionCode: Int,
+        installationMode: InstallationMode = InstallationMode.FOREGROUND,
+    ): DownloadResult
     fun cancelDownload(packageName: String)
     fun canInstallPackages(): Boolean
     fun openInstallPermissionSettings()
+}
+
+enum class InstallationMode {
+    FOREGROUND,
+    BACKGROUND,
 }
 
 data class DownloadProgress(

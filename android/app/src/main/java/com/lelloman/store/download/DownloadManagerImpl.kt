@@ -2,9 +2,7 @@ package com.lelloman.store.download
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
@@ -12,7 +10,11 @@ import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.logger.Logger
+import com.lelloman.store.installation.InstallationCoordinator
+import com.lelloman.store.installation.InstallationRequest
+import com.lelloman.store.installation.InstallationResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +40,7 @@ class DownloadManagerImpl @Inject constructor(
     private val remoteApiClient: RemoteApiClient,
     private val appsRepository: AppsRepository,
     private val logger: Logger,
+    private val installationCoordinator: InstallationCoordinator,
 ) : DownloadManager {
 
     private val tag = "DownloadManager"
@@ -54,6 +57,7 @@ class DownloadManagerImpl @Inject constructor(
     override suspend fun downloadAndInstall(
         packageName: String,
         versionCode: Int,
+        installationMode: InstallationMode,
     ): DownloadResult {
         val downloadJob = currentCoroutineContext()[Job]
             ?: error("Download must run in a coroutine with a Job")
@@ -101,15 +105,27 @@ class DownloadManagerImpl @Inject constructor(
 
             // Install APK
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
-            when (val installResult = installApk(destination)) {
-                is InstallApkResult.Success -> {
+            when (val installResult = installationCoordinator.install(
+                InstallationRequest(
+                    apk = destination,
+                    packageName = packageName,
+                    mode = installationMode,
+                )
+            )) {
+                is InstallationResult.Installed,
+                is InstallationResult.UserActionStarted -> {
                     finalState = DownloadState.COMPLETED
                     updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
                 }
-                is InstallApkResult.PermissionRequired -> {
+                is InstallationResult.PermissionRequired -> {
                     // Permission needed - keep the APK for retry after permission is granted
                     finalState = DownloadState.PERMISSION_REQUIRED
                     updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
+                }
+                is InstallationResult.Failed -> {
+                    throw IllegalStateException(
+                        installResult.reasons.joinToString("; ").ifEmpty { "Installation failed" }
+                    )
                 }
             }
 
@@ -201,40 +217,6 @@ class DownloadManagerImpl @Inject constructor(
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-
-    private sealed interface InstallApkResult {
-        data object Success : InstallApkResult
-        data object PermissionRequired : InstallApkResult
-    }
-
-    /**
-     * Attempts to install the APK.
-     * @return Success if the install intent was launched, PermissionRequired if permission is needed
-     */
-    private fun installApk(file: File): InstallApkResult {
-        val uri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-
-        // On Android O and above, check if we can request package installs
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                logger.w(tag, "Install permission not granted. User needs to enable 'Install unknown apps' and retry.")
-                return InstallApkResult.PermissionRequired
-            }
-        }
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        context.startActivity(intent)
-        return InstallApkResult.Success
     }
 
     private fun updateProgress(
