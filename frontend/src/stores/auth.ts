@@ -72,6 +72,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function handleLogoutCallback() {
+    isLoading.value = true
+    error.value = null
+    try {
+      await authService.handleLogoutCallback()
+      user.value = null
+    } catch (e) {
+      error.value = 'Logout callback failed'
+      console.error('Logout callback error:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function logout() {
     error.value = null
     try {
@@ -113,6 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     login,
     handleCallback,
+    handleLogoutCallback,
     logout,
     refreshToken,
     setUser,

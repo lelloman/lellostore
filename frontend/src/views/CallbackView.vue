@@ -8,7 +8,7 @@
               <v-icon size="64" color="error" class="mb-4">
                 mdi-alert-circle
               </v-icon>
-              <p class="text-h6 mb-2">Authentication Failed</p>
+              <p class="text-h6 mb-2">{{ callbackAction }} failed</p>
               <p class="text-body-2 text-medium-emphasis mb-6">
                 {{ error }}
               </p>
@@ -24,7 +24,7 @@
                 color="primary"
                 class="mb-4"
               />
-              <p class="text-h6">Completing sign in...</p>
+              <p class="text-h6">Completing {{ callbackAction.toLowerCase() }}...</p>
             </template>
           </v-col>
         </v-row>
@@ -41,9 +41,18 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 const error = ref<string | null>(null)
+const callbackParams = new URLSearchParams(window.location.search)
+const isLogoutCallback = !callbackParams.has('code') && !callbackParams.has('error')
+const callbackAction = isLogoutCallback ? 'Sign out' : 'Sign in'
 
 onMounted(async () => {
   try {
+    if (isLogoutCallback) {
+      await authStore.handleLogoutCallback()
+      router.replace({ name: 'login' })
+      return
+    }
+
     await authStore.handleCallback()
 
     // Redirect to saved path or dashboard
@@ -53,7 +62,7 @@ onMounted(async () => {
     router.replace(redirectPath)
   } catch (e) {
     console.error('Callback error:', e)
-    error.value = e instanceof Error ? e.message : 'Authentication failed'
+    error.value = e instanceof Error ? e.message : `${callbackAction} failed`
   }
 })
 

@@ -4,7 +4,7 @@ const settings = {
   authority: import.meta.env.VITE_OIDC_ISSUER_URL || 'https://example.com',
   client_id: import.meta.env.VITE_OIDC_CLIENT_ID || 'lellostore',
   redirect_uri: `${window.location.origin}/callback`,
-  post_logout_redirect_uri: window.location.origin,
+  post_logout_redirect_uri: `${window.location.origin}/callback`,
   response_type: 'code',
   scope: 'openid profile email',
   automaticSilentRenew: true,
@@ -36,6 +36,10 @@ class AuthService {
 
   async handleCallback(): Promise<User> {
     return await this.userManager.signinRedirectCallback()
+  }
+
+  async handleLogoutCallback(): Promise<void> {
+    await this.userManager.signoutRedirectCallback()
   }
 
   async logout(): Promise<void> {

@@ -7,6 +7,7 @@ vi.mock('@/services/auth', () => ({
     getUser: vi.fn(),
     login: vi.fn(),
     handleCallback: vi.fn(),
+    handleLogoutCallback: vi.fn(),
     logout: vi.fn(),
     silentRenew: vi.fn(),
   },
