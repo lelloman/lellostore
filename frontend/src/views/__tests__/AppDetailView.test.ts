@@ -75,6 +75,47 @@ describe('AppDetailView authorization', () => {
     expect(wrapper.findAllComponents(ConfirmDialog)).toHaveLength(0)
   })
 
+  it('lets regular users download versions without exposing delete actions', async () => {
+    vi.mocked(api.getApp).mockResolvedValueOnce({
+      package_name: 'com.example.app',
+      name: 'Example App',
+      icon_url: '/api/apps/com.example.app/icon',
+      versions: [{
+        version_code: 7,
+        version_name: '1.7.0',
+        apk_url: '/api/apps/com.example.app/versions/7/apk',
+        size: 1024,
+        sha256: 'hash',
+        min_sdk: 24,
+        uploaded_at: '2026-09-01T12:00:00Z',
+      }],
+    })
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.setUser({
+      expired: false,
+      profile: { sub: 'regular-user', realm_access: { roles: ['user'] } },
+    } as unknown as Parameters<typeof authStore.setUser>[0])
+
+    const wrapper = shallowMount(AppDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          DefaultLayout: { template: '<main><slot /></main>' },
+          VBtn: { template: '<button><slot /></button>' },
+          VCard: { template: '<section><slot /></section>' },
+          VCardTitle: { template: '<header><slot /></header>' },
+          VDataTable: { template: '<div><slot name="item.actions" :item="$attrs.items[0]" /></div>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[title="Download APK"]').exists()).toBe(true)
+    expect(wrapper.find('[title="Delete version"]').exists()).toBe(false)
+  })
+
   it('does not render a cached app when the requested app fails to load', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
