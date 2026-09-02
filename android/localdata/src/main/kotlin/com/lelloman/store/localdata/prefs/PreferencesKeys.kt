@@ -8,4 +8,12 @@ internal object PreferencesKeys {
     val THEME_MODE = stringPreferencesKey("theme_mode")
     val UPDATE_CHECK_INTERVAL = stringPreferencesKey("update_check_interval")
     val WIFI_ONLY_DOWNLOADS = booleanPreferencesKey("wifi_only_downloads")
+    val AUTO_UPDATE_DEFAULT = booleanPreferencesKey("auto_update_default")
+    val RELEASE_CHANNEL_DEFAULT = stringPreferencesKey("release_channel_default")
+
+    fun autoUpdateOverride(packageName: String) =
+        stringPreferencesKey("app.$packageName.auto_update_override")
+
+    fun releaseChannelOverride(packageName: String) =
+        stringPreferencesKey("app.$packageName.release_channel_override")
 }

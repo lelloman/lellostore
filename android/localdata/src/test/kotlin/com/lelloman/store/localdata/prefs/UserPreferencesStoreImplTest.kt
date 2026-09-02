@@ -7,6 +7,9 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.preferences.ThemeMode
 import com.lelloman.store.domain.preferences.UpdateCheckInterval
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -127,5 +130,67 @@ class UserPreferencesStoreImplTest {
         assertThat(preferencesStore.themeMode.value).isEqualTo(ThemeMode.Dark)
         assertThat(preferencesStore.updateCheckInterval.value).isEqualTo(UpdateCheckInterval.Hours12)
         assertThat(preferencesStore.wifiOnlyDownloads.value).isFalse()
+    }
+
+    @Test
+    fun `update policy defaults are automatic and stable`() = testScope.runTest {
+        assertThat(preferencesStore.autoUpdateDefault.value).isTrue()
+        assertThat(preferencesStore.releaseChannelDefault.value).isEqualTo(ReleaseChannel.Stable)
+        preferencesStore.autoUpdateOverride("com.example.new").test {
+            assertThat(awaitItem()).isEqualTo(AutoUpdateOverride.Inherit)
+            cancelAndIgnoreRemainingEvents()
+        }
+        preferencesStore.releaseChannelOverride("com.example.new").test {
+            assertThat(awaitItem()).isEqualTo(ReleaseChannelOverride.Inherit)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `global update policy settings persist independently`() = testScope.runTest {
+        preferencesStore.setAutoUpdateDefault(false)
+        preferencesStore.setReleaseChannelDefault(ReleaseChannel.Beta)
+
+        assertThat(preferencesStore.autoUpdateDefault.value).isFalse()
+        assertThat(preferencesStore.releaseChannelDefault.value).isEqualTo(ReleaseChannel.Beta)
+    }
+
+    @Test
+    fun `per-app overrides are isolated and inherit removes stored value`() = testScope.runTest {
+        preferencesStore.setAutoUpdateOverride("app.one", AutoUpdateOverride.Disabled)
+        preferencesStore.setAutoUpdateOverride("app.two", AutoUpdateOverride.Enabled)
+        preferencesStore.setReleaseChannelOverride("app.one", ReleaseChannelOverride.Beta)
+
+        preferencesStore.autoUpdateOverride("app.one").test {
+            assertThat(awaitItem()).isEqualTo(AutoUpdateOverride.Disabled)
+            preferencesStore.setAutoUpdateOverride("app.one", AutoUpdateOverride.Inherit)
+            assertThat(awaitItem()).isEqualTo(AutoUpdateOverride.Inherit)
+            cancelAndIgnoreRemainingEvents()
+        }
+        preferencesStore.autoUpdateOverride("app.two").test {
+            assertThat(awaitItem()).isEqualTo(AutoUpdateOverride.Enabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+        preferencesStore.releaseChannelOverride("app.one").test {
+            assertThat(awaitItem()).isEqualTo(ReleaseChannelOverride.Beta)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `per-app overrides remain when authorization metadata changes elsewhere`() = testScope.runTest {
+        preferencesStore.setAutoUpdateOverride("app.one", AutoUpdateOverride.Disabled)
+        preferencesStore.setReleaseChannelOverride("app.one", ReleaseChannelOverride.Beta)
+
+        // Authorization is deliberately absent from this device-local store. Refreshing or
+        // revoking server grants therefore cannot delete a user's saved per-app choice.
+        preferencesStore.autoUpdateOverride("app.one").test {
+            assertThat(awaitItem()).isEqualTo(AutoUpdateOverride.Disabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+        preferencesStore.releaseChannelOverride("app.one").test {
+            assertThat(awaitItem()).isEqualTo(ReleaseChannelOverride.Beta)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 }
