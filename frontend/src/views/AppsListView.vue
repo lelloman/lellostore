@@ -1,35 +1,5 @@
 <template>
   <DefaultLayout>
-    <header class="catalog-header">
-      <div>
-        <p class="page-kicker mb-3">Private distribution</p>
-        <h1 class="page-title mb-3">App catalog</h1>
-        <p class="catalog-intro text-medium-emphasis">
-          Browse the Android apps available to your organization and stay current
-          with every release.
-        </p>
-      </div>
-
-      <div class="catalog-actions">
-        <v-btn
-          variant="outlined"
-          prepend-icon="mdi-refresh"
-          :loading="appsStore.isLoading"
-          @click="refreshApps"
-        >
-          Refresh
-        </v-btn>
-        <v-btn
-          v-if="authStore.isAdmin"
-          color="primary"
-          prepend-icon="mdi-cloud-upload-outline"
-          @click="showUploadDialog = true"
-        >
-          Upload app
-        </v-btn>
-      </div>
-    </header>
-
     <v-alert
       v-if="appsStore.error && !appsStore.isLoading"
       class="mb-6"
@@ -46,7 +16,7 @@
         v-model="search"
         class="catalog-search"
         prepend-inner-icon="mdi-magnify"
-        placeholder="Search by app name or package"
+        placeholder="Search apps"
         aria-label="Search applications"
         variant="solo-filled"
         flat
@@ -59,13 +29,55 @@
           {{ appsStore.appCount === 1 ? 'application' : 'applications' }}
         </span>
       </div>
+
+      <v-divider class="toolbar-divider" vertical />
+
+      <v-btn-toggle v-model="viewMode" mandatory density="comfortable" variant="text">
+        <v-btn
+          value="cards"
+          icon="mdi-view-grid-outline"
+          title="Card view"
+          aria-label="Card view"
+          @click="viewMode = 'cards'"
+        />
+        <v-btn
+          value="table"
+          icon="mdi-view-list-outline"
+          title="Table view"
+          aria-label="Table view"
+          @click="viewMode = 'table'"
+        />
+      </v-btn-toggle>
+
+      <v-btn
+        icon="mdi-refresh"
+        variant="text"
+        title="Refresh"
+        aria-label="Refresh applications"
+        :loading="appsStore.isLoading"
+        @click="refreshApps"
+      />
+      <v-btn
+        v-if="authStore.isAdmin"
+        color="primary"
+        prepend-icon="mdi-cloud-upload-outline"
+        @click="showUploadDialog = true"
+      >
+        Upload app
+      </v-btn>
     </v-card>
 
-    <v-row v-if="appsStore.isLoading" class="app-grid">
+    <v-row v-if="appsStore.isLoading && viewMode === 'cards'" class="app-grid">
       <v-col v-for="index in 6" :key="index" cols="12" sm="6" lg="4">
         <v-skeleton-loader class="app-skeleton" type="avatar, heading, paragraph, actions" />
       </v-col>
     </v-row>
+
+    <v-skeleton-loader
+      v-else-if="appsStore.isLoading"
+      class="surface-panel"
+      type="table-heading, table-row-divider@6"
+    />
 
     <v-card
       v-else-if="appsStore.apps.length === 0"
@@ -104,7 +116,7 @@
       <v-btn variant="outlined" @click="search = ''">Clear search</v-btn>
     </v-card>
 
-    <v-row v-else class="app-grid">
+    <v-row v-else-if="viewMode === 'cards'" class="app-grid">
       <v-col
         v-for="item in filteredApps"
         :key="item.package_name"
@@ -123,7 +135,12 @@
         >
           <div class="app-card-top">
             <div class="app-icon">
-              <AuthenticatedImg :src="getIconUrl(item.package_name)" cover>
+              <AuthenticatedImg
+                :src="getIconUrl(item.package_name)"
+                width="100%"
+                height="100%"
+                cover
+              >
                 <template #fallback>
                   <v-icon icon="mdi-android" color="primary" size="32" />
                 </template>
@@ -162,6 +179,52 @@
       </v-col>
     </v-row>
 
+    <v-data-table
+      v-else
+      data-testid="apps-table"
+      class="apps-table surface-panel"
+      :headers="headers"
+      :items="filteredApps"
+      item-key="package_name"
+      hover
+      @click:row="onRowClick"
+    >
+      <template #item.icon="{ item }">
+        <div class="table-icon">
+          <AuthenticatedImg
+            :src="getIconUrl(item.package_name)"
+            width="100%"
+            height="100%"
+            cover
+          >
+            <template #fallback>
+              <v-icon icon="mdi-android" color="primary" size="24" />
+            </template>
+          </AuthenticatedImg>
+        </div>
+      </template>
+
+      <template #item.name="{ item }">
+        <strong>{{ item.name }}</strong>
+      </template>
+
+      <template #item.latest_version="{ item }">
+        <span v-if="item.latest_version">
+          {{ item.latest_version.version_name }}
+          <span class="text-medium-emphasis">({{ item.latest_version.version_code }})</span>
+        </span>
+        <span v-else class="text-medium-emphasis">—</span>
+      </template>
+
+      <template #item.size="{ item }">
+        {{ item.latest_version ? formatSize(item.latest_version.size) : '—' }}
+      </template>
+
+      <template #item.updated="{ item }">
+        {{ formatDate(item.latest_version?.uploaded_at) }}
+      </template>
+    </v-data-table>
+
     <UploadDialog
       v-if="authStore.isAdmin"
       v-model="showUploadDialog"
@@ -178,7 +241,7 @@ import UploadDialog from '@/components/UploadDialog.vue'
 import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
 import { useAppsStore } from '@/stores/apps'
 import { useAuthStore } from '@/stores/auth'
-import { api } from '@/services/api'
+import { api, type AppListItem } from '@/services/api'
 
 const router = useRouter()
 const appsStore = useAppsStore()
@@ -186,6 +249,16 @@ const authStore = useAuthStore()
 
 const search = ref('')
 const showUploadDialog = ref(false)
+const viewMode = ref<'cards' | 'table'>('cards')
+
+const headers = [
+  { title: '', key: 'icon', sortable: false, width: '72px' },
+  { title: 'Name', key: 'name' },
+  { title: 'Package', key: 'package_name' },
+  { title: 'Version', key: 'latest_version', sortable: false },
+  { title: 'Size', key: 'size', sortable: false },
+  { title: 'Updated', key: 'updated', sortable: false },
+]
 
 const filteredApps = computed(() => {
   const query = search.value?.trim().toLocaleLowerCase() ?? ''
@@ -220,6 +293,10 @@ function openApp(packageName: string) {
   router.push({ name: 'app-detail', params: { packageName } })
 }
 
+function onRowClick(_event: Event, row: { item: AppListItem }) {
+  openApp(row.item.package_name)
+}
+
 async function refreshApps() {
   try {
     await appsStore.fetchApps()
@@ -236,26 +313,6 @@ onMounted(refreshApps)
 </script>
 
 <style scoped>
-.catalog-header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 2rem;
-  margin-bottom: 2.25rem;
-}
-
-.catalog-intro {
-  max-width: 660px;
-  font-size: 1.05rem;
-  line-height: 1.65;
-}
-
-.catalog-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.75rem;
-}
-
 .catalog-toolbar {
   display: flex;
   align-items: center;
@@ -274,6 +331,11 @@ onMounted(refreshApps)
   gap: 0.4rem;
   padding-right: 1rem;
   white-space: nowrap;
+}
+
+.toolbar-divider {
+  align-self: stretch;
+  height: auto;
 }
 
 .count-value {
@@ -327,6 +389,29 @@ onMounted(refreshApps)
   place-items: center;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 18px;
+  background: rgb(var(--v-theme-surface-variant));
+}
+
+.apps-table {
+  overflow: hidden;
+  background: rgba(var(--v-theme-surface), 0.92);
+}
+
+.apps-table :deep(tbody tr) {
+  cursor: pointer;
+}
+
+.apps-table :deep(tbody tr:hover) {
+  background: rgba(var(--v-theme-primary), 0.045);
+}
+
+.table-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 12px;
   background: rgb(var(--v-theme-surface-variant));
 }
 
@@ -398,26 +483,22 @@ onMounted(refreshApps)
 }
 
 @media (max-width: 700px) {
-  .catalog-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .catalog-actions > :deep(.v-btn) {
-    flex: 1;
-  }
-
   .catalog-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+    flex-wrap: wrap;
   }
 
   .catalog-search {
+    min-width: 100%;
     max-width: none;
   }
 
   .catalog-count {
-    padding: 0 0.5rem 0.35rem;
+    flex: 1;
+    padding: 0 0.5rem;
+  }
+
+  .toolbar-divider {
+    display: none;
   }
 
   .release-meta span:last-child,

@@ -30,7 +30,12 @@
         <v-card class="app-hero surface-panel mb-6">
           <div class="hero-main">
             <div class="hero-icon">
-              <AuthenticatedImg :src="api.getIconUrl(app.package_name)" cover>
+              <AuthenticatedImg
+                :src="api.getIconUrl(app.package_name)"
+                width="100%"
+                height="100%"
+                cover
+              >
                 <template #fallback>
                   <v-icon icon="mdi-android" color="primary" size="48" />
                 </template>
