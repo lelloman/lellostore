@@ -163,6 +163,7 @@ export interface AppListItem {
   name: string
   description?: string
   icon_url: string
+  total_size: number
   latest_version?: LatestVersionInfo
 }
 

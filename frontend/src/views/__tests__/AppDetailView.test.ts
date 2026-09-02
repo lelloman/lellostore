@@ -88,6 +88,14 @@ describe('AppDetailView authorization', () => {
         sha256: 'hash',
         min_sdk: 24,
         uploaded_at: '2026-09-01T12:00:00Z',
+      }, {
+        version_code: 6,
+        version_name: '1.6.0',
+        apk_url: '/api/apps/com.example.app/versions/6/apk',
+        size: 2048,
+        sha256: 'older-hash',
+        min_sdk: 24,
+        uploaded_at: '2026-08-01T12:00:00Z',
       }],
     })
     const pinia = createPinia()
@@ -114,6 +122,8 @@ describe('AppDetailView authorization', () => {
 
     expect(wrapper.find('[title="Download APK"]').exists()).toBe(true)
     expect(wrapper.find('[title="Delete version"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="detail-latest-size"]').text()).toBe('1.0 KB latest')
+    expect(wrapper.find('[data-testid="detail-total-size"]').text()).toBe('3.0 KB total')
   })
 
   it('does not render a cached app when the requested app fails to load', async () => {

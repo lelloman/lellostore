@@ -41,6 +41,7 @@ pub struct AppListItem {
     pub name: String,
     pub description: Option<String>,
     pub icon_url: String,
+    pub total_size: i64,
     pub latest_version: Option<LatestVersionInfo>,
 }
 
@@ -147,6 +148,7 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
     for app in apps {
         // Get latest version for this app
         let versions = db::get_app_versions(&state.db, &app.package_name).await?;
+        let total_size = versions.iter().map(|version| version.size).sum();
         let latest = versions.into_iter().max_by_key(|v| v.version_code);
 
         items.push(AppListItem {
@@ -154,6 +156,7 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
             name: app.name,
             description: app.description,
             icon_url: make_icon_url(&app.package_name),
+            total_size,
             latest_version: latest.map(|v| LatestVersionInfo {
                 version_code: v.version_code,
                 version_name: v.version_name,

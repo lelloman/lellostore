@@ -166,11 +166,9 @@
 
           <div class="app-card-footer">
             <div v-if="item.latest_version" class="release-meta">
-              <span>{{ formatSize(item.latest_version.size) }}</span>
+              <span data-testid="latest-size">{{ formatSize(item.latest_version.size) }} latest</span>
               <span aria-hidden="true">·</span>
-              <span>API {{ item.latest_version.min_sdk }}+</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ formatDate(item.latest_version.uploaded_at) }}</span>
+              <span data-testid="total-size">{{ formatSize(item.total_size) }} total</span>
             </div>
             <span v-else class="text-medium-emphasis">No releases</span>
             <v-icon color="primary" size="20">mdi-arrow-right</v-icon>
@@ -217,7 +215,11 @@
       </template>
 
       <template #item.size="{ item }">
-        {{ item.latest_version ? formatSize(item.latest_version.size) : '—' }}
+        <div v-if="item.latest_version" class="size-pair">
+          <span>{{ formatSize(item.latest_version.size) }} latest</span>
+          <span>{{ formatSize(item.total_size) }} total</span>
+        </div>
+        <span v-else>—</span>
       </template>
 
       <template #item.updated="{ item }">
@@ -256,7 +258,7 @@ const headers = [
   { title: 'Name', key: 'name' },
   { title: 'Package', key: 'package_name' },
   { title: 'Version', key: 'latest_version', sortable: false },
-  { title: 'Size', key: 'size', sortable: false },
+  { title: 'Storage', key: 'size', sortable: false },
   { title: 'Updated', key: 'updated', sortable: false },
 ]
 
@@ -463,6 +465,17 @@ onMounted(refreshApps)
   color: rgb(var(--v-theme-secondary));
 }
 
+.size-pair {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.size-pair span:last-child {
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.76rem;
+}
+
 .empty-state {
   display: flex;
   min-height: 360px;
@@ -498,11 +511,6 @@ onMounted(refreshApps)
   }
 
   .toolbar-divider {
-    display: none;
-  }
-
-  .release-meta span:last-child,
-  .release-meta span:nth-last-child(2) {
     display: none;
   }
 }

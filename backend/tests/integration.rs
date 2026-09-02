@@ -125,6 +125,41 @@ async fn test_apps_list_after_insert() {
     assert!(apps[0]["icon_url"].is_string());
     // latest_version is null when no versions exist
     assert!(apps[0]["latest_version"].is_null());
+    assert_eq!(apps[0]["total_size"], 0);
+}
+
+#[tokio::test]
+async fn test_apps_list_includes_latest_and_cumulative_sizes() {
+    let ctx = create_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+
+    insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
+    insert_test_version(
+        &ctx.pool,
+        "com.test.app",
+        1,
+        "1.0.0",
+        "apks/com.test.app/1.apk",
+        1_024,
+    )
+    .await;
+    insert_test_version(
+        &ctx.pool,
+        "com.test.app",
+        2,
+        "2.0.0",
+        "apks/com.test.app/2.apk",
+        4_096,
+    )
+    .await;
+
+    let response = server.get("/api/apps").await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+
+    let body: serde_json::Value = response.json();
+    let app = &body["apps"][0];
+    assert_eq!(app["latest_version"]["size"], 4_096);
+    assert_eq!(app["total_size"], 5_120);
 }
 
 #[tokio::test]

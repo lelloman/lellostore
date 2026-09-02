@@ -64,6 +64,7 @@ describe('AppsListView authorization', () => {
         name: 'Example App',
         description: 'An example application',
         icon_url: '/api/apps/com.example.app/icon',
+        total_size: 4096,
         latest_version: {
           version_code: 7,
           version_name: '1.7.0',
@@ -93,6 +94,8 @@ describe('AppsListView authorization', () => {
     expect(wrapper.text()).not.toContain('Private distribution')
     expect(wrapper.text()).not.toContain('Browse the Android apps')
     expect(wrapper.text()).not.toContain('App catalog')
+    expect(wrapper.find('[data-testid="latest-size"]').text()).toBe('1.0 KB latest')
+    expect(wrapper.find('[data-testid="total-size"]').text()).toBe('4.0 KB total')
     const icon = wrapper.findComponent(AuthenticatedImg)
     expect(icon.attributes('width')).toBe('100%')
     expect(icon.attributes('height')).toBe('100%')

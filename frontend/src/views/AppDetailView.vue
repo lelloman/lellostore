@@ -82,8 +82,13 @@
               <strong>{{ latestVersion ? `API ${latestVersion.min_sdk}+` : '—' }}</strong>
             </div>
             <div class="summary-item">
-              <span class="summary-label">Download size</span>
-              <strong>{{ latestVersion ? formatSize(latestVersion.size) : '—' }}</strong>
+              <span class="summary-label">Storage</span>
+              <strong data-testid="detail-latest-size">
+                {{ latestVersion ? `${formatSize(latestVersion.size)} latest` : '—' }}
+              </strong>
+              <span v-if="latestVersion" data-testid="detail-total-size" class="summary-secondary">
+                {{ formatSize(totalSize) }} total
+              </span>
             </div>
           </div>
         </v-card>
@@ -270,6 +275,9 @@ const sortedVersions = computed(() =>
   [...(app.value?.versions ?? [])].sort((a, b) => b.version_code - a.version_code)
 )
 const latestVersion = computed(() => sortedVersions.value[0] ?? null)
+const totalSize = computed(() =>
+  sortedVersions.value.reduce((total, version) => total + version.size, 0)
+)
 
 const versionHeaders = [
   { title: 'Version', key: 'version_name' },
@@ -479,6 +487,11 @@ watch(packageName, async name => {
   font-size: 1.05rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.summary-secondary {
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.76rem;
 }
 
 .detail-grid {

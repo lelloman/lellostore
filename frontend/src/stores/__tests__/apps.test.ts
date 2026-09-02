@@ -24,8 +24,8 @@ describe('Apps Store', () => {
   describe('fetchApps', () => {
     it('fetches apps from API and updates state', async () => {
       const mockApps = [
-        { package_name: 'com.test.app', name: 'Test App', icon_url: '/api/apps/com.test.app/icon', latest_version: { version_code: 1, version_name: '1.0', size: 1000, min_sdk: 21, uploaded_at: '2024-01-01T00:00:00Z' } },
-        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '/api/apps/com.test.app2/icon' },
+        { package_name: 'com.test.app', name: 'Test App', icon_url: '/api/apps/com.test.app/icon', total_size: 1000, latest_version: { version_code: 1, version_name: '1.0', size: 1000, min_sdk: 21, uploaded_at: '2024-01-01T00:00:00Z' } },
+        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '/api/apps/com.test.app2/icon', total_size: 0 },
       ]
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })
 
@@ -119,7 +119,7 @@ describe('Apps Store', () => {
 
   describe('updateApp', () => {
     it('updates app and local state', async () => {
-      const initialApp = { package_name: 'com.test.app', name: 'Old Name', icon_url: '' }
+      const initialApp = { package_name: 'com.test.app', name: 'Old Name', icon_url: '', total_size: 0 }
       const updatedApp = { package_name: 'com.test.app', name: 'New Name', icon_url: '', versions: [] }
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: [initialApp] })
@@ -137,8 +137,8 @@ describe('Apps Store', () => {
   describe('deleteApp', () => {
     it('deletes app and removes from local state', async () => {
       const mockApps = [
-        { package_name: 'com.test.app', name: 'Test App', icon_url: '' },
-        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '' },
+        { package_name: 'com.test.app', name: 'Test App', icon_url: '', total_size: 0 },
+        { package_name: 'com.test.app2', name: 'Test App 2', icon_url: '', total_size: 0 },
       ]
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })
@@ -202,9 +202,9 @@ describe('Apps Store', () => {
   describe('sortedApps getter', () => {
     it('returns apps sorted by name', async () => {
       const mockApps = [
-        { package_name: 'com.z.app', name: 'Zebra', icon_url: '' },
-        { package_name: 'com.a.app', name: 'Alpha', icon_url: '' },
-        { package_name: 'com.m.app', name: 'Middle', icon_url: '' },
+        { package_name: 'com.z.app', name: 'Zebra', icon_url: '', total_size: 0 },
+        { package_name: 'com.a.app', name: 'Alpha', icon_url: '', total_size: 0 },
+        { package_name: 'com.m.app', name: 'Middle', icon_url: '', total_size: 0 },
       ]
 
       vi.mocked(api.getApps).mockResolvedValue({ apps: mockApps })
