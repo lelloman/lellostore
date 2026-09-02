@@ -8,40 +8,22 @@
         <v-card class="login-card surface-panel" width="100%">
           <v-row no-gutters>
             <v-col cols="12" md="6" class="brand-panel">
-              <div class="brand-mark mb-10">
-                <v-icon size="28">mdi-package-variant-closed</v-icon>
-              </div>
+              <div class="brand-content">
+                <div class="brand-mark mb-10">
+                  <v-icon size="28">mdi-package-variant-closed</v-icon>
+                </div>
 
-              <p class="page-kicker mb-3">Private Android distribution</p>
-              <h1 class="brand-title mb-5">Apps, delivered with confidence.</h1>
-              <p class="brand-copy mb-10">
-                One secure catalog for your organization’s Android applications and every
-                approved release.
-              </p>
-
-              <div class="feature-list">
-                <div class="feature-item">
-                  <v-icon size="21">mdi-shield-lock-outline</v-icon>
-                  <span>Protected by your organization account</span>
-                </div>
-                <div class="feature-item">
-                  <v-icon size="21">mdi-check-decagram-outline</v-icon>
-                  <span>Curated and verified application releases</span>
-                </div>
-                <div class="feature-item">
-                  <v-icon size="21">mdi-update</v-icon>
-                  <span>Release history and updates in one place</span>
-                </div>
+                <h1 class="brand-title mb-5">LelloStore</h1>
+                <p class="brand-copy mb-0">
+                  Your organization’s private Android app catalog.
+                </p>
               </div>
             </v-col>
 
             <v-col cols="12" md="6" class="signin-panel">
               <div class="signin-content">
-                <p class="page-kicker mb-3">Welcome back</p>
-                <h2 class="signin-title mb-3">Open your app catalog</h2>
-                <p class="text-body-1 text-medium-emphasis mb-8">
-                  Sign in to browse the applications and releases available to your account.
-                </p>
+                <h2 class="signin-title mb-3">Welcome back</h2>
+                <p class="text-body-1 text-medium-emphasis mb-8">Sign in to continue.</p>
 
                 <v-alert
                   v-if="authStore.error"
@@ -63,10 +45,6 @@
                 >
                   Sign in with SSO
                 </v-btn>
-
-                <p class="signin-note mt-5 mb-0">
-                  You’ll continue through your organization’s secure identity provider.
-                </p>
               </div>
             </v-col>
           </v-row>
@@ -111,15 +89,18 @@ async function handleLogin() {
 }
 
 .brand-panel {
-  padding: 64px;
   background:
     radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.13), transparent 30%),
     rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
 }
 
-.brand-panel .page-kicker {
-  color: rgba(var(--v-theme-on-primary), 0.7);
+.brand-content {
+  display: flex;
+  min-height: 560px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 64px;
 }
 
 .brand-mark {
@@ -147,33 +128,17 @@ async function handleLogin() {
   line-height: 1.7;
 }
 
-.feature-list {
-  display: grid;
-  gap: 17px;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  color: rgba(var(--v-theme-on-primary), 0.88);
-  font-size: 0.92rem;
-}
-
-.feature-item :deep(.v-icon) {
-  color: rgb(var(--v-theme-on-primary)) !important;
-}
-
 .signin-panel {
   display: grid;
   min-height: 560px;
   place-items: center;
-  padding: 64px;
 }
 
 .signin-content {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 390px;
+  max-width: 518px;
+  padding: 64px;
 }
 
 .signin-title {
@@ -181,13 +146,6 @@ async function handleLogin() {
   font-weight: 720;
   line-height: 1.15;
   letter-spacing: -0.035em;
-}
-
-.signin-note {
-  color: rgb(var(--v-theme-on-surface-variant));
-  font-size: 0.78rem;
-  line-height: 1.55;
-  text-align: center;
 }
 
 .login-glow {
@@ -218,21 +176,14 @@ async function handleLogin() {
     max-width: 680px;
   }
 
-  .brand-panel,
-  .signin-panel {
+  .brand-content,
+  .signin-content {
     padding: 44px;
   }
 
+  .brand-content,
   .signin-panel {
     min-height: auto;
-  }
-
-  .feature-list {
-    display: none;
-  }
-
-  .brand-copy {
-    margin-bottom: 0 !important;
   }
 }
 
@@ -242,8 +193,8 @@ async function handleLogin() {
     padding: 16px;
   }
 
-  .brand-panel,
-  .signin-panel {
+  .brand-content,
+  .signin-content {
     padding: 32px 24px;
   }
 
