@@ -176,6 +176,30 @@ async fn test_complete_app_lifecycle_with_auth() {
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
+    let response = server
+        .get("/api/me")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+    let identity: serde_json::Value = response.json();
+    assert_eq!(identity["subject"], "test-admin");
+    assert_eq!(identity["is_admin"], true);
+
+    let response = server
+        .get("/api/me")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", user_token).parse().unwrap(),
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+    let identity: serde_json::Value = response.json();
+    assert_eq!(identity["subject"], "test-user");
+    assert_eq!(identity["is_admin"], false);
+
     // =========================================================================
     // PHASE 1: Verify empty state
     // =========================================================================

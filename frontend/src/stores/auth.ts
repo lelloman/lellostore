@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authService, type User } from '@/services/auth'
+import { authService, type CurrentIdentity, type User } from '@/services/auth'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<User | null>(null)
   const isLoading = ref(true)
   const error = ref<string | null>(null)
+  const backendIdentity = ref<CurrentIdentity | null>(null)
 
   // Getters
   const isAuthenticated = computed(() => !!user.value && !user.value.expired)
@@ -30,9 +31,19 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   const isAdmin = computed(() => {
+    if (backendIdentity.value) return backendIdentity.value.is_admin
     const adminRole = import.meta.env.VITE_OIDC_ADMIN_ROLE || 'admin'
     return userRoles.value.includes(adminRole)
   })
+
+  async function syncBackendIdentity() {
+    backendIdentity.value = null
+    const accessToken = user.value?.access_token
+    if (!accessToken || user.value?.expired) {
+      return
+    }
+    backendIdentity.value = await authService.getCurrentIdentity(accessToken)
+  }
 
   // Actions
   async function initialize() {
@@ -40,6 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     try {
       user.value = await authService.getUser()
+      await syncBackendIdentity()
     } catch (e) {
       error.value = 'Failed to initialize authentication'
       console.error('Auth initialization error:', e)
@@ -63,6 +75,7 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     try {
       user.value = await authService.handleCallback()
+      await syncBackendIdentity()
     } catch (e) {
       error.value = 'Authentication callback failed'
       console.error('Callback error:', e)
@@ -78,6 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await authService.handleLogoutCallback()
       user.value = null
+      backendIdentity.value = null
     } catch (e) {
       error.value = 'Logout callback failed'
       console.error('Logout callback error:', e)
@@ -92,6 +106,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await authService.logout()
       user.value = null
+      backendIdentity.value = null
     } catch (e) {
       error.value = 'Logout failed'
       console.error('Logout error:', e)
@@ -103,6 +118,7 @@ export const useAuthStore = defineStore('auth', () => {
       const newUser = await authService.silentRenew()
       if (newUser) {
         user.value = newUser
+        await syncBackendIdentity()
       }
     } catch (e) {
       console.error('Token refresh error:', e)
@@ -116,6 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     // State
     user,
+    backendIdentity,
     isLoading,
     error,
     // Getters

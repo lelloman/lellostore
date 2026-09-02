@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '../auth'
+import { authService } from '@/services/auth'
 
 vi.mock('@/services/auth', () => ({
   authService: {
@@ -10,6 +11,7 @@ vi.mock('@/services/auth', () => ({
     handleLogoutCallback: vi.fn(),
     logout: vi.fn(),
     silentRenew: vi.fn(),
+    getCurrentIdentity: vi.fn(),
   },
 }))
 
@@ -47,5 +49,22 @@ describe('Auth Store authorization', () => {
     } as unknown as Parameters<typeof store.setUser>[0])
 
     expect(store.isAdmin).toBe(false)
+  })
+
+  it('uses backend admin status when the OIDC profile has no roles', async () => {
+    vi.mocked(authService.getUser).mockResolvedValue({
+      expired: false,
+      access_token: 'access-token',
+      profile: { sub: 'global-admin' },
+    } as Awaited<ReturnType<typeof authService.getUser>>)
+    vi.mocked(authService.getCurrentIdentity).mockResolvedValue({
+      subject: 'global-admin',
+      is_admin: true,
+    })
+    const store = useAuthStore()
+
+    await store.initialize()
+
+    expect(store.isAdmin).toBe(true)
   })
 })

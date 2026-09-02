@@ -148,6 +148,23 @@ pub async fn auth_unavailable() -> (StatusCode, Json<Value>) {
     )
 }
 
+#[derive(Debug, Serialize)]
+pub struct CurrentUserResponse {
+    pub subject: String,
+    pub email: Option<String>,
+    pub is_admin: bool,
+}
+
+pub async fn get_current_user(
+    AuthenticatedUser(user): AuthenticatedUser,
+) -> Json<CurrentUserResponse> {
+    Json(CurrentUserResponse {
+        subject: user.subject,
+        email: user.email,
+        is_admin: user.is_admin,
+    })
+}
+
 async fn list_apps_with_access(
     state: &AppState,
     access: Vec<db::access::EffectiveAppAccess>,

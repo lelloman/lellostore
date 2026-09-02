@@ -73,6 +73,7 @@ fn public_routes() -> Router<AppState> {
 /// User API routes (requires authentication, any valid user)
 fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
+        .route("/me", get(handlers::get_current_user))
         .route("/apps", get(handlers::list_authorized_apps))
         .route("/apps/:package_name", get(handlers::get_authorized_app))
         .route(

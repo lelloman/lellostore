@@ -1,5 +1,13 @@
 import { UserManager, User, WebStorageStateStore } from 'oidc-client-ts'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+export interface CurrentIdentity {
+  subject: string
+  email?: string
+  is_admin: boolean
+}
+
 const settings = {
   authority: import.meta.env.VITE_OIDC_ISSUER_URL || 'https://example.com',
   client_id: import.meta.env.VITE_OIDC_CLIENT_ID || 'lellostore',
@@ -58,6 +66,16 @@ class AuthService {
   async isAuthenticated(): Promise<boolean> {
     const user = await this.getUser()
     return !!user && !user.expired
+  }
+
+  async getCurrentIdentity(accessToken: string): Promise<CurrentIdentity> {
+    const response = await fetch(`${API_BASE}/api/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!response.ok) {
+      throw new Error(`Identity request failed with status ${response.status}`)
+    }
+    return await response.json() as CurrentIdentity
   }
 
   async silentRenew(): Promise<User | null> {
