@@ -4,10 +4,14 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
   {
-    path: '/access',
+    path: '/admin',
     name: 'access-admin',
     component: () => import('@/views/AdminAccessView.vue'),
     meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/access',
+    redirect: { name: 'access-admin' },
   },
   {
     path: '/',
