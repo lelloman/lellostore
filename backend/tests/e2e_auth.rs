@@ -235,6 +235,16 @@ async fn test_complete_app_lifecycle_with_auth() {
     assert_eq!(uploaded["package_name"], "com.test.app");
     assert_eq!(uploaded["version"]["version_code"], 1);
 
+    let grant = server
+        .put("/api/admin/users/test-user/apps/com.test.app")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {}", admin_token).parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "stable"}))
+        .await;
+    assert_eq!(grant.status_code(), StatusCode::NO_CONTENT);
+
     // =========================================================================
     // PHASE 4: Verify app appears in list (if upload succeeded)
     // =========================================================================
@@ -330,6 +340,20 @@ async fn test_multi_app_database_operations() {
     .execute(&ctx.pool)
     .await
     .unwrap();
+
+    sqlx::query("INSERT INTO known_users (subject, email) VALUES ('test-user', 'user@test.local')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    for package_name in ["com.example.app1", "com.example.app2", "com.example.app3"] {
+        sqlx::query(
+            "INSERT INTO user_app_grants (user_subject, package_name, access_level) VALUES ('test-user', ?, 'beta')",
+        )
+        .bind(package_name)
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    }
 
     // Add versions to app1
     for i in 1..=3 {
@@ -910,4 +934,163 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
         .await
         .unwrap();
     assert_eq!(audit_count, 6);
+}
+
+#[tokio::test]
+async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
+    let (ctx, mock_oidc) = create_auth_test_context().await;
+    sqlx::query("INSERT INTO apps (package_name, name) VALUES ('com.example.private', 'Private')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    for (version_code, is_beta, apk_path) in
+        [(1_i64, false, "stable.apk"), (2_i64, true, "beta.apk")]
+    {
+        std::fs::write(
+            ctx.storage_path.join(apk_path),
+            format!("apk-{version_code}"),
+        )
+        .unwrap();
+        sqlx::query(
+            r#"INSERT INTO app_versions
+               (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta)
+               VALUES ('com.example.private', ?, ?, ?, 5, 'hash', 24, ?)"#,
+        )
+        .bind(version_code)
+        .bind(version_code.to_string())
+        .bind(apk_path)
+        .bind(is_beta)
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    }
+
+    let server = TestServer::new(ctx.router).unwrap();
+    let admin_token = mock_oidc.get_admin_token();
+    let user_token = mock_oidc.get_user_token();
+
+    let empty = server
+        .get("/api/apps")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert!(empty.json::<serde_json::Value>()["apps"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let hidden_detail = server
+        .get("/api/apps/com.example.private")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(hidden_detail.status_code(), StatusCode::NOT_FOUND);
+
+    let admin_catalogue = server
+        .get("/api/admin/apps")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(
+        admin_catalogue.json::<serde_json::Value>()["apps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let stable_grant = server
+        .put("/api/admin/users/test-user/apps/com.example.private")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "stable"}))
+        .await;
+    assert_eq!(stable_grant.status_code(), StatusCode::NO_CONTENT);
+
+    let stable_catalogue = server
+        .get("/api/apps")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    let body: serde_json::Value = stable_catalogue.json();
+    assert_eq!(body["apps"][0]["access_level"], "stable");
+    assert_eq!(body["apps"][0]["latest_version"]["version_code"], 1);
+
+    let stable_detail = server
+        .get("/api/apps/com.example.private")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    let body: serde_json::Value = stable_detail.json();
+    assert_eq!(body["versions"].as_array().unwrap().len(), 1);
+    assert_eq!(body["versions"][0]["version_code"], 1);
+
+    let hidden_beta_apk = server
+        .get("/api/apps/com.example.private/versions/2/apk")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(hidden_beta_apk.status_code(), StatusCode::NOT_FOUND);
+
+    let beta_grant = server
+        .put("/api/admin/users/test-user/apps/com.example.private")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "beta"}))
+        .await;
+    assert_eq!(beta_grant.status_code(), StatusCode::NO_CONTENT);
+    let beta_apk = server
+        .get("/api/apps/com.example.private/versions/2/apk")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(beta_apk.status_code(), StatusCode::OK);
+
+    let revoke = server
+        .delete("/api/admin/users/test-user/apps/com.example.private")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(revoke.status_code(), StatusCode::NO_CONTENT);
+
+    // A stale APK URL cannot bypass the newly revoked grant.
+    let revoked_download = server
+        .get("/api/apps/com.example.private/versions/1/apk")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(revoked_download.status_code(), StatusCode::NOT_FOUND);
+    let revoked_catalogue = server
+        .get("/api/apps")
+        .add_header(
+            "Authorization".parse().unwrap(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    assert!(revoked_catalogue.json::<serde_json::Value>()["apps"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
 
-use crate::auth::AdminUser;
+use crate::auth::{AdminUser, AuthenticatedUser};
 use crate::db::access::AppAccessLevel;
 use crate::db::admin::{GroupDetail, KnownUser, UserAccessDetail};
 use crate::db::{self, models::AppVersion};
@@ -46,6 +46,7 @@ pub struct AppListItem {
     pub icon_url: String,
     pub total_size: i64,
     pub latest_version: Option<LatestVersionInfo>,
+    pub access_level: AppAccessLevel,
 }
 
 /// Version info with URLs for detail endpoint
@@ -71,6 +72,7 @@ pub struct AppDetailResponse {
     pub description: Option<String>,
     pub icon_url: String,
     pub versions: Vec<AppVersionInfo>,
+    pub access_level: AppAccessLevel,
 }
 
 /// Apps list response
@@ -146,13 +148,26 @@ pub async fn auth_unavailable() -> (StatusCode, Json<Value>) {
     )
 }
 
-pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListResponse>, AppError> {
+async fn list_apps_with_access(
+    state: &AppState,
+    access: Vec<db::access::EffectiveAppAccess>,
+) -> Result<Json<AppsListResponse>, AppError> {
     let apps = db::get_all_apps(&state.db).await?;
 
     let mut items = Vec::new();
     for app in apps {
+        let Some(grant) = access
+            .iter()
+            .find(|grant| grant.package_name == app.package_name)
+        else {
+            continue;
+        };
         // Get latest version for this app
-        let versions = db::get_app_versions(&state.db, &app.package_name).await?;
+        let versions = db::get_app_versions(&state.db, &app.package_name)
+            .await?
+            .into_iter()
+            .filter(|version| grant.access_level == AppAccessLevel::Beta || !version.is_beta)
+            .collect::<Vec<_>>();
         let total_size = versions.iter().map(|version| version.size).sum();
         let latest = versions.into_iter().max_by_key(|v| v.version_code);
 
@@ -170,10 +185,38 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
                 uploaded_at: v.uploaded_at,
                 is_beta: v.is_beta,
             }),
+            access_level: grant.access_level,
         });
     }
 
     Ok(Json(AppsListResponse { apps: items }))
+}
+
+pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListResponse>, AppError> {
+    let access = db::get_all_apps(&state.db)
+        .await?
+        .into_iter()
+        .map(|app| db::access::EffectiveAppAccess {
+            package_name: app.package_name,
+            access_level: AppAccessLevel::Beta,
+        })
+        .collect();
+    list_apps_with_access(&state, access).await
+}
+
+pub async fn list_authorized_apps(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+) -> Result<Json<AppsListResponse>, AppError> {
+    let access = db::access::get_effective_app_access(&state.db, &user.0.subject).await?;
+    list_apps_with_access(&state, access).await
+}
+
+pub async fn list_admin_apps(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> Result<Json<AppsListResponse>, AppError> {
+    list_apps(State(state)).await
 }
 
 pub async fn get_app(
@@ -193,6 +236,35 @@ pub async fn get_app(
         description: app.description,
         icon_url: make_icon_url(&app.package_name),
         versions: version_infos,
+        access_level: AppAccessLevel::Beta,
+    }))
+}
+
+pub async fn get_authorized_app(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(package_name): Path<String>,
+) -> Result<Json<AppDetailResponse>, AppError> {
+    let access =
+        db::access::get_effective_access_for_app(&state.db, &user.0.subject, &package_name)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("App '{package_name}' not found")))?;
+    let app = db::get_app(&state.db, &package_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("App '{package_name}' not found")))?;
+    let versions = db::get_app_versions(&state.db, &package_name)
+        .await?
+        .into_iter()
+        .filter(|version| access == AppAccessLevel::Beta || !version.is_beta)
+        .map(|version| to_version_info(&version))
+        .collect();
+    Ok(Json(AppDetailResponse {
+        package_name: app.package_name.clone(),
+        name: app.name,
+        description: app.description,
+        icon_url: make_icon_url(&app.package_name),
+        versions,
+        access_level: access,
     }))
 }
 
@@ -215,6 +287,17 @@ pub async fn get_icon(
     let full_path = state.config.storage_path.join(&icon_path);
 
     serve_file(full_path, "image/png", None, None).await
+}
+
+pub async fn get_authorized_icon(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(package_name): Path<String>,
+) -> Result<Response, AppError> {
+    db::access::get_effective_access_for_app(&state.db, &user.0.subject, &package_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("App '{package_name}' not found")))?;
+    get_icon(State(state), Path(package_name)).await
 }
 
 /// Serve APK file with Range header support
@@ -244,6 +327,34 @@ pub async fn download_apk(
     // Get Range header if present
     let range_header = headers.get(RANGE).and_then(|h| h.to_str().ok());
 
+    serve_file(
+        full_path,
+        "application/vnd.android.package-archive",
+        Some(filename),
+        range_header,
+    )
+    .await
+}
+
+pub async fn download_authorized_apk(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path((package_name, version_code)): Path<(String, i64)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let access =
+        db::access::get_effective_access_for_app(&state.db, &user.0.subject, &package_name)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Version {version_code} not found")))?;
+    let version = db::get_app_versions(&state.db, &package_name)
+        .await?
+        .into_iter()
+        .find(|version| version.version_code == version_code)
+        .filter(|version| access == AppAccessLevel::Beta || !version.is_beta)
+        .ok_or_else(|| AppError::NotFound(format!("Version {version_code} not found")))?;
+    let full_path = state.config.storage_path.join(&version.apk_path);
+    let filename = format!("{}-{}.apk", package_name, version.version_name);
+    let range_header = headers.get(RANGE).and_then(|header| header.to_str().ok());
     serve_file(
         full_path,
         "application/vnd.android.package-archive",
@@ -461,6 +572,7 @@ pub async fn update_app(
         description: app.description,
         icon_url: make_icon_url(&app.package_name),
         versions: version_infos,
+        access_level: AppAccessLevel::Beta,
     }))
 }
 

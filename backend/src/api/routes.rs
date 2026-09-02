@@ -73,12 +73,15 @@ fn public_routes() -> Router<AppState> {
 /// User API routes (requires authentication, any valid user)
 fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
-        .route("/apps", get(handlers::list_apps))
-        .route("/apps/:package_name", get(handlers::get_app))
-        .route("/apps/:package_name/icon", get(handlers::get_icon))
+        .route("/apps", get(handlers::list_authorized_apps))
+        .route("/apps/:package_name", get(handlers::get_authorized_app))
+        .route(
+            "/apps/:package_name/icon",
+            get(handlers::get_authorized_icon),
+        )
         .route(
             "/apps/:package_name/versions/:version_code/apk",
-            get(handlers::download_apk),
+            get(handlers::download_authorized_apk),
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
@@ -89,7 +92,10 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .saturating_add(1024 * 1024)
         .min(usize::MAX as u64) as usize;
     Router::new()
-        .route("/apps", post(handlers::upload_app))
+        .route(
+            "/apps",
+            get(handlers::list_admin_apps).post(handlers::upload_app),
+        )
         .route("/apps/:package_name", put(handlers::update_app))
         .route("/apps/:package_name", delete(handlers::delete_app))
         .route("/apps/:package_name/icon", post(handlers::upload_icon))
