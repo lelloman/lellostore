@@ -27,4 +27,8 @@ data class CachedAppEntity(
     val latestVersionUploadedAt: Long,
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long,
+    @ColumnInfo(name = "access_level")
+    val accessLevel: String = "stable",
+    @ColumnInfo(name = "latest_version_is_beta")
+    val latestVersionIsBeta: Boolean = false,
 )

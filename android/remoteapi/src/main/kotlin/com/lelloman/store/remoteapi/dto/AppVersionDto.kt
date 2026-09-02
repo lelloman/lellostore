@@ -19,6 +19,8 @@ data class AppVersionDto(
     val minSdk: Int,
     @SerialName("uploaded_at")
     val uploadedAt: String,
+    @SerialName("is_beta")
+    val isBeta: Boolean = false,
 )
 
 fun AppVersionDto.toDomain(): AppVersion = AppVersion(
@@ -28,4 +30,5 @@ fun AppVersionDto.toDomain(): AppVersion = AppVersion(
     sha256 = sha256,
     minSdk = minSdk,
     uploadedAt = LocalDateTime.parse(uploadedAt.replace(" ", "T")).toInstant(TimeZone.UTC),
+    isBeta = isBeta,
 )

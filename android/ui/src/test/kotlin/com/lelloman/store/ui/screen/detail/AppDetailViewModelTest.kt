@@ -4,6 +4,10 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.AppAccessLevel
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import com.lelloman.store.ui.model.AppDetailModel
 import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
@@ -498,6 +502,53 @@ class AppDetailViewModelTest {
         assertThat(fakeInteractor.downloadAndInstallCalled).isFalse()
     }
 
+    @Test
+    fun `inherited auto update result changes with global default`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.app?.effectiveAutoUpdate).isTrue()
+        fakeInteractor.mutableAutoUpdateDefault.value = false
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.app?.autoUpdateOverride).isEqualTo(AutoUpdateOverride.Inherit)
+        assertThat(viewModel.state.value.app?.effectiveAutoUpdate).isFalse()
+    }
+
+    @Test
+    fun `beta override is rejected without beta access`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail(accessLevel = AppAccessLevel.Stable)
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onReleaseChannelOverrideChanged(ReleaseChannelOverride.Beta)
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.mutableReleaseChannelOverride.value)
+            .isEqualTo(ReleaseChannelOverride.Inherit)
+    }
+
+    @Test
+    fun `selected release channel determines install target`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail(
+            accessLevel = AppAccessLevel.Beta,
+            versions = listOf(
+                AppVersionModel(3, "3.0-beta", 3_000_000, 1700000000000L, isBeta = true),
+                AppVersionModel(2, "2.0", 2_000_000, 1690000000000L),
+            ),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.app?.latestVersion?.versionCode).isEqualTo(2)
+        viewModel.onReleaseChannelOverrideChanged(ReleaseChannelOverride.Beta)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.app?.latestVersion?.versionCode).isEqualTo(3)
+        assertThat(viewModel.state.value.app?.effectiveReleaseChannel).isEqualTo(ReleaseChannel.Beta)
+    }
+
     private fun createAppDetail(
         packageName: String = "com.test.app",
         name: String = "Test App",
@@ -505,12 +556,14 @@ class AppDetailViewModelTest {
             AppVersionModel(2, "2.0.0", 2_000_000, 1700000000000L),
             AppVersionModel(1, "1.0.0", 1_500_000, 1690000000000L),
         ),
+        accessLevel: AppAccessLevel = AppAccessLevel.Stable,
     ) = AppDetailModel(
         packageName = packageName,
         name = name,
         description = "Test description",
         iconUrl = "https://example.com/icon.png",
         versions = versions,
+        accessLevel = accessLevel,
     )
 }
 
@@ -518,6 +571,10 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     val mutableApp = MutableStateFlow<AppDetailModel?>(null)
     val mutableInstalledVersion = MutableStateFlow<InstalledAppModel?>(null)
     val mutableDownloadProgress = MutableStateFlow<DownloadProgress?>(null)
+    val mutableAutoUpdateDefault = MutableStateFlow(true)
+    val mutableReleaseChannelDefault = MutableStateFlow(ReleaseChannel.Stable)
+    val mutableAutoUpdateOverride = MutableStateFlow(AutoUpdateOverride.Inherit)
+    val mutableReleaseChannelOverride = MutableStateFlow(ReleaseChannelOverride.Inherit)
     var refreshAppResult: Result<AppDetailModel> = Result.success(
         AppDetailModel("com.test.app", "Test", null, "", emptyList())
     )
@@ -537,6 +594,10 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     override fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?> = mutableInstalledVersion
 
     override fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?> = mutableDownloadProgress
+    override fun autoUpdateDefault() = mutableAutoUpdateDefault
+    override fun releaseChannelDefault() = mutableReleaseChannelDefault
+    override fun autoUpdateOverride(packageName: String): Flow<AutoUpdateOverride> = mutableAutoUpdateOverride
+    override fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride> = mutableReleaseChannelOverride
 
     override suspend fun refreshApp(packageName: String): Result<AppDetailModel> {
         refreshAppCalled = true
@@ -564,5 +625,13 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
 
     override fun openInstallPermissionSettings() {
         openInstallPermissionSettingsCalled = true
+    }
+
+    override suspend fun setAutoUpdateOverride(packageName: String, override: AutoUpdateOverride) {
+        mutableAutoUpdateOverride.value = override
+    }
+
+    override suspend fun setReleaseChannelOverride(packageName: String, override: ReleaseChannelOverride) {
+        mutableReleaseChannelOverride.value = override
     }
 }

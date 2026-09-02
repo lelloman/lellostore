@@ -1,6 +1,7 @@
 package com.lelloman.store.ui.screen.detail
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,11 +31,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.Alignment
@@ -45,6 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import com.lelloman.store.ui.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,6 +134,8 @@ fun AppDetailScreen(
                         onOpenClick = viewModel::onOpenClick,
                         onCancelDownload = viewModel::onCancelDownload,
                         onGrantPermissionClick = viewModel::onGrantPermissionClick,
+                        onAutoUpdateOverrideChanged = viewModel::onAutoUpdateOverrideChanged,
+                        onReleaseChannelOverrideChanged = viewModel::onReleaseChannelOverrideChanged,
                     )
                 }
             }
@@ -142,8 +153,12 @@ private fun AppDetailContent(
     onOpenClick: () -> Unit,
     onCancelDownload: () -> Unit,
     onGrantPermissionClick: () -> Unit,
+    onAutoUpdateOverrideChanged: (AutoUpdateOverride) -> Unit,
+    onReleaseChannelOverrideChanged: (ReleaseChannelOverride) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showAutoUpdateDialog by remember { mutableStateOf(false) }
+    var showReleaseChannelDialog by remember { mutableStateOf(false) }
     val isDownloading = downloadState != null &&
             downloadState != DownloadState.COMPLETED &&
             downloadState != DownloadState.FAILED &&
@@ -253,6 +268,22 @@ private fun AppDetailContent(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.app_update_preferences),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        PolicyItem(
+            title = stringResource(R.string.app_auto_update),
+            value = app.autoUpdateOverride.displayName(app.effectiveAutoUpdate),
+            onClick = { showAutoUpdateDialog = true },
+        )
+        PolicyItem(
+            title = stringResource(R.string.app_release_channel),
+            value = app.releaseChannelOverride.displayName(app.effectiveReleaseChannel),
+            onClick = { showReleaseChannelDialog = true },
+        )
+
         // Description
         app.description?.let { description ->
             Spacer(modifier = Modifier.height(16.dp))
@@ -332,6 +363,104 @@ private fun AppDetailContent(
             }
         }
     }
+
+
+    if (showAutoUpdateDialog) {
+        PolicySelectionDialog(
+            title = stringResource(R.string.app_auto_update),
+            options = AutoUpdateOverride.entries,
+            label = { it.displayName(app.effectiveAutoUpdate) },
+            onSelected = {
+                onAutoUpdateOverrideChanged(it)
+                showAutoUpdateDialog = false
+            },
+            onDismiss = { showAutoUpdateDialog = false },
+        )
+    }
+    if (showReleaseChannelDialog) {
+        val options = if (app.hasBetaAccess) {
+            ReleaseChannelOverride.entries
+        } else {
+            ReleaseChannelOverride.entries.filterNot { it == ReleaseChannelOverride.Beta }
+        }
+        PolicySelectionDialog(
+            title = stringResource(R.string.app_release_channel),
+            options = options,
+            label = { it.displayName(app.effectiveReleaseChannel) },
+            onSelected = {
+                onReleaseChannelOverrideChanged(it)
+                showReleaseChannelDialog = false
+            },
+            onDismiss = { showReleaseChannelDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun AutoUpdateOverride.displayName(effective: Boolean): String = when (this) {
+    AutoUpdateOverride.Inherit -> stringResource(
+        R.string.use_default_with_value,
+        stringResource(if (effective) R.string.option_on else R.string.option_off),
+    )
+    AutoUpdateOverride.Enabled -> stringResource(R.string.option_on)
+    AutoUpdateOverride.Disabled -> stringResource(R.string.option_off)
+}
+
+@Composable
+private fun ReleaseChannelOverride.displayName(effective: ReleaseChannel): String = when (this) {
+    ReleaseChannelOverride.Inherit -> stringResource(
+        R.string.use_default_with_value,
+        effective.displayName(),
+    )
+    ReleaseChannelOverride.Stable -> stringResource(R.string.release_channel_stable)
+    ReleaseChannelOverride.Beta -> stringResource(R.string.release_channel_beta)
+}
+
+@Composable
+private fun ReleaseChannel.displayName(): String = when (this) {
+    ReleaseChannel.Stable -> stringResource(R.string.release_channel_stable)
+    ReleaseChannel.Beta -> stringResource(R.string.release_channel_beta)
+}
+
+@Composable
+private fun PolicyItem(title: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun <T> PolicySelectionDialog(
+    title: String,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    onSelected: (T) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                options.forEach { option ->
+                    TextButton(
+                        onClick = { onSelected(option) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(label(option)) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable

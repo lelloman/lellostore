@@ -5,6 +5,10 @@ import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.model.AppDetail
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
+import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.ui.model.AppDetailModel
 import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
@@ -17,6 +21,7 @@ class AppDetailInteractorImpl @Inject constructor(
     private val appsRepository: AppsRepository,
     private val installedAppsRepository: InstalledAppsRepository,
     private val downloadManager: DownloadManager,
+    private val userPreferencesStore: UserPreferencesStore,
 ) : AppDetailViewModel.Interactor {
 
     override fun watchApp(packageName: String): Flow<AppDetailModel?> {
@@ -51,6 +56,16 @@ class AppDetailInteractorImpl @Inject constructor(
         }
     }
 
+    override fun autoUpdateDefault() = userPreferencesStore.autoUpdateDefault
+
+    override fun releaseChannelDefault() = userPreferencesStore.releaseChannelDefault
+
+    override fun autoUpdateOverride(packageName: String): Flow<AutoUpdateOverride> =
+        userPreferencesStore.autoUpdateOverride(packageName)
+
+    override fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride> =
+        userPreferencesStore.releaseChannelOverride(packageName)
+
     override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
         downloadManager.downloadAndInstall(packageName, versionCode)
     }
@@ -67,6 +82,14 @@ class AppDetailInteractorImpl @Inject constructor(
         downloadManager.openInstallPermissionSettings()
     }
 
+    override suspend fun setAutoUpdateOverride(packageName: String, override: AutoUpdateOverride) {
+        userPreferencesStore.setAutoUpdateOverride(packageName, override)
+    }
+
+    override suspend fun setReleaseChannelOverride(packageName: String, override: ReleaseChannelOverride) {
+        userPreferencesStore.setReleaseChannelOverride(packageName, override)
+    }
+
     private fun AppDetail.toUiModel(): AppDetailModel {
         return AppDetailModel(
             packageName = packageName,
@@ -79,8 +102,10 @@ class AppDetailInteractorImpl @Inject constructor(
                     versionName = version.versionName,
                     size = version.size,
                     uploadedAtMillis = version.uploadedAt.toEpochMilliseconds(),
+                    isBeta = version.isBeta,
                 )
             },
+            accessLevel = accessLevel,
         )
     }
 }

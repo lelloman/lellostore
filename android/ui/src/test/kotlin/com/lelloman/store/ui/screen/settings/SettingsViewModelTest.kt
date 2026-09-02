@@ -95,6 +95,19 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `global update policy reflects changes and persists selections`() = runTest {
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onAutoUpdateDefaultChanged(false)
+        viewModel.onReleaseChannelDefaultChanged(ReleaseChannelOption.Beta)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.autoUpdateDefault).isFalse()
+        assertThat(viewModel.state.value.releaseChannelDefault).isEqualTo(ReleaseChannelOption.Beta)
+    }
+
+    @Test
     fun `onLogoutClick calls interactor and emits NavigateToLogin`() = runTest {
         createViewModel()
         advanceUntilIdle()
@@ -200,6 +213,8 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     val mutableThemeMode = MutableStateFlow(ThemeModeOption.System)
     val mutableUpdateCheckInterval = MutableStateFlow(UpdateCheckIntervalOption.Hours24)
     val mutableWifiOnlyDownloads = MutableStateFlow(true)
+    val mutableAutoUpdateDefault = MutableStateFlow(true)
+    val mutableReleaseChannelDefault = MutableStateFlow(ReleaseChannelOption.Stable)
     val mutableUserEmail = MutableStateFlow<String?>(null)
     val mutableServerUrl = MutableStateFlow("")
     private var _appVersion = "1.0.0"
@@ -226,6 +241,8 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     override fun themeMode(): StateFlow<ThemeModeOption> = mutableThemeMode
     override fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption> = mutableUpdateCheckInterval
     override fun wifiOnlyDownloads(): StateFlow<Boolean> = mutableWifiOnlyDownloads
+    override fun autoUpdateDefault(): StateFlow<Boolean> = mutableAutoUpdateDefault
+    override fun releaseChannelDefault(): StateFlow<ReleaseChannelOption> = mutableReleaseChannelDefault
     override fun userEmail(): StateFlow<String?> = mutableUserEmail
     override fun serverUrl(): StateFlow<String> = mutableServerUrl
     override fun getAppVersion(): String = _appVersion
@@ -246,6 +263,14 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
         setWifiOnlyDownloadsCalled = true
         lastWifiOnlyDownloads = enabled
         mutableWifiOnlyDownloads.value = enabled
+    }
+
+    override suspend fun setAutoUpdateDefault(enabled: Boolean) {
+        mutableAutoUpdateDefault.value = enabled
+    }
+
+    override suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption) {
+        mutableReleaseChannelDefault.value = channel
     }
 
     override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {

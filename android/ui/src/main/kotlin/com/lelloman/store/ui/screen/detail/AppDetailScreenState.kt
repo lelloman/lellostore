@@ -1,6 +1,9 @@
 package com.lelloman.store.ui.screen.detail
 
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 
 data class AppDetailScreenState(
     val app: AppDetailUiModel? = null,
@@ -21,6 +24,11 @@ data class AppDetailUiModel(
     val canInstall: Boolean,
     val canUpdate: Boolean,
     val canOpen: Boolean,
+    val autoUpdateOverride: AutoUpdateOverride,
+    val releaseChannelOverride: ReleaseChannelOverride,
+    val effectiveAutoUpdate: Boolean,
+    val effectiveReleaseChannel: ReleaseChannel,
+    val hasBetaAccess: Boolean,
 )
 
 data class AppVersionUiModel(

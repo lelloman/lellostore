@@ -13,6 +13,8 @@ data class AppDetailDto(
     @SerialName("icon_url")
     val iconUrl: String,
     val versions: List<AppVersionDto>,
+    @SerialName("access_level")
+    val accessLevel: String = "stable",
 )
 
 fun AppDetailDto.toDomain(): AppDetail = AppDetail(
@@ -21,4 +23,5 @@ fun AppDetailDto.toDomain(): AppDetail = AppDetail(
     description = description,
     iconUrl = iconUrl,
     versions = versions.map { it.toDomain() },
+    accessLevel = accessLevel.toAccessLevel(),
 )

@@ -31,4 +31,6 @@ data class CachedAppVersionEntity(
     val minSdk: Int,
     @ColumnInfo(name = "uploaded_at")
     val uploadedAt: Long,
+    @ColumnInfo(name = "is_beta")
+    val isBeta: Boolean = false,
 )

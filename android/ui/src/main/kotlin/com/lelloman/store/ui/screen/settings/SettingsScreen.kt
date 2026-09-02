@@ -53,6 +53,12 @@ fun UpdateCheckIntervalOption.getDisplayName(): String = when (this) {
 }
 
 @Composable
+fun ReleaseChannelOption.getDisplayName(): String = when (this) {
+    ReleaseChannelOption.Stable -> stringResource(R.string.release_channel_stable)
+    ReleaseChannelOption.Beta -> stringResource(R.string.release_channel_beta)
+}
+
+@Composable
 fun SettingsScreen(
     onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier,
@@ -73,6 +79,8 @@ fun SettingsScreen(
         onThemeModeChanged = viewModel::onThemeModeChanged,
         onUpdateCheckIntervalChanged = viewModel::onUpdateCheckIntervalChanged,
         onWifiOnlyDownloadsChanged = viewModel::onWifiOnlyDownloadsChanged,
+        onAutoUpdateDefaultChanged = viewModel::onAutoUpdateDefaultChanged,
+        onReleaseChannelDefaultChanged = viewModel::onReleaseChannelDefaultChanged,
         onServerUrlInputChanged = viewModel::onServerUrlInputChanged,
         onServerUrlSave = viewModel::onServerUrlSave,
         onLogoutClick = viewModel::onLogoutClick,
@@ -86,6 +94,8 @@ private fun SettingsContent(
     onThemeModeChanged: (ThemeModeOption) -> Unit,
     onUpdateCheckIntervalChanged: (UpdateCheckIntervalOption) -> Unit,
     onWifiOnlyDownloadsChanged: (Boolean) -> Unit,
+    onAutoUpdateDefaultChanged: (Boolean) -> Unit,
+    onReleaseChannelDefaultChanged: (ReleaseChannelOption) -> Unit,
     onServerUrlInputChanged: (String) -> Unit,
     onServerUrlSave: () -> Unit,
     onLogoutClick: () -> Unit,
@@ -93,6 +103,7 @@ private fun SettingsContent(
 ) {
     var showThemeDialog by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
+    var showReleaseChannelDialog by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
 
     Column(
@@ -113,6 +124,19 @@ private fun SettingsContent(
 
         // Updates Section
         SettingsSectionHeader(title = stringResource(R.string.settings_updates))
+
+        SettingsSwitchItem(
+            title = stringResource(R.string.settings_auto_update_default),
+            subtitle = stringResource(R.string.settings_auto_update_default_subtitle),
+            checked = state.autoUpdateDefault,
+            onCheckedChange = onAutoUpdateDefaultChanged,
+        )
+
+        SettingsClickableItem(
+            title = stringResource(R.string.settings_release_channel_default),
+            subtitle = state.releaseChannelDefault.getDisplayName(),
+            onClick = { showReleaseChannelDialog = true },
+        )
 
         SettingsClickableItem(
             title = stringResource(R.string.settings_check_for_updates),
@@ -206,6 +230,20 @@ private fun SettingsContent(
                 showIntervalDialog = false
             },
             onDismiss = { showIntervalDialog = false },
+        )
+    }
+
+    if (showReleaseChannelDialog) {
+        SelectionDialog(
+            title = stringResource(R.string.settings_release_channel_default),
+            options = ReleaseChannelOption.entries,
+            selectedOption = state.releaseChannelDefault,
+            optionLabel = { it.getDisplayName() },
+            onOptionSelected = {
+                onReleaseChannelDefaultChanged(it)
+                showReleaseChannelDialog = false
+            },
+            onDismiss = { showReleaseChannelDialog = false },
         )
     }
 

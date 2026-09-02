@@ -26,6 +26,22 @@ class SettingsViewModel @Inject constructor(
 
     init {
         observeSettings()
+        observeUpdatePolicy()
+    }
+
+    private fun observeUpdatePolicy() {
+        viewModelScope.launch {
+            combine(
+                interactor.autoUpdateDefault(),
+                interactor.releaseChannelDefault(),
+            ) { autoUpdate, releaseChannel -> autoUpdate to releaseChannel }
+                .collect { (autoUpdate, releaseChannel) ->
+                    mutableState.value = mutableState.value.copy(
+                        autoUpdateDefault = autoUpdate,
+                        releaseChannelDefault = releaseChannel,
+                    )
+                }
+        }
     }
 
     private fun observeSettings() {
@@ -79,6 +95,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun onAutoUpdateDefaultChanged(enabled: Boolean) {
+        viewModelScope.launch { interactor.setAutoUpdateDefault(enabled) }
+    }
+
+    fun onReleaseChannelDefaultChanged(channel: ReleaseChannelOption) {
+        viewModelScope.launch { interactor.setReleaseChannelDefault(channel) }
+    }
+
     fun onLogoutClick() {
         viewModelScope.launch {
             interactor.logout()
@@ -111,12 +135,16 @@ class SettingsViewModel @Inject constructor(
         fun themeMode(): StateFlow<ThemeModeOption>
         fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption>
         fun wifiOnlyDownloads(): StateFlow<Boolean>
+        fun autoUpdateDefault(): StateFlow<Boolean>
+        fun releaseChannelDefault(): StateFlow<ReleaseChannelOption>
         fun userEmail(): StateFlow<String?>
         fun serverUrl(): StateFlow<String>
         fun getAppVersion(): String
         suspend fun setThemeMode(mode: ThemeModeOption)
         suspend fun setUpdateCheckInterval(interval: UpdateCheckIntervalOption)
         suspend fun setWifiOnlyDownloads(enabled: Boolean)
+        suspend fun setAutoUpdateDefault(enabled: Boolean)
+        suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption)
         suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun logout()
     }
@@ -131,6 +159,8 @@ data class SettingsScreenState(
     val themeMode: ThemeModeOption = ThemeModeOption.System,
     val updateCheckInterval: UpdateCheckIntervalOption = UpdateCheckIntervalOption.Hours24,
     val wifiOnlyDownloads: Boolean = true,
+    val autoUpdateDefault: Boolean = true,
+    val releaseChannelDefault: ReleaseChannelOption = ReleaseChannelOption.Stable,
     val userEmail: String? = null,
     val serverUrl: String = "",
     val serverUrlInput: String = "",
@@ -153,4 +183,9 @@ enum class UpdateCheckIntervalOption {
     Hours12,
     Hours24,
     Manual,
+}
+
+enum class ReleaseChannelOption {
+    Stable,
+    Beta,
 }

@@ -1,5 +1,6 @@
 package com.lelloman.store.domain.model
 
+import com.lelloman.store.domain.preferences.AppAccessLevel
 import kotlinx.datetime.Instant
 
 data class App(
@@ -8,6 +9,7 @@ data class App(
     val description: String?,
     val iconUrl: String,
     val latestVersion: AppVersion,
+    val accessLevel: AppAccessLevel = AppAccessLevel.Stable,
 )
 
 data class AppVersion(
@@ -17,6 +19,7 @@ data class AppVersion(
     val sha256: String?,
     val minSdk: Int,
     val uploadedAt: Instant,
+    val isBeta: Boolean = false,
 )
 
 data class AppDetail(
@@ -25,6 +28,7 @@ data class AppDetail(
     val description: String?,
     val iconUrl: String,
     val versions: List<AppVersion>,
+    val accessLevel: AppAccessLevel = AppAccessLevel.Stable,
 )
 
 data class InstalledApp(

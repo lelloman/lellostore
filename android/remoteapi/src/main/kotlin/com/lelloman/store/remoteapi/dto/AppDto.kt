@@ -1,6 +1,7 @@
 package com.lelloman.store.remoteapi.dto
 
 import com.lelloman.store.domain.model.App
+import com.lelloman.store.domain.preferences.AppAccessLevel
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -14,6 +15,8 @@ data class AppDto(
     val iconUrl: String,
     @SerialName("latest_version")
     val latestVersion: AppVersionDto,
+    @SerialName("access_level")
+    val accessLevel: String = "stable",
 )
 
 fun AppDto.toDomain(): App = App(
@@ -22,4 +25,10 @@ fun AppDto.toDomain(): App = App(
     description = description,
     iconUrl = iconUrl,
     latestVersion = latestVersion.toDomain(),
+    accessLevel = accessLevel.toAccessLevel(),
 )
+
+internal fun String.toAccessLevel(): AppAccessLevel = when (lowercase()) {
+    "beta" -> AppAccessLevel.Beta
+    else -> AppAccessLevel.Stable
+}

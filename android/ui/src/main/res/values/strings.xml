@@ -84,6 +84,17 @@
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_updates">Updates</string>
+    <string name="settings_auto_update_default">Automatic updates</string>
+    <string name="settings_auto_update_default_subtitle">Default for newly added apps</string>
+    <string name="settings_release_channel_default">Preferred release channel</string>
+    <string name="release_channel_stable">Stable</string>
+    <string name="release_channel_beta">Beta</string>
+    <string name="app_update_preferences">Update preferences</string>
+    <string name="app_auto_update">Automatic update</string>
+    <string name="app_release_channel">Release channel</string>
+    <string name="use_default_with_value">Use default (%1$s)</string>
+    <string name="option_on">On</string>
+    <string name="option_off">Off</string>
     <string name="settings_check_for_updates">Check for updates</string>
     <string name="settings_wifi_only">WiFi only downloads</string>
     <string name="settings_wifi_only_subtitle">Only download app updates over WiFi</string>

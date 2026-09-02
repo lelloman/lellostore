@@ -4,6 +4,7 @@ import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
+import com.lelloman.store.domain.preferences.AppAccessLevel
 import com.lelloman.store.localdata.db.dao.AppsDao
 import com.lelloman.store.localdata.db.dao.AppVersionsDao
 import com.lelloman.store.localdata.db.entity.CachedAppEntity
@@ -38,6 +39,7 @@ class AppsRepositoryImpl(
                     description = it.description,
                     iconUrl = it.iconUrl,
                     versions = versions.map { v -> v.toDomain() },
+                    accessLevel = it.accessLevel.toAccessLevel(),
                 )
             }
         }
@@ -64,6 +66,8 @@ class AppsRepositoryImpl(
                 latestVersionMinSdk = appDetail.versions.first().minSdk,
                 latestVersionUploadedAt = appDetail.versions.first().uploadedAt.toEpochMilliseconds(),
                 updatedAt = System.currentTimeMillis(),
+                accessLevel = appDetail.accessLevel.name.lowercase(),
+                latestVersionIsBeta = appDetail.versions.first().isBeta,
             )
             appsDao.insertApp(appEntity)
 
@@ -76,6 +80,7 @@ class AppsRepositoryImpl(
                     sha256 = v.sha256,
                     minSdk = v.minSdk,
                     uploadedAt = v.uploadedAt.toEpochMilliseconds(),
+                    isBeta = v.isBeta,
                 )
             }
             appVersionsDao.deleteVersions(packageName)
@@ -97,7 +102,9 @@ class AppsRepositoryImpl(
             sha256 = latestVersionSha256,
             minSdk = latestVersionMinSdk,
             uploadedAt = Instant.fromEpochMilliseconds(latestVersionUploadedAt),
+            isBeta = latestVersionIsBeta,
         ),
+        accessLevel = accessLevel.toAccessLevel(),
     )
 
     private fun CachedAppVersionEntity.toDomain(): AppVersion = AppVersion(
@@ -107,6 +114,7 @@ class AppsRepositoryImpl(
         sha256 = sha256,
         minSdk = minSdk,
         uploadedAt = Instant.fromEpochMilliseconds(uploadedAt),
+        isBeta = isBeta,
     )
 
     private fun App.toEntity(): CachedAppEntity = CachedAppEntity(
@@ -121,5 +129,12 @@ class AppsRepositoryImpl(
         latestVersionMinSdk = latestVersion.minSdk,
         latestVersionUploadedAt = latestVersion.uploadedAt.toEpochMilliseconds(),
         updatedAt = System.currentTimeMillis(),
+        accessLevel = accessLevel.name.lowercase(),
+        latestVersionIsBeta = latestVersion.isBeta,
     )
+
+    private fun String.toAccessLevel(): AppAccessLevel = when (lowercase()) {
+        "beta" -> AppAccessLevel.Beta
+        else -> AppAccessLevel.Stable
+    }
 }

@@ -4,9 +4,11 @@ import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.preferences.ThemeMode
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.UpdateCheckInterval
 import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.ui.screen.settings.SettingsViewModel
+import com.lelloman.store.ui.screen.settings.ReleaseChannelOption
 import com.lelloman.store.ui.screen.settings.ThemeModeOption
 import com.lelloman.store.ui.screen.settings.UpdateCheckIntervalOption
 import com.lelloman.store.di.ApplicationScope
@@ -40,6 +42,13 @@ class SettingsInteractorImpl @Inject constructor(
         return userPreferencesStore.wifiOnlyDownloads
     }
 
+    override fun autoUpdateDefault(): StateFlow<Boolean> = userPreferencesStore.autoUpdateDefault
+
+    override fun releaseChannelDefault(): StateFlow<ReleaseChannelOption> =
+        userPreferencesStore.releaseChannelDefault
+            .map { it.toOption() }
+            .stateIn(scope, SharingStarted.Eagerly, ReleaseChannelOption.Stable)
+
     override fun userEmail(): StateFlow<String?> {
         return authStore.authState
             .map { state ->
@@ -70,6 +79,14 @@ class SettingsInteractorImpl @Inject constructor(
 
     override suspend fun setWifiOnlyDownloads(enabled: Boolean) {
         userPreferencesStore.setWifiOnlyDownloads(enabled)
+    }
+
+    override suspend fun setAutoUpdateDefault(enabled: Boolean) {
+        userPreferencesStore.setAutoUpdateDefault(enabled)
+    }
+
+    override suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption) {
+        userPreferencesStore.setReleaseChannelDefault(channel.toDomain())
     }
 
     override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {
@@ -107,5 +124,15 @@ class SettingsInteractorImpl @Inject constructor(
         UpdateCheckIntervalOption.Hours12 -> UpdateCheckInterval.Hours12
         UpdateCheckIntervalOption.Hours24 -> UpdateCheckInterval.Hours24
         UpdateCheckIntervalOption.Manual -> UpdateCheckInterval.Manual
+    }
+
+    private fun ReleaseChannel.toOption(): ReleaseChannelOption = when (this) {
+        ReleaseChannel.Stable -> ReleaseChannelOption.Stable
+        ReleaseChannel.Beta -> ReleaseChannelOption.Beta
+    }
+
+    private fun ReleaseChannelOption.toDomain(): ReleaseChannel = when (this) {
+        ReleaseChannelOption.Stable -> ReleaseChannel.Stable
+        ReleaseChannelOption.Beta -> ReleaseChannel.Beta
     }
 }

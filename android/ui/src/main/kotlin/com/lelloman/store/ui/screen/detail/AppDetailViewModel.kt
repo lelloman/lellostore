@@ -11,6 +11,11 @@ import com.lelloman.store.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.preferences.AppAccessLevel
+import com.lelloman.store.domain.preferences.AppUpdatePolicyResolver
+import com.lelloman.store.domain.preferences.AutoUpdateOverride
+import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,12 +53,21 @@ class AppDetailViewModel @Inject constructor(
 
     private fun observeApp() {
         viewModelScope.launch {
+            val preferenceInputs = combine(
+                interactor.autoUpdateDefault(),
+                interactor.releaseChannelDefault(),
+                interactor.autoUpdateOverride(packageName),
+                interactor.releaseChannelOverride(packageName),
+            ) { autoDefault, channelDefault, autoOverride, channelOverride ->
+                PreferenceInputs(autoDefault, channelDefault, autoOverride, channelOverride)
+            }
             combine(
                 interactor.watchApp(packageName),
                 interactor.watchInstalledVersion(packageName),
-            ) { appDetail, installedApp ->
+                preferenceInputs,
+            ) { appDetail, installedApp, preferences ->
                 appDetail?.let { app ->
-                    createUiModel(app, installedApp)
+                    createUiModel(app, installedApp, preferences)
                 }
             }.collect { uiModel ->
                 mutableState.value = mutableState.value.copy(
@@ -75,8 +89,24 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
-    private fun createUiModel(app: AppDetailModel, installed: InstalledAppModel?): AppDetailUiModel? {
-        val latestVersion = app.versions.firstOrNull() ?: return null
+    private fun createUiModel(
+        app: AppDetailModel,
+        installed: InstalledAppModel?,
+        preferences: PreferenceInputs,
+    ): AppDetailUiModel? {
+        val policy = AppUpdatePolicyResolver.resolve(
+            autoUpdateDefault = preferences.autoUpdateDefault,
+            releaseChannelDefault = preferences.releaseChannelDefault,
+            autoUpdateOverride = preferences.autoUpdateOverride,
+            releaseChannelOverride = preferences.releaseChannelOverride,
+            accessLevel = app.accessLevel,
+            hasBetaRelease = app.versions.any { it.isBeta },
+        )
+        val channelVersions = when (policy.effectiveChannel) {
+            ReleaseChannel.Stable -> app.versions.filterNot { it.isBeta }
+            ReleaseChannel.Beta -> app.versions.filter { it.isBeta }
+        }
+        val latestVersion = (channelVersions.ifEmpty { app.versions }).maxByOrNull { it.versionCode } ?: return null
         val installedVersionUi = installed?.let { inst ->
             app.versions.find { it.versionCode == inst.versionCode }?.toUiModel()
                 ?: AppVersionUiModel(
@@ -98,6 +128,11 @@ class AppDetailViewModel @Inject constructor(
             canInstall = installed == null,
             canUpdate = installed != null && installed.versionCode < latestVersion.versionCode,
             canOpen = installed != null,
+            autoUpdateOverride = preferences.autoUpdateOverride,
+            releaseChannelOverride = preferences.releaseChannelOverride,
+            effectiveAutoUpdate = policy.autoUpdateEnabled,
+            effectiveReleaseChannel = policy.effectiveChannel,
+            hasBetaAccess = app.accessLevel == AppAccessLevel.Beta,
         )
     }
 
@@ -190,15 +225,37 @@ class AppDetailViewModel @Inject constructor(
         interactor.openInstallPermissionSettings()
     }
 
+    fun onAutoUpdateOverrideChanged(override: AutoUpdateOverride) {
+        viewModelScope.launch { interactor.setAutoUpdateOverride(packageName, override) }
+    }
+
+    fun onReleaseChannelOverrideChanged(override: ReleaseChannelOverride) {
+        if (override == ReleaseChannelOverride.Beta && mutableState.value.app?.hasBetaAccess != true) return
+        viewModelScope.launch { interactor.setReleaseChannelOverride(packageName, override) }
+    }
+
     interface Interactor {
         fun watchApp(packageName: String): Flow<AppDetailModel?>
         fun watchInstalledVersion(packageName: String): Flow<InstalledAppModel?>
         fun watchDownloadProgress(packageName: String): Flow<DownloadProgress?>
+        fun autoUpdateDefault(): StateFlow<Boolean>
+        fun releaseChannelDefault(): StateFlow<ReleaseChannel>
+        fun autoUpdateOverride(packageName: String): Flow<AutoUpdateOverride>
+        fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride>
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
         suspend fun refreshInstalledApp(packageName: String)
         suspend fun downloadAndInstall(packageName: String, versionCode: Int)
         fun cancelDownload(packageName: String)
         fun canInstallPackages(): Boolean
         fun openInstallPermissionSettings()
+        suspend fun setAutoUpdateOverride(packageName: String, override: AutoUpdateOverride)
+        suspend fun setReleaseChannelOverride(packageName: String, override: ReleaseChannelOverride)
     }
+
+    private data class PreferenceInputs(
+        val autoUpdateDefault: Boolean,
+        val releaseChannelDefault: ReleaseChannel,
+        val autoUpdateOverride: AutoUpdateOverride,
+        val releaseChannelOverride: ReleaseChannelOverride,
+    )
 }

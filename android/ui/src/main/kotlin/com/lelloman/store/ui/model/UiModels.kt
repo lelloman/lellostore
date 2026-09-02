@@ -1,5 +1,7 @@
 package com.lelloman.store.ui.model
 
+import com.lelloman.store.domain.preferences.AppAccessLevel
+
 /**
  * UI-specific models that mirror domain models.
  * These decouple the UI module from the domain module.
@@ -53,6 +55,7 @@ data class AppDetailModel(
     val description: String?,
     val iconUrl: String,
     val versions: List<AppVersionModel>,
+    val accessLevel: AppAccessLevel = AppAccessLevel.Stable,
 )
 
 data class AppVersionModel(
@@ -60,4 +63,5 @@ data class AppVersionModel(
     val versionName: String,
     val size: Long,
     val uploadedAtMillis: Long,
+    val isBeta: Boolean = false,
 )
