@@ -6,6 +6,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -49,42 +53,48 @@ fun AppUi(
     }
 
     LellostoreTheme(themeMode = themeMode) {
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Splash,
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
         ) {
-            composable<Screen.Splash> {
-                SplashScreen(
-                    onNavigateToLogin = { navController.fromSplashToLogin() },
-                    onNavigateToMain = { navController.fromSplashToMain() },
-                    isLoggedIn = isLoggedIn,
-                )
-            }
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Splash,
+            ) {
+                composable<Screen.Splash> {
+                    SplashScreen(
+                        onNavigateToLogin = { navController.fromSplashToLogin() },
+                        onNavigateToMain = { navController.fromSplashToMain() },
+                        isLoggedIn = isLoggedIn,
+                    )
+                }
 
-            composable<Screen.Login> {
-                LoginScreen(
-                    onNavigateToMain = { navController.fromLoginToMain() },
-                    onAuthResponse = onAuthResponse,
-                )
-            }
+                composable<Screen.Login> {
+                    LoginScreen(
+                        onNavigateToMain = { navController.fromLoginToMain() },
+                        onAuthResponse = onAuthResponse,
+                    )
+                }
 
-            composable<Screen.Main> {
-                MainScreen(
-                    onAppClick = { packageName -> navController.toAppDetail(packageName) },
-                    onProfileClick = { showProfileSheet = true },
-                    onNavigateToLogin = {
-                        onLogout()
-                        navController.logout()
-                    },
-                )
-            }
+                composable<Screen.Main> {
+                    MainScreen(
+                        onAppClick = { packageName -> navController.toAppDetail(packageName) },
+                        onProfileClick = { showProfileSheet = true },
+                        onNavigateToLogin = {
+                            onLogout()
+                            navController.logout()
+                        },
+                    )
+                }
 
-            composable<Screen.AppDetail> { backStackEntry ->
-                val route = backStackEntry.toRoute<Screen.AppDetail>()
-                AppDetailScreen(
-                    packageName = route.packageName,
-                    onBackClick = { navController.popBackStack() },
-                )
+                composable<Screen.AppDetail> { backStackEntry ->
+                    val route = backStackEntry.toRoute<Screen.AppDetail>()
+                    AppDetailScreen(
+                        packageName = route.packageName,
+                        onBackClick = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
