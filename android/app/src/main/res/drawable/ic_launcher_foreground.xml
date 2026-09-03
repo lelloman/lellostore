@@ -8,25 +8,25 @@
     <!-- Safe zone is center 66dp (from 21 to 87) -->
     <!-- 2x2 App Grid (semi-transparent) - scaled to fit safe zone -->
     <path
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.3"
+        android:fillColor="#00391B"
+        android:fillAlpha="0.2"
         android:pathData="M24,24 L51,24 L51,51 L24,51 Z" />
     <path
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.3"
+        android:fillColor="#00391B"
+        android:fillAlpha="0.2"
         android:pathData="M57,24 L84,24 L84,51 L57,51 Z" />
     <path
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.3"
+        android:fillColor="#00391B"
+        android:fillAlpha="0.2"
         android:pathData="M24,57 L51,57 L51,84 L24,84 Z" />
     <path
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.3"
+        android:fillColor="#00391B"
+        android:fillAlpha="0.2"
         android:pathData="M57,57 L84,57 L84,84 L57,84 Z" />
 
     <!-- Bold L shape - centered in safe zone -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="#00391B"
         android:pathData="M34,30 L34,72 L72,72 L72,62 L46,62 L46,30 Z" />
 
 </vector>

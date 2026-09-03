@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
     <style name="Theme.LelloStore" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
@@ -9,5 +8,8 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowSplashScreenBackground">@color/lello_green</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_monochrome</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/lello_green</item>
     </style>
 </resources>
