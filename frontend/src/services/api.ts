@@ -84,8 +84,9 @@ async function request<T>(
         return request<T>(path, options, true, parseResponse)
       }
     }
-    // Refresh failed or this was already a retry - logout
-    await authStore.logout()
+    // The local session is no longer usable. Do not sign the user out of the
+    // identity provider just because this application could not refresh it.
+    await authStore.clearSession()
     router.push({ name: 'login' })
     throw new ApiError(401, 'unauthorized', 'Session expired')
   }

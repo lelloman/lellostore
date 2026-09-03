@@ -14,7 +14,7 @@ const settings = {
   redirect_uri: `${window.location.origin}/callback`,
   post_logout_redirect_uri: `${window.location.origin}/callback`,
   response_type: 'code',
-  scope: 'openid profile email',
+  scope: 'openid profile email offline_access',
   automaticSilentRenew: true,
   userStore: new WebStorageStateStore({ store: window.localStorage }),
 }
@@ -52,6 +52,18 @@ class AuthService {
 
   async logout(): Promise<void> {
     await this.userManager.signoutRedirect()
+  }
+
+  async clearLocalSession(): Promise<void> {
+    await this.userManager.removeUser()
+  }
+
+  onUserLoaded(callback: (user: User) => void): () => void {
+    return this.userManager.events.addUserLoaded(callback)
+  }
+
+  onUserUnloaded(callback: () => void): () => void {
+    return this.userManager.events.addUserUnloaded(callback)
   }
 
   async getUser(): Promise<User | null> {

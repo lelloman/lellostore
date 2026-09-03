@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const authStore = {
   accessToken: 'access-token',
   logout: vi.fn(),
+  clearSession: vi.fn(),
   setUser: vi.fn(),
 }
 
@@ -21,10 +22,12 @@ vi.mock('@/router', () => ({
 }))
 
 import { api } from '@/services/api'
+import { authService } from '@/services/auth'
 
 describe('api.downloadApk', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.clearAllMocks()
     authStore.accessToken = 'access-token'
   })
 
@@ -49,6 +52,27 @@ describe('api.downloadApk', () => {
         }),
       })
     )
+  })
+})
+
+describe('api authentication recovery', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+    authStore.accessToken = 'expired-token'
+  })
+
+  it('clears only the local session when a 401 cannot be renewed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 401,
+      ok: false,
+    } as Response)
+    vi.mocked(authService.silentRenew).mockResolvedValue(null)
+
+    await expect(api.getApps()).rejects.toMatchObject({ status: 401 })
+
+    expect(authStore.clearSession).toHaveBeenCalledOnce()
+    expect(authStore.logout).not.toHaveBeenCalled()
   })
 })
 

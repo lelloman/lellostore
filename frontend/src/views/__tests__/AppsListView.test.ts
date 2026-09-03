@@ -26,6 +26,10 @@ vi.mock('@/services/auth', () => ({
     handleLogoutCallback: vi.fn(),
     logout: vi.fn(),
     silentRenew: vi.fn(),
+    clearLocalSession: vi.fn(),
+    onUserLoaded: vi.fn(() => vi.fn()),
+    onUserUnloaded: vi.fn(() => vi.fn()),
+    getCurrentIdentity: vi.fn(),
   },
 }))
 
