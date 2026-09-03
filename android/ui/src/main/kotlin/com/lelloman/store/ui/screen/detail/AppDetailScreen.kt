@@ -48,7 +48,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -56,12 +55,12 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreAppIcon
 import com.lelloman.store.ui.components.LelloStoreStateContent
 import com.lelloman.store.ui.components.LelloStoreStatusBadge
 import com.lelloman.store.ui.components.lelloStoreButtonColors
@@ -402,12 +401,11 @@ private fun AppIdentityHeader(
             modifier = Modifier.padding(LelloStoreSpacing.large),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = app.iconUrl,
+            LelloStoreAppIcon(
+                name = app.name,
+                iconUrl = app.iconUrl,
                 contentDescription = stringResource(R.string.content_description_app_icon, app.name),
-                modifier = Modifier
-                    .size(88.dp)
-                    .clip(MaterialTheme.shapes.medium),
+                modifier = Modifier.size(88.dp),
             )
             Spacer(Modifier.width(LelloStoreSpacing.large))
             Column(modifier = Modifier.weight(1f)) {

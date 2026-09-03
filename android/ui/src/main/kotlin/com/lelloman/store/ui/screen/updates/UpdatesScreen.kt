@@ -29,14 +29,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreAppIcon
 import com.lelloman.store.ui.components.LelloStoreStateContent
 import com.lelloman.store.ui.components.LelloStoreStatusBadge
 import com.lelloman.store.ui.components.lelloStoreButtonColors
@@ -211,12 +210,11 @@ private fun UpdateRow(
     ) {
         Column(modifier = Modifier.padding(LelloStoreSpacing.medium)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = update.iconUrl,
+                LelloStoreAppIcon(
+                    name = update.appName,
+                    iconUrl = update.iconUrl,
                     contentDescription = stringResource(R.string.content_description_app_icon, update.appName),
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(MaterialTheme.shapes.small),
+                    modifier = Modifier.size(64.dp),
                 )
                 Spacer(Modifier.width(LelloStoreSpacing.medium))
                 Column(modifier = Modifier.weight(1f)) {
