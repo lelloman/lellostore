@@ -125,6 +125,7 @@
     <string name="settings_server">Server</string>
     <string name="settings_account">Account</string>
     <string name="settings_logged_in_as">Connesso come</string>
+    <string name="logout_subtitle">Esci da questo dispositivo</string>
     <string name="settings_about">Informazioni</string>
     <string name="settings_app_version">Versione app</string>
     <string name="settings_invalid_url">URL non valido</string>
