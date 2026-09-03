@@ -133,7 +133,7 @@ private fun LellostoreTopBar(
 }
 
 @Composable
-private fun LellostoreBottomNav(navController: NavController) {
+internal fun LellostoreBottomNav(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -99,7 +100,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsContent(
+internal fun SettingsContent(
     state: SettingsScreenState,
     onThemeModeChanged: (ThemeModeOption) -> Unit,
     onUpdateCheckIntervalChanged: (UpdateCheckIntervalOption) -> Unit,
@@ -481,7 +482,7 @@ private fun ServerUrlInput(
         Button(
             onClick = onSave,
             enabled = !isSaved,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = lelloStoreButtonColors(),
         ) {
             Text(stringResource(if (isSaved) R.string.saved else R.string.save))

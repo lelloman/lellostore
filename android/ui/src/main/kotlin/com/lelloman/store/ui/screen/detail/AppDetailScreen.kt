@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
@@ -214,7 +218,7 @@ private fun AppDetailContent(
                     if (app.canInstall) {
                         Button(
                             onClick = onInstallClick,
-                            modifier = Modifier.weight(1f).height(52.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                             colors = lelloStoreButtonColors(),
                         ) {
                             Text(stringResource(R.string.install))
@@ -223,7 +227,7 @@ private fun AppDetailContent(
                     if (app.canUpdate) {
                         Button(
                             onClick = onUpdateClick,
-                            modifier = Modifier.weight(1f).height(52.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                             colors = lelloStoreButtonColors(),
                         ) {
                             Text(stringResource(R.string.update))
@@ -232,7 +236,7 @@ private fun AppDetailContent(
                     if (app.canOpen) {
                         OutlinedButton(
                             onClick = onOpenClick,
-                            modifier = Modifier.weight(1f).height(52.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         ) {
                             Text(stringResource(R.string.open))
                         }
@@ -494,7 +498,9 @@ private fun InstallationResultSection(
 ) {
     val isError = downloadState == DownloadState.FAILED
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { liveRegion = LiveRegionMode.Polite },
         shape = MaterialTheme.shapes.medium,
         color = if (isError) {
             MaterialTheme.colorScheme.errorContainer

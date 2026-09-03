@@ -30,7 +30,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -200,7 +203,9 @@ fun LelloStoreStateContent(
     onAction: (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier.padding(LelloStoreSpacing.xLarge),
+        modifier = modifier
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .padding(LelloStoreSpacing.xLarge),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
@@ -221,6 +226,7 @@ fun LelloStoreStateContent(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(LelloStoreSpacing.xLarge))

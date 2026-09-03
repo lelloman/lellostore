@@ -1,5 +1,6 @@
 package com.lelloman.store.ui.screen.login
 
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -32,16 +34,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.ui.R
 import com.lelloman.store.ui.components.LelloStoreBrandMark
 import com.lelloman.store.ui.components.lelloStoreButtonColors
 import com.lelloman.store.ui.model.AuthResult
+import com.lelloman.store.ui.model.ThemeMode
 import com.lelloman.store.ui.theme.Green20
 import com.lelloman.store.ui.theme.LelloStoreSpacing
+import com.lelloman.store.ui.theme.LellostoreTheme
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationResponse
 
@@ -97,7 +103,7 @@ fun LoginScreen(
 }
 
 @Composable
-private fun LoginScreenContent(
+internal fun LoginScreenContent(
     state: LoginScreenState,
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
@@ -219,7 +225,7 @@ private fun LoginForm(
             Button(
                 onClick = onLoginClick,
                 enabled = !state.isLoading && state.serverUrl.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 colors = lelloStoreButtonColors(),
             ) {
                 if (state.isLoading) {
@@ -232,6 +238,29 @@ private fun LoginForm(
                     Text(stringResource(R.string.login_sign_in_oidc))
                 }
             }
+        }
+    }
+}
+
+@Preview(name = "Login · light", showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(
+    name = "Login · dark",
+    showBackground = true,
+    widthDp = 390,
+    heightDp = 844,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun LoginScreenPreview() {
+    val isDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+        Configuration.UI_MODE_NIGHT_YES
+    LellostoreTheme(themeMode = if (isDark) ThemeMode.Dark else ThemeMode.Light) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            LoginScreenContent(
+                state = LoginScreenState(serverUrl = "https://store.lelloman.com"),
+                onServerUrlChanged = {},
+                onLoginClick = {},
+            )
         }
     }
 }

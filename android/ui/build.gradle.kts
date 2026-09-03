@@ -19,6 +19,7 @@ android {
         minSdk = 24
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.lelloman.store.ui.test"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -40,6 +41,9 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    testOptions {
+        targetSdk = 36
     }
 }
 
@@ -87,6 +91,7 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.hilt.android.testing)
+    androidTestImplementation(libs.truth)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
