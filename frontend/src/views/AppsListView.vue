@@ -435,7 +435,7 @@ onMounted(refreshApps)
 .app-package {
   overflow: hidden;
   margin-bottom: 1rem;
-  color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-primary-readable));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   text-overflow: ellipsis;

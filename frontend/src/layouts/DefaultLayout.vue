@@ -171,8 +171,8 @@ async function handleLogout() {
   place-items: center;
   border-radius: 12px;
   color: rgb(var(--v-theme-on-primary));
-  background: linear-gradient(145deg, rgb(var(--v-theme-primary)), #2f985a);
-  box-shadow: 0 8px 20px rgba(23, 107, 58, 0.25);
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 8px 20px rgba(var(--v-theme-primary), 0.25);
 }
 
 .brand-name {
