@@ -48,6 +48,8 @@
     <!-- Sort Options -->
     <string name="sort_name_asc">Nome (A-Z)</string>
     <string name="sort_name_desc">Nome (Z-A)</string>
+    <string name="sort_recently_updated">Aggiornate di recente</string>
+    <string name="sort_updates_first">Aggiornamenti prima</string>
 
     <!-- App Detail Screen -->
     <string name="app_details">Dettagli App</string>

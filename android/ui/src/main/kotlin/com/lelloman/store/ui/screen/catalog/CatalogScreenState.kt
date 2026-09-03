@@ -18,6 +18,7 @@ data class AppUiModel(
     val name: String,
     val iconUrl: String,
     val versionName: String,
+    val latestVersionUploadedAtMillis: Long,
     val description: String?,
     val isInstalled: Boolean,
     val hasUpdate: Boolean,
@@ -32,4 +33,6 @@ enum class CatalogFilter {
 enum class SortOption {
     NameAsc,
     NameDesc,
+    RecentlyUpdated,
+    UpdatesFirst,
 }

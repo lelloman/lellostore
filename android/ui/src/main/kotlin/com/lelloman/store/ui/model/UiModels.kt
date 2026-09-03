@@ -41,6 +41,7 @@ data class AppModel(
     val iconUrl: String,
     val latestVersionCode: Int,
     val latestVersionName: String,
+    val latestVersionUploadedAtMillis: Long = 0L,
 )
 
 data class InstalledAppModel(

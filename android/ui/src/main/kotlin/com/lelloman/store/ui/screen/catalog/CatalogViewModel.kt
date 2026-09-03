@@ -72,6 +72,7 @@ class CatalogViewModel @Inject constructor(
                 name = app.name,
                 iconUrl = app.iconUrl,
                 versionName = app.latestVersionName,
+                latestVersionUploadedAtMillis = app.latestVersionUploadedAtMillis,
                 description = app.description,
                 isInstalled = installed != null,
                 hasUpdate = installed != null && installed.versionCode < app.latestVersionCode,
@@ -104,6 +105,14 @@ class CatalogViewModel @Inject constructor(
         val sorted = when (state.sortOption) {
             SortOption.NameAsc -> searched.sortedBy { it.name.lowercase() }
             SortOption.NameDesc -> searched.sortedByDescending { it.name.lowercase() }
+            SortOption.RecentlyUpdated -> searched.sortedWith(
+                compareByDescending<AppUiModel> { it.latestVersionUploadedAtMillis }
+                    .thenBy { it.name.lowercase() },
+            )
+            SortOption.UpdatesFirst -> searched.sortedWith(
+                compareByDescending<AppUiModel> { it.hasUpdate }
+                    .thenBy { it.name.lowercase() },
+            )
         }
 
         return ProcessedApps(

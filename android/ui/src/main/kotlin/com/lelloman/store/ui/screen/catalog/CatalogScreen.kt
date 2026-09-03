@@ -55,6 +55,8 @@ import com.lelloman.store.ui.theme.LelloStoreSpacing
 fun SortOption.getDisplayName(): String = when (this) {
     SortOption.NameAsc -> stringResource(R.string.sort_name_asc)
     SortOption.NameDesc -> stringResource(R.string.sort_name_desc)
+    SortOption.RecentlyUpdated -> stringResource(R.string.sort_recently_updated)
+    SortOption.UpdatesFirst -> stringResource(R.string.sort_updates_first)
 }
 
 @Composable

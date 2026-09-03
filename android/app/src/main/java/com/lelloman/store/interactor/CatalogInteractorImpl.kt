@@ -24,6 +24,7 @@ class CatalogInteractorImpl @Inject constructor(
                     iconUrl = app.iconUrl,
                     latestVersionCode = app.latestVersion.versionCode,
                     latestVersionName = app.latestVersion.versionName,
+                    latestVersionUploadedAtMillis = app.latestVersion.uploadedAt.toEpochMilliseconds(),
                 )
             }
         }

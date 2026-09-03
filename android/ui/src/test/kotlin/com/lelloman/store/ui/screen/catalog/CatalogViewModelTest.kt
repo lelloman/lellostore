@@ -226,6 +226,44 @@ class CatalogViewModelTest {
     }
 
     @Test
+    fun `sort by recently updated orders newest release first`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.old", "Old", uploadedAtMillis = 100),
+            createApp("com.test.new", "New", uploadedAtMillis = 300),
+            createApp("com.test.middle", "Middle", uploadedAtMillis = 200),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSortOptionChanged(SortOption.RecentlyUpdated)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name })
+            .containsExactly("New", "Middle", "Old").inOrder()
+    }
+
+    @Test
+    fun `sort by updates first puts updates before other apps and sorts each group by name`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.zebra", "Zebra", versionCode = 2),
+            createApp("com.test.apple", "Apple"),
+            createApp("com.test.mango", "Mango", versionCode = 2),
+        )
+        fakeInteractor.mutableInstalledApps.value = listOf(
+            InstalledAppModel("com.test.zebra", 1, "1.0.0"),
+            InstalledAppModel("com.test.mango", 1, "1.0.0"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onSortOptionChanged(SortOption.UpdatesFirst)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.map { it.name })
+            .containsExactly("Mango", "Zebra", "Apple").inOrder()
+    }
+
+    @Test
     fun `app counts are calculated correctly`() = runTest {
         fakeInteractor.mutableApps.value = listOf(
             createApp("com.test.app1", "App 1", versionCode = 2),
@@ -306,6 +344,7 @@ class CatalogViewModelTest {
         packageName: String,
         name: String,
         versionCode: Int = 1,
+        uploadedAtMillis: Long = 0,
     ): AppModel = AppModel(
         packageName = packageName,
         name = name,
@@ -313,6 +352,7 @@ class CatalogViewModelTest {
         iconUrl = "https://example.com/icon.png",
         latestVersionCode = versionCode,
         latestVersionName = "$versionCode.0.0",
+        latestVersionUploadedAtMillis = uploadedAtMillis,
     )
 }
 
