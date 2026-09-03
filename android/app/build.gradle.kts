@@ -134,10 +134,6 @@ dependencies {
     // OkHttp (for Coil image loading with auth)
     implementation(libs.okhttp)
 
-    // Debug-only self-ADB feasibility spike. This is intentionally excluded from release builds.
-    debugImplementation(libs.libadb.android)
-    debugImplementation(libs.sun.security.android)
-
     // Coil
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

@@ -10,12 +10,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io") {
-            content {
-                includeGroup("com.github.MuntashirAkon")
-                includeGroup("com.github.MuntashirAkon.spake2-java")
-            }
-        }
     }
 }
 
@@ -26,4 +20,3 @@ include(":domain")
 include(":remoteapi")
 include(":localdata")
 include(":logger")
-include(":selfadb-testapp")
