@@ -11,5 +11,9 @@ import dagger.multibindings.IntoSet
 abstract class InstallationChannelModule {
     @Binds
     @IntoSet
+    abstract fun bindLegacyAdbChannel(impl: LegacyAdbInstallationChannel): InstallationChannel
+
+    @Binds
+    @IntoSet
     abstract fun bindPackageInstallerChannel(impl: PackageInstallerChannel): InstallationChannel
 }

@@ -117,6 +117,7 @@ class DownloadManagerImpl @Inject constructor(
                 InstallationRequest(
                     apk = destination,
                     packageName = packageName,
+                    versionCode = versionCode,
                     mode = installationMode,
                 )
             )) {

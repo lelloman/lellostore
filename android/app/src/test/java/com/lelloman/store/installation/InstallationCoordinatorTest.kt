@@ -110,6 +110,7 @@ class InstallationCoordinatorTest {
     private fun request(mode: InstallationMode = InstallationMode.FOREGROUND) = InstallationRequest(
         apk = temporaryFolder.newFile(),
         packageName = "com.example.test",
+        versionCode = 1,
         mode = mode,
     )
 

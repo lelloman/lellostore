@@ -17,6 +17,7 @@ data class InstallationChannelMetadata(
 data class InstallationRequest(
     val apk: File,
     val packageName: String,
+    val versionCode: Int,
     val mode: InstallationMode = InstallationMode.FOREGROUND,
 )
 

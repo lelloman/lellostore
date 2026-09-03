@@ -134,6 +134,10 @@ dependencies {
     // OkHttp (for Coil image loading with auth)
     implementation(libs.okhttp)
 
+    // Self-ADB installation through the conventional local TCP endpoint.
+    implementation(libs.libadb.android)
+    implementation(libs.sun.security.android)
+
     // Coil
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
