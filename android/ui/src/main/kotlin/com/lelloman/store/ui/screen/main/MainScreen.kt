@@ -27,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lelloman.store.ui.navigation.MainTab
+import com.lelloman.store.ui.components.lelloStoreNavigationBarItemColors
 import com.lelloman.store.ui.screen.catalog.CatalogScreen
 import com.lelloman.store.ui.screen.settings.SettingsScreen
 import com.lelloman.store.ui.screen.updates.UpdatesScreen
@@ -107,6 +108,7 @@ private fun LellostoreBottomNav(navController: NavController) {
                         restoreState = true
                     }
                 },
+                colors = lelloStoreNavigationBarItemColors(),
             )
         }
     }

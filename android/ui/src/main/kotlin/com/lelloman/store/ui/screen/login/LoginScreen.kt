@@ -26,7 +26,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreButtonColors
 import com.lelloman.store.ui.model.AuthResult
+import com.lelloman.store.ui.theme.Green20
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationResponse
 
@@ -133,11 +135,12 @@ private fun LoginScreenContent(
             onClick = onLoginClick,
             enabled = !state.isLoading && state.serverUrl.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
+            colors = lelloStoreButtonColors(),
         ) {
             if (state.isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.height(24.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = Green20,
                 )
             } else {
                 Text(stringResource(R.string.login_sign_in_oidc))

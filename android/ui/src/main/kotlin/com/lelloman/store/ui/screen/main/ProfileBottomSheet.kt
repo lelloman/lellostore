@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreButtonColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +57,7 @@ fun ProfileBottomSheet(
             Button(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth(),
+                colors = lelloStoreButtonColors(),
             ) {
                 Text(stringResource(R.string.logout))
             }

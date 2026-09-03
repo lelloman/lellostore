@@ -40,8 +40,8 @@ internal val LelloStoreDarkColorScheme = darkColorScheme(
 )
 
 internal val LelloStoreLightColorScheme = lightColorScheme(
-    primary = LelloGreen,
-    onPrimary = Green20,
+    primary = Green40,
+    onPrimary = Color.White,
     primaryContainer = Green95,
     onPrimaryContainer = Green20,
     secondary = Sage40,

@@ -224,7 +224,10 @@ fun LelloStoreStateContent(
         )
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(LelloStoreSpacing.xLarge))
-            Button(onClick = onAction) { Text(actionLabel) }
+            Button(
+                onClick = onAction,
+                colors = lelloStoreButtonColors(),
+            ) { Text(actionLabel) }
         }
     }
 }

@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreFilterChipColors
+import com.lelloman.store.ui.theme.LelloGreen
 
 @Composable
 fun SortOption.getDisplayName(): String = when (this) {
@@ -157,6 +159,7 @@ private fun CatalogScreenContent(
                                 onFilterChanged(CatalogFilter.All)
                             },
                             label = { Text(stringResource(R.string.filter_all, state.allCount)) },
+                            colors = lelloStoreFilterChipColors(),
                         )
                         FilterChip(
                             selected = state.filter == CatalogFilter.Installed,
@@ -165,6 +168,7 @@ private fun CatalogScreenContent(
                                 onFilterChanged(CatalogFilter.Installed)
                             },
                             label = { Text(stringResource(R.string.filter_installed, state.installedCount)) },
+                            colors = lelloStoreFilterChipColors(),
                         )
                         FilterChip(
                             selected = state.filter == CatalogFilter.Updates,
@@ -173,6 +177,7 @@ private fun CatalogScreenContent(
                                 onFilterChanged(CatalogFilter.Updates)
                             },
                             label = { Text(stringResource(R.string.filter_updates, state.updatesCount)) },
+                            colors = lelloStoreFilterChipColors(),
                         )
                     }
 
@@ -223,7 +228,7 @@ private fun CatalogScreenContent(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = LelloGreen)
                 }
             }
         }

@@ -8,8 +8,8 @@ import org.junit.Test
 class ThemeContrastTest {
 
     @Test
-    fun `original Android green remains the light brand accent`() {
-        assertThat(LelloStoreLightColorScheme.primary).isEqualTo(Color(0xFF3DDC84))
+    fun `original Android green remains the brand accent`() {
+        assertThat(LelloGreen).isEqualTo(Color(0xFF3DDC84))
         assertThat(LelloStoreDarkColorScheme.primary).isEqualTo(Color(0xFF3DDC84))
     }
 

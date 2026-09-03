@@ -36,6 +36,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreButtonColors
+import com.lelloman.store.ui.components.lelloStoreSwitchColors
 
 @Composable
 fun ThemeModeOption.getDisplayName(): String = when (this) {
@@ -352,6 +354,7 @@ private fun SettingsSwitchItem(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            colors = lelloStoreSwitchColors(),
         )
     }
 }
@@ -454,6 +457,7 @@ private fun ServerUrlInput(
             onClick = onSave,
             enabled = !isSaved,
             modifier = Modifier.align(Alignment.End),
+            colors = lelloStoreButtonColors(),
         ) {
             Text(stringResource(if (isSaved) R.string.saved else R.string.save))
         }

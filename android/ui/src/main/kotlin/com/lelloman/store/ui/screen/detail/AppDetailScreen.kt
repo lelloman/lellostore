@@ -20,7 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +54,8 @@ import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreButtonColors
+import com.lelloman.store.ui.theme.LelloGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +107,8 @@ fun AppDetailScreen(
             when {
                 state.isLoading && state.app == null -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
+                        modifier = Modifier.align(Alignment.Center),
+                        color = LelloGreen,
                     )
                 }
                 state.error != null && state.app == null -> {
@@ -119,7 +121,10 @@ fun AppDetailScreen(
                             color = MaterialTheme.colorScheme.error,
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = viewModel::onRetry) {
+                        Button(
+                            onClick = viewModel::onRetry,
+                            colors = lelloStoreButtonColors(),
+                        ) {
                             Text(stringResource(R.string.retry))
                         }
                     }
@@ -228,6 +233,7 @@ private fun AppDetailContent(
                     Button(
                         onClick = onInstallClick,
                         modifier = Modifier.weight(1f),
+                        colors = lelloStoreButtonColors(),
                     ) {
                         Text(stringResource(R.string.install))
                     }
@@ -236,6 +242,7 @@ private fun AppDetailContent(
                     Button(
                         onClick = onUpdateClick,
                         modifier = Modifier.weight(1f),
+                        colors = lelloStoreButtonColors(),
                     ) {
                         Text(stringResource(R.string.update))
                     }
@@ -522,6 +529,7 @@ private fun DownloadProgressSection(
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
+                    color = LelloGreen,
                 )
             } else if (downloadState == DownloadState.PENDING ||
                 downloadState == DownloadState.VERIFYING ||
@@ -529,6 +537,7 @@ private fun DownloadProgressSection(
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth(),
+                    color = LelloGreen,
                 )
             }
         }
@@ -565,7 +574,10 @@ private fun PermissionRequiredSection(
                 OutlinedButton(onClick = onGrantPermissionClick) {
                     Text(stringResource(R.string.grant_permission))
                 }
-                Button(onClick = onRetryClick) {
+                Button(
+                    onClick = onRetryClick,
+                    colors = lelloStoreButtonColors(),
+                ) {
                     Text(stringResource(R.string.retry_install))
                 }
             }

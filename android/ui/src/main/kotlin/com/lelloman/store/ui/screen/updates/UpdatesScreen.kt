@@ -39,6 +39,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.lelloStoreButtonColors
+import com.lelloman.store.ui.theme.LelloGreen
 
 @Composable
 fun UpdatesScreen(
@@ -53,6 +55,7 @@ fun UpdatesScreen(
             state.isLoading && state.updates.isEmpty() -> {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
+                    color = LelloGreen,
                 )
             }
             state.error != null && state.updates.isEmpty() -> {
@@ -104,7 +107,10 @@ private fun EmptyContent(
         )
         Spacer(modifier = Modifier.height(16.dp))
         if (isRefreshing) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = LelloGreen,
+            )
         } else {
             IconButton(onClick = onRefresh) {
                 Icon(
@@ -132,7 +138,10 @@ private fun ErrorContent(
             color = MaterialTheme.colorScheme.error,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onRetry) {
+        Button(
+            onClick = onRetry,
+            colors = lelloStoreButtonColors(),
+        ) {
             Text(stringResource(R.string.retry))
         }
     }
@@ -163,7 +172,10 @@ private fun UpdatesList(
                 style = MaterialTheme.typography.titleMedium,
             )
             if (isRefreshing) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = LelloGreen,
+                )
             } else {
                 IconButton(onClick = onRefresh) {
                     Icon(
@@ -250,7 +262,10 @@ private fun UpdateItem(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Button(onClick = onUpdateClick) {
+            Button(
+                onClick = onUpdateClick,
+                colors = lelloStoreButtonColors(),
+            ) {
                 Text(stringResource(R.string.update))
             }
         }
