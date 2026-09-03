@@ -9,9 +9,7 @@
           <v-row no-gutters>
             <v-col cols="12" md="6" class="brand-panel">
               <div class="brand-content">
-                <div class="brand-mark mb-10">
-                  <v-icon size="28">mdi-package-variant-closed</v-icon>
-                </div>
+                <BrandMark class="brand-mark mb-10" />
 
                 <h1 class="brand-title mb-5">LelloStore</h1>
                 <p class="brand-copy mb-0">
@@ -56,6 +54,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -104,10 +103,9 @@ async function handleLogin() {
 }
 
 .brand-mark {
-  display: grid;
+  display: block;
   width: 52px;
   height: 52px;
-  place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 15px;
   background: rgba(255, 255, 255, 0.13);

@@ -3,9 +3,7 @@
     <v-app-bar class="app-header" flat height="72">
       <v-container class="shell-container d-flex align-center h-100">
         <button class="brand" type="button" @click="router.push({ name: 'apps' })">
-          <span class="brand-mark" aria-hidden="true">
-            <v-icon size="22">mdi-package-variant-closed</v-icon>
-          </span>
+          <BrandMark class="brand-mark" />
           <span class="brand-name">LelloStore</span>
         </button>
 
@@ -92,6 +90,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTheme } from 'vuetify'
+import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -165,10 +164,9 @@ async function handleLogout() {
 }
 
 .brand-mark {
-  display: grid;
+  display: block;
   width: 38px;
   height: 38px;
-  place-items: center;
   border-radius: 12px;
   color: rgb(var(--v-theme-on-primary));
   background: rgb(var(--v-theme-primary));
