@@ -1,6 +1,5 @@
 package com.lelloman.store.ui.screen.catalog
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,16 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,16 +40,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreAppRow
+import com.lelloman.store.ui.components.LelloStoreStateContent
 import com.lelloman.store.ui.components.lelloStoreFilterChipColors
 import com.lelloman.store.ui.theme.LelloGreen
+import com.lelloman.store.ui.theme.LelloStoreSpacing
 
 @Composable
 fun SortOption.getDisplayName(): String = when (this) {
@@ -112,141 +108,173 @@ private fun CatalogScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Search bar with clear button
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = onSearchQueryChanged,
-                    placeholder = { Text(stringResource(R.string.search_apps)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = stringResource(R.string.content_description_search),
-                        )
+                CatalogControls(
+                    state = state,
+                    onSearchQueryChanged = onSearchQueryChanged,
+                    onClearSearch = onClearSearch,
+                    onFilterChanged = {
+                        focusManager.clearFocus()
+                        onFilterChanged(it)
                     },
-                    trailingIcon = {
-                        if (state.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = onClearSearch) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = stringResource(R.string.content_description_clear_search),
+                    onSortOptionChanged = onSortOptionChanged,
+                )
+
+                when {
+                    state.isLoading && state.apps.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = LelloGreen)
+                        }
+                    }
+                    state.error != null && state.apps.isEmpty() -> {
+                        LelloStoreStateContent(
+                            icon = Icons.Default.Refresh,
+                            title = stringResource(R.string.catalog_load_error_title),
+                            message = state.error,
+                            actionLabel = stringResource(R.string.retry),
+                            onAction = onRefresh,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    state.apps.isEmpty() -> {
+                        val title = when {
+                            state.searchQuery.isNotBlank() -> stringResource(
+                                R.string.no_apps_found_for_query,
+                                state.searchQuery,
+                            )
+                            state.filter == CatalogFilter.Installed -> stringResource(R.string.no_installed_apps)
+                            state.filter == CatalogFilter.Updates -> stringResource(R.string.no_updates_available)
+                            else -> stringResource(R.string.no_apps_available)
+                        }
+                        LelloStoreStateContent(
+                            icon = Icons.Default.Search,
+                            title = title,
+                            message = stringResource(R.string.catalog_empty_hint),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            contentPadding = PaddingValues(
+                                start = LelloStoreSpacing.large,
+                                top = LelloStoreSpacing.small,
+                                end = LelloStoreSpacing.large,
+                                bottom = LelloStoreSpacing.xLarge,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(LelloStoreSpacing.medium),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            items(state.apps, key = { it.packageName }) { app ->
+                                CatalogAppRow(
+                                    app = app,
+                                    onClick = { onAppClicked(app) },
                                 )
                             }
                         }
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-
-                // Filter chips with counts and sort dropdown
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                    ) {
-                        FilterChip(
-                            selected = state.filter == CatalogFilter.All,
-                            onClick = {
-                                focusManager.clearFocus()
-                                onFilterChanged(CatalogFilter.All)
-                            },
-                            label = { Text(stringResource(R.string.filter_all, state.allCount)) },
-                            colors = lelloStoreFilterChipColors(),
-                        )
-                        FilterChip(
-                            selected = state.filter == CatalogFilter.Installed,
-                            onClick = {
-                                focusManager.clearFocus()
-                                onFilterChanged(CatalogFilter.Installed)
-                            },
-                            label = { Text(stringResource(R.string.filter_installed, state.installedCount)) },
-                            colors = lelloStoreFilterChipColors(),
-                        )
-                        FilterChip(
-                            selected = state.filter == CatalogFilter.Updates,
-                            onClick = {
-                                focusManager.clearFocus()
-                                onFilterChanged(CatalogFilter.Updates)
-                            },
-                            label = { Text(stringResource(R.string.filter_updates, state.updatesCount)) },
-                            colors = lelloStoreFilterChipColors(),
-                        )
                     }
-
-                    SortDropdown(
-                        selectedOption = state.sortOption,
-                        onOptionSelected = onSortOptionChanged,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // App list
-                if (state.apps.isEmpty() && !state.isRefreshing && !state.isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = when {
-                                state.searchQuery.isNotBlank() -> stringResource(R.string.no_apps_found_for_query, state.searchQuery)
-                                state.filter == CatalogFilter.Installed -> stringResource(R.string.no_installed_apps)
-                                state.filter == CatalogFilter.Updates -> stringResource(R.string.no_updates_available)
-                                else -> stringResource(R.string.no_apps_available)
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(state.apps, key = { it.packageName }) { app ->
-                            AppListItem(
-                                app = app,
-                                onClick = { onAppClicked(app) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Loading indicator for initial load
-            if (state.isLoading && state.apps.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = LelloGreen)
                 }
             }
         }
 
-        // Error snackbar
-        state.error?.let { error ->
+        if (state.error != null && state.apps.isNotEmpty()) {
             Snackbar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(16.dp),
+                    .padding(LelloStoreSpacing.large),
                 action = {
                     TextButton(onClick = onErrorDismissed) {
                         Text(stringResource(R.string.dismiss))
                     }
                 },
             ) {
-                Text(error)
+                Text(state.error)
             }
+        }
+    }
+}
+
+@Composable
+private fun CatalogControls(
+    state: CatalogScreenState,
+    onSearchQueryChanged: (String) -> Unit,
+    onClearSearch: () -> Unit,
+    onFilterChanged: (CatalogFilter) -> Unit,
+    onSortOptionChanged: (SortOption) -> Unit,
+) {
+    Column(
+        modifier = Modifier.padding(
+            start = LelloStoreSpacing.large,
+            end = LelloStoreSpacing.large,
+            bottom = LelloStoreSpacing.small,
+        ),
+    ) {
+        OutlinedTextField(
+            value = state.searchQuery,
+            onValueChange = onSearchQueryChanged,
+            placeholder = { Text(stringResource(R.string.search_apps)) },
+            leadingIcon = {
+                Icon(imageVector = Icons.Default.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (state.searchQuery.isNotEmpty()) {
+                    IconButton(onClick = onClearSearch) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = stringResource(R.string.content_description_clear_search),
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(LelloStoreSpacing.small))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(LelloStoreSpacing.small),
+        ) {
+            CatalogFilter.entries.forEach { filter ->
+                val count = when (filter) {
+                    CatalogFilter.All -> state.allCount
+                    CatalogFilter.Installed -> state.installedCount
+                    CatalogFilter.Updates -> state.updatesCount
+                }
+                val label = when (filter) {
+                    CatalogFilter.All -> stringResource(R.string.filter_all, count)
+                    CatalogFilter.Installed -> stringResource(R.string.filter_installed, count)
+                    CatalogFilter.Updates -> stringResource(R.string.filter_updates, count)
+                }
+                FilterChip(
+                    selected = state.filter == filter,
+                    onClick = { onFilterChanged(filter) },
+                    label = { Text(label) },
+                    colors = lelloStoreFilterChipColors(),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.catalog_results,
+                    state.apps.size,
+                    state.apps.size,
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            SortDropdown(
+                selectedOption = state.sortOption,
+                onOptionSelected = onSortOptionChanged,
+            )
         }
     }
 }
@@ -263,10 +291,9 @@ private fun SortDropdown(
         TextButton(onClick = { expanded = true }) {
             Text(
                 text = selectedOption.getDisplayName(),
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
-
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -285,80 +312,25 @@ private fun SortDropdown(
 }
 
 @Composable
-private fun AppListItem(
+private fun CatalogAppRow(
     app: AppUiModel,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            AsyncImage(
-                model = app.iconUrl,
-                contentDescription = "${app.name} icon",
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp)),
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = app.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    if (app.hasUpdate) {
-                        Text(
-                            text = stringResource(R.string.status_update),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    } else if (app.isInstalled) {
-                        Text(
-                            text = stringResource(R.string.status_installed),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
-
-                Text(
-                    text = "v${app.versionName}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                app.description?.let { description ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
+    val statusLabel = when {
+        app.hasUpdate -> stringResource(R.string.status_update)
+        app.isInstalled -> stringResource(R.string.status_installed)
+        else -> null
     }
+    LelloStoreAppRow(
+        name = app.name,
+        iconUrl = app.iconUrl,
+        iconContentDescription = stringResource(R.string.content_description_app_icon, app.name),
+        supportingText = stringResource(R.string.version_value, app.versionName),
+        description = app.description,
+        statusLabel = statusLabel,
+        statusEmphasized = app.hasUpdate,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }

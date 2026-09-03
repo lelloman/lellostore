@@ -35,6 +35,12 @@
     <string name="no_installed_apps">No installed apps</string>
     <string name="no_updates_available">No updates available</string>
     <string name="no_apps_available">No apps available</string>
+    <string name="catalog_empty_hint">Try another filter or refresh the catalogue.</string>
+    <string name="catalog_load_error_title">Couldn’t load the catalogue</string>
+    <plurals name="catalog_results">
+        <item quantity="one">%1$d app</item>
+        <item quantity="other">%1$d apps</item>
+    </plurals>
     <string name="status_update">Update</string>
     <string name="status_installed">Installed</string>
 
@@ -52,6 +58,7 @@
     <string name="latest_version">Latest Version</string>
     <string name="version_history">Version History</string>
     <string name="version_label">Version</string>
+    <string name="version_value">Version %1$s</string>
     <string name="size_label">Size</string>
     <string name="released_label">Released</string>
     <string name="content_description_app_icon">%1$s icon</string>
@@ -77,6 +84,9 @@
     <string name="all_apps_up_to_date">All apps are up to date</string>
     <string name="check_back_later">Check back later for updates</string>
     <string name="content_description_check_updates">Check for updates</string>
+    <string name="updates_load_error_title">Couldn’t check for updates</string>
+    <string name="updates_header_hint">Ready to download and install</string>
+    <string name="update_versions_and_size">%1$s → %2$s · %3$s</string>
     <plurals name="updates_available">
         <item quantity="one">%1$d update available</item>
         <item quantity="other">%1$d updates available</item>
