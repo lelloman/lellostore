@@ -219,6 +219,7 @@ class UpdateCheckerImplTest {
 
         assertThat(update.app.latestVersion.versionCode).isEqualTo(3)
         assertThat(update.autoUpdateEnabled).isFalse()
+        assertThat(update.effectiveReleaseChannel).isEqualTo(ReleaseChannel.Stable)
     }
 
     @Test
@@ -240,6 +241,7 @@ class UpdateCheckerImplTest {
         val update = checker.checkForUpdates().getOrThrow().single()
 
         assertThat(update.app.latestVersion.versionCode).isEqualTo(5)
+        assertThat(update.effectiveReleaseChannel).isEqualTo(ReleaseChannel.Beta)
     }
 
     private fun createApp(packageName: String, versionCode: Int): App {

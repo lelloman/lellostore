@@ -549,6 +549,29 @@ class AppDetailViewModelTest {
         assertThat(viewModel.state.value.app?.effectiveReleaseChannel).isEqualTo(ReleaseChannel.Beta)
     }
 
+    @Test
+    fun `stable channel does not fall back to beta when no stable release exists`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail(
+            accessLevel = AppAccessLevel.Beta,
+            versions = listOf(
+                AppVersionModel(3, "3.0-beta", 3_000_000, 1700000000000L, isBeta = true),
+            ),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        val app = viewModel.state.value.app
+        assertThat(app).isNotNull()
+        assertThat(app?.effectiveReleaseChannel).isEqualTo(ReleaseChannel.Stable)
+        assertThat(app?.latestVersion).isNull()
+        assertThat(app?.canInstall).isFalse()
+
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.downloadAndInstallCalled).isFalse()
+    }
+
     private fun createAppDetail(
         packageName: String = "com.test.app",
         name: String = "Test App",

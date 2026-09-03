@@ -5,6 +5,7 @@ import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.domain.model.AvailableUpdate
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.updates.UpdateChecker
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -47,6 +48,7 @@ class UpdatesInteractorImplTest {
             app = app,
             installedVersionCode = 1,
             installedVersionName = "1.0",
+            effectiveReleaseChannel = ReleaseChannel.Beta,
         )
         updatesFlow.value = listOf(update)
 
@@ -58,6 +60,7 @@ class UpdatesInteractorImplTest {
         assertThat(uiModel.appName).isEqualTo("Test App")
         assertThat(uiModel.installedVersion).isEqualTo("1.0")
         assertThat(uiModel.availableVersion).isEqualTo("2.0")
+        assertThat(uiModel.releaseChannel).isEqualTo(ReleaseChannel.Beta)
     }
 
     @Test

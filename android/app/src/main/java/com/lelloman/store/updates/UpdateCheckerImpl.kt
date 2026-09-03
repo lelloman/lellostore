@@ -70,6 +70,7 @@ class UpdateCheckerImpl @Inject constructor(
                 installedVersionCode = installedApp.versionCode,
                 installedVersionName = installedApp.versionName,
                 autoUpdateEnabled = policy.autoUpdateEnabled,
+                effectiveReleaseChannel = policy.effectiveChannel,
             )
         }
     }

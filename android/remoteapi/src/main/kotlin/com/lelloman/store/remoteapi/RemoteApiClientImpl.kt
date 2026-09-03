@@ -28,7 +28,9 @@ internal class RemoteApiClientImpl(
             throw ApiException("Failed to get apps: ${response.status}")
         }
         val appsResponse: AppsResponseDto = response.body()
-        appsResponse.apps.map { it.toDomain().withAbsoluteUrls(baseUrl) }
+        appsResponse.apps
+            .filter { it.latestVersion != null }
+            .map { it.toDomain().withAbsoluteUrls(baseUrl) }
     }
 
     override suspend fun getApp(packageName: String): Result<AppDetail> = runCatching {

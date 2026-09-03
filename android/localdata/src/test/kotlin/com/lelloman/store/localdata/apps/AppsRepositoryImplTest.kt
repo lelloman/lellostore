@@ -1,7 +1,9 @@
 package com.lelloman.store.localdata.apps
 
+import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.model.App
+import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.localdata.db.dao.AppVersionsDao
 import com.lelloman.store.localdata.db.dao.AppsDao
@@ -32,6 +34,29 @@ class AppsRepositoryImplTest {
                 apps.map { it.packageName } == listOf("com.example.current")
             })
         }
+    }
+
+    @Test
+    fun `refreshApp clears stale cache when no release is visible`() = runTest {
+        val appsDao = mockk<AppsDao>(relaxed = true)
+        val versionsDao = mockk<AppVersionsDao>(relaxed = true)
+        val remoteApiClient = mockk<RemoteApiClient>()
+        val repository = AppsRepositoryImpl(appsDao, versionsDao, remoteApiClient)
+        coEvery { remoteApiClient.getApp("com.example.beta-only") } returns Result.success(
+            AppDetail(
+                packageName = "com.example.beta-only",
+                name = "Beta Only",
+                description = null,
+                iconUrl = "",
+                versions = emptyList(),
+            ),
+        )
+
+        val result = repository.refreshApp("com.example.beta-only")
+
+        assertThat(result.isFailure).isTrue()
+        coVerify { versionsDao.deleteVersions("com.example.beta-only") }
+        coVerify { appsDao.deleteApp("com.example.beta-only") }
     }
 
     private fun serverApp() = App(

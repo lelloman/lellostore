@@ -135,6 +135,34 @@ class RemoteApiClientImplTest {
     }
 
     @Test
+    fun `getApps omits apps with no release visible to the current user`() = runTest {
+        val responseJson = """
+            {
+                "apps": [
+                    {
+                        "package_name": "com.example.beta-only",
+                        "name": "Beta Only",
+                        "description": null,
+                        "icon_url": "/api/apps/com.example.beta-only/icon",
+                        "latest_version": null,
+                        "access_level": "stable"
+                    }
+                ]
+            }
+        """.trimIndent()
+        val mockEngine = MockEngine {
+            respond(
+                content = responseJson,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }
+
+        val apps = createClient(mockEngine).getApps().getOrThrow()
+
+        assertThat(apps).isEmpty()
+    }
+
+    @Test
     fun `getApp returns app detail on success`() = runTest {
         val packageName = "com.example.app"
         val responseJson = """

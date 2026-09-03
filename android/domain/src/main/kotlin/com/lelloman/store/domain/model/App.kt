@@ -1,6 +1,7 @@
 package com.lelloman.store.domain.model
 
 import com.lelloman.store.domain.preferences.AppAccessLevel
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import kotlinx.datetime.Instant
 
 data class App(
@@ -42,4 +43,5 @@ data class AvailableUpdate(
     val installedVersionCode: Int,
     val installedVersionName: String,
     val autoUpdateEnabled: Boolean = false,
+    val effectiveReleaseChannel: ReleaseChannel = ReleaseChannel.Stable,
 )

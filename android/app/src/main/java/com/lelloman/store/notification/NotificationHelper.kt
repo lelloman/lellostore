@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.lelloman.store.MainActivity
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,7 +42,7 @@ class NotificationHelper @Inject constructor(
     }
 
     @SuppressLint("MissingPermission") // Permission is checked via hasNotificationPermission()
-    fun showUpdatesAvailableNotification(updateCount: Int) {
+    fun showUpdatesAvailableNotification(channels: List<ReleaseChannel>) {
         if (!hasNotificationPermission()) {
             return
         }
@@ -58,11 +59,7 @@ class NotificationHelper @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val title = if (updateCount == 1) {
-            "1 update available"
-        } else {
-            "$updateCount updates available"
-        }
+        val title = formatUpdateTitle(channels)
 
         val notification = NotificationCompat.Builder(context, UPDATES_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -95,5 +92,16 @@ class NotificationHelper @Inject constructor(
         const val UPDATES_CHANNEL_ID = "updates_channel"
         const val UPDATES_NOTIFICATION_ID = 1001
         const val EXTRA_NAVIGATE_TO_UPDATES = "navigate_to_updates"
+
+        internal fun formatUpdateTitle(channels: List<ReleaseChannel>): String {
+            val count = channels.size
+            val channelLabel = when (channels.toSet()) {
+                setOf(ReleaseChannel.Stable) -> "stable"
+                setOf(ReleaseChannel.Beta) -> "beta"
+                else -> "stable and beta"
+            }
+            val updateLabel = if (count == 1) "update" else "updates"
+            return "$count $channelLabel $updateLabel available"
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.lelloman.store.ui.screen.updates
 
 import com.google.common.truth.Truth.assertThat
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -55,6 +56,7 @@ class UpdatesViewModelTest {
                 installedVersion = "1.0",
                 availableVersion = "2.0",
                 updateSize = "10 MB",
+                releaseChannel = ReleaseChannel.Stable,
             )
         )
 

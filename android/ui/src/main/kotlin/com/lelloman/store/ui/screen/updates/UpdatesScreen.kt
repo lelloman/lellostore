@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.ui.R
 
 @Composable
@@ -234,6 +235,16 @@ private fun UpdateItem(
                     text = update.updateSize,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(
+                        when (update.releaseChannel) {
+                            ReleaseChannel.Stable -> R.string.release_channel_stable
+                            ReleaseChannel.Beta -> R.string.release_channel_beta
+                        },
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
 

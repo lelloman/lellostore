@@ -42,6 +42,7 @@ class UpdatesInteractorImpl @Inject constructor(
             installedVersion = installedVersionName,
             availableVersion = app.latestVersion.versionName,
             updateSize = formatSize(app.latestVersion.size),
+            releaseChannel = effectiveReleaseChannel,
         )
     }
 

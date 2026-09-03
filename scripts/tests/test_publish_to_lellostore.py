@@ -199,6 +199,33 @@ class UploadTest(unittest.TestCase):
 
         self.assertEqual(json.loads(stdout.getvalue()), response)
 
+    def test_beta_upload_includes_release_channel_field(self):
+        response = {
+            "package_name": "com.example.publisher",
+            "name": "Publisher App",
+            "version": {"version_name": "2.0-beta", "version_code": 20},
+        }
+        connection = FakeConnection(FakeHttpResponse(response))
+
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "publisher.apk"
+            artifact.write_bytes(b"test apk")
+            with mock.patch.object(
+                publisher,
+                "_open_connection",
+                return_value=connection,
+            ), contextlib.redirect_stdout(io.StringIO()):
+                publisher.upload_artifact(
+                    artifact,
+                    "access-token",
+                    self.config,
+                    is_beta=True,
+                )
+
+        body = b"".join(connection.chunks)
+        self.assertIn(b'name="is_beta"', body)
+        self.assertIn(b"true", body)
+
 
 class CommandLineTest(unittest.TestCase):
     ENVIRONMENT = {
@@ -249,6 +276,27 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(status, 0)
         auth.assert_called_once()
         upload.assert_called_once()
+
+    def test_beta_flag_is_forwarded_to_upload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "publisher.apk"
+            artifact.write_bytes(b"test apk")
+            with mock.patch.object(
+                publisher,
+                "device_flow_auth",
+                return_value="access-token",
+            ), mock.patch.object(
+                publisher,
+                "upload_artifact",
+                return_value={},
+            ) as upload:
+                status = publisher.main(
+                    ["upload", str(artifact), "--beta", "--yes"],
+                    environ=self.ENVIRONMENT,
+                )
+
+        self.assertEqual(status, 0)
+        self.assertTrue(upload.call_args.kwargs["is_beta"])
 
     def test_script_has_no_personal_endpoint_defaults(self):
         source = SCRIPT_PATH.read_text()

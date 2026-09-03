@@ -14,19 +14,24 @@ data class AppDto(
     @SerialName("icon_url")
     val iconUrl: String,
     @SerialName("latest_version")
-    val latestVersion: AppVersionDto,
+    val latestVersion: AppVersionDto?,
     @SerialName("access_level")
     val accessLevel: String = "stable",
 )
 
-fun AppDto.toDomain(): App = App(
-    packageName = packageName,
-    name = name,
-    description = description,
-    iconUrl = iconUrl,
-    latestVersion = latestVersion.toDomain(),
-    accessLevel = accessLevel.toAccessLevel(),
-)
+fun AppDto.toDomain(): App {
+    val visibleVersion = requireNotNull(latestVersion) {
+        "App $packageName has no release visible to the current user"
+    }
+    return App(
+        packageName = packageName,
+        name = name,
+        description = description,
+        iconUrl = iconUrl,
+        latestVersion = visibleVersion.toDomain(),
+        accessLevel = accessLevel.toAccessLevel(),
+    )
+}
 
 internal fun String.toAccessLevel(): AppAccessLevel = when (lowercase()) {
     "beta" -> AppAccessLevel.Beta

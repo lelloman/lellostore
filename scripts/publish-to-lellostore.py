@@ -350,6 +350,7 @@ def upload_artifact(
     config: PublisherConfig,
     name: str | None = None,
     description: str | None = None,
+    is_beta: bool = False,
     json_output: bool = False,
 ) -> dict:
     artifact_info = validate_artifact(artifact)
@@ -366,6 +367,8 @@ def upload_artifact(
         trailing_parts.append(_multipart_field(boundary, "name", name))
     if description:
         trailing_parts.append(_multipart_field(boundary, "description", description))
+    if is_beta:
+        trailing_parts.append(_multipart_field(boundary, "is_beta", "true"))
     trailing_parts.append(f"\r\n--{boundary}--\r\n".encode())
     content_length = len(file_header) + artifact_info["size"] + sum(
         len(part) for part in trailing_parts
@@ -459,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("artifact", type=Path)
     upload.add_argument("--name", help="Override the application name")
     upload.add_argument("--description", help="Override the application description")
+    upload.add_argument("--beta", action="store_true", help="Publish this release to the beta channel")
     upload.add_argument("--dry-run", action="store_true", help="Validate without authenticating or uploading")
     upload.add_argument("--json", action="store_true", help="Print the result as JSON")
     upload.add_argument("--yes", action="store_true", help="Skip the interactive upload confirmation")
@@ -532,6 +536,7 @@ def main(
             config,
             name=parsed.name,
             description=parsed.description,
+            is_beta=parsed.beta,
             json_output=json_output,
         )
         return 0

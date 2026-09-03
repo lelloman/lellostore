@@ -27,7 +27,7 @@ class UpdateCheckWorker @AssistedInject constructor(
             result.fold(
                 onSuccess = { updates ->
                     var retryNeeded = false
-                    var remainingUpdates = updates.count { !it.autoUpdateEnabled }
+                    val remainingUpdates = updates.filterNot { it.autoUpdateEnabled }.toMutableList()
                     updates.filter { it.autoUpdateEnabled }.forEach { update ->
                         when (downloadManager.downloadAndInstall(
                             packageName = update.app.packageName,
@@ -36,13 +36,15 @@ class UpdateCheckWorker @AssistedInject constructor(
                         )) {
                             DownloadResult.Success -> Unit
                             DownloadResult.UserActionRequired,
-                            DownloadResult.PermissionRequired -> remainingUpdates += 1
+                            DownloadResult.PermissionRequired -> remainingUpdates += update
                             DownloadResult.Cancelled,
                             is DownloadResult.Failed -> retryNeeded = true
                         }
                     }
-                    if (remainingUpdates > 0) {
-                        notificationHelper.showUpdatesAvailableNotification(remainingUpdates)
+                    if (remainingUpdates.isNotEmpty()) {
+                        notificationHelper.showUpdatesAvailableNotification(
+                            remainingUpdates.map { it.effectiveReleaseChannel },
+                        )
                     }
                     when {
                         !retryNeeded -> Result.success()

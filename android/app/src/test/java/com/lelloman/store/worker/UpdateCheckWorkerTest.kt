@@ -10,6 +10,7 @@ import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.domain.model.AvailableUpdate
+import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.updates.UpdateChecker
 import com.lelloman.store.notification.NotificationHelper
 import io.mockk.coEvery
@@ -57,7 +58,7 @@ class UpdateCheckWorkerTest {
 
         assertThat(result).isEqualTo(ListenableWorker.Result.success())
         coVerify(exactly = 0) { downloadManager.downloadAndInstall(any(), any(), any()) }
-        verify { notifications.showUpdatesAvailableNotification(1) }
+        verify { notifications.showUpdatesAvailableNotification(listOf(ReleaseChannel.Stable)) }
     }
 
     @Test
@@ -69,7 +70,7 @@ class UpdateCheckWorkerTest {
         val result = worker().doWork()
 
         assertThat(result).isEqualTo(ListenableWorker.Result.success())
-        verify { notifications.showUpdatesAvailableNotification(1) }
+        verify { notifications.showUpdatesAvailableNotification(listOf(ReleaseChannel.Stable)) }
     }
 
     @Test

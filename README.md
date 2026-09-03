@@ -135,13 +135,16 @@ export LELLOSTORE_CLIENT_ID=lellostore-publisher
 
 python scripts/publish-to-lellostore.py upload path/to/app.apk --dry-run --json
 python scripts/publish-to-lellostore.py upload path/to/app.apk
+python scripts/publish-to-lellostore.py upload path/to/app-beta.apk --beta
 ```
 
 The equivalent options are `--store-url`, `--issuer`, and `--client-id`. Use
-`--name` or `--description` to override extracted metadata, `--json` for
-machine-readable results, and `logout` to clear the token cached for one issuer
-and client. HTTPS is required unless `--allow-insecure-http` is explicitly used
-for local development.
+`--name` or `--description` to override extracted metadata, `--beta` to mark a
+release as beta, `--json` for machine-readable results, and `logout` to clear
+the token cached for one issuer and client. Stable and beta artifacts for a
+package must share one monotonically increasing Android `versionCode` sequence.
+HTTPS is required unless `--allow-insecure-http` is explicitly used for local
+development.
 
 Application repositories should keep ownership of building and locating their
 artifact, then invoke this script rather than copying it. A wrapper can resolve

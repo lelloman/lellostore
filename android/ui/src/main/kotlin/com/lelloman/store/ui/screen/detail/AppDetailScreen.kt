@@ -196,10 +196,12 @@ private fun AppDetailContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "v${app.latestVersion.versionName}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                app.latestVersion?.let { latestVersion ->
+                    Text(
+                        text = "v${latestVersion.versionName}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
 
@@ -308,35 +310,43 @@ private fun AppDetailContent(
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(stringResource(R.string.version_label))
-                    Text(app.latestVersion.versionName)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(stringResource(R.string.size_label))
-                    Text(app.latestVersion.size)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(stringResource(R.string.released_label))
-                    Text(app.latestVersion.uploadedAt)
+        app.latestVersion?.let { latestVersion ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(stringResource(R.string.version_label))
+                        Text(latestVersion.versionName)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(stringResource(R.string.size_label))
+                        Text(latestVersion.size)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(stringResource(R.string.released_label))
+                        Text(latestVersion.uploadedAt)
+                    }
                 }
             }
-        }
+        } ?: Text(
+            text = stringResource(
+                R.string.no_release_for_channel,
+                app.effectiveReleaseChannel.displayName(),
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         // Version history
         if (app.versions.size > 1) {

@@ -94,7 +94,7 @@ class AppDetailViewModel @Inject constructor(
         app: AppDetailModel,
         installed: InstalledAppModel?,
         preferences: PreferenceInputs,
-    ): AppDetailUiModel? {
+    ): AppDetailUiModel {
         val policy = AppUpdatePolicyResolver.resolve(
             autoUpdateDefault = preferences.autoUpdateDefault,
             releaseChannelDefault = preferences.releaseChannelDefault,
@@ -107,7 +107,7 @@ class AppDetailViewModel @Inject constructor(
             ReleaseChannel.Stable -> app.versions.filterNot { it.isBeta }
             ReleaseChannel.Beta -> app.versions
         }
-        val latestVersion = (channelVersions.ifEmpty { app.versions }).maxByOrNull { it.versionCode } ?: return null
+        val latestVersion = channelVersions.maxByOrNull { it.versionCode }
         val installedVersionUi = installed?.let { inst ->
             app.versions.find { it.versionCode == inst.versionCode }?.toUiModel()
                 ?: AppVersionUiModel(
@@ -123,11 +123,13 @@ class AppDetailViewModel @Inject constructor(
             name = app.name,
             description = app.description,
             iconUrl = app.iconUrl,
-            latestVersion = latestVersion.toUiModel(),
+            latestVersion = latestVersion?.toUiModel(),
             versions = app.versions.map { it.toUiModel() },
             installedVersion = installedVersionUi,
-            canInstall = installed == null,
-            canUpdate = installed != null && installed.versionCode < latestVersion.versionCode,
+            canInstall = installed == null && latestVersion != null,
+            canUpdate = installed != null &&
+                latestVersion != null &&
+                installed.versionCode < latestVersion.versionCode,
             canOpen = installed != null,
             autoUpdateOverride = preferences.autoUpdateOverride,
             releaseChannelOverride = preferences.releaseChannelOverride,
@@ -178,6 +180,7 @@ class AppDetailViewModel @Inject constructor(
 
     fun onInstallClick() {
         val app = mutableState.value.app ?: return
+        val latestVersion = app.latestVersion ?: return
         val currentDownloadState = mutableState.value.downloadState
 
         // If download is in progress, cancel it
@@ -190,7 +193,7 @@ class AppDetailViewModel @Inject constructor(
         viewModelScope.launch {
             interactor.downloadAndInstall(
                 packageName = app.packageName,
-                versionCode = app.latestVersion.versionCode,
+                versionCode = latestVersion.versionCode,
             )
         }
     }

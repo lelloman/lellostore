@@ -18,7 +18,7 @@ data class AppDetailUiModel(
     val name: String,
     val description: String?,
     val iconUrl: String,
-    val latestVersion: AppVersionUiModel,
+    val latestVersion: AppVersionUiModel?,
     val versions: List<AppVersionUiModel>,
     val installedVersion: AppVersionUiModel?,
     val canInstall: Boolean,

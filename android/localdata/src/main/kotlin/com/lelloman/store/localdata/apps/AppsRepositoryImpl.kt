@@ -53,21 +53,27 @@ class AppsRepositoryImpl(
     }
 
     override suspend fun refreshApp(packageName: String): Result<AppDetail> {
-        return remoteApiClient.getApp(packageName).map { appDetail ->
+        return remoteApiClient.getApp(packageName).mapCatching { appDetail ->
+            val latestVersion = appDetail.versions.firstOrNull()
+            if (latestVersion == null) {
+                appVersionsDao.deleteVersions(packageName)
+                appsDao.deleteApp(packageName)
+                error("No releases are available for $packageName")
+            }
             val appEntity = CachedAppEntity(
                 packageName = appDetail.packageName,
                 name = appDetail.name,
                 description = appDetail.description,
                 iconUrl = appDetail.iconUrl,
-                latestVersionCode = appDetail.versions.first().versionCode,
-                latestVersionName = appDetail.versions.first().versionName,
-                latestVersionSize = appDetail.versions.first().size,
-                latestVersionSha256 = appDetail.versions.first().sha256,
-                latestVersionMinSdk = appDetail.versions.first().minSdk,
-                latestVersionUploadedAt = appDetail.versions.first().uploadedAt.toEpochMilliseconds(),
+                latestVersionCode = latestVersion.versionCode,
+                latestVersionName = latestVersion.versionName,
+                latestVersionSize = latestVersion.size,
+                latestVersionSha256 = latestVersion.sha256,
+                latestVersionMinSdk = latestVersion.minSdk,
+                latestVersionUploadedAt = latestVersion.uploadedAt.toEpochMilliseconds(),
                 updatedAt = System.currentTimeMillis(),
                 accessLevel = appDetail.accessLevel.name.lowercase(),
-                latestVersionIsBeta = appDetail.versions.first().isBeta,
+                latestVersionIsBeta = latestVersion.isBeta,
             )
             appsDao.insertApp(appEntity)
 

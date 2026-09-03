@@ -89,6 +89,7 @@
     <string name="settings_release_channel_default">Preferred release channel</string>
     <string name="release_channel_stable">Stable</string>
     <string name="release_channel_beta">Beta</string>
+    <string name="no_release_for_channel">No %1$s release is currently available.</string>
     <string name="app_update_preferences">Update preferences</string>
     <string name="app_auto_update">Automatic update</string>
     <string name="app_release_channel">Release channel</string>
