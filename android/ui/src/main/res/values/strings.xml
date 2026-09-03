@@ -50,10 +50,17 @@
 
     <!-- App Detail Screen -->
     <string name="app_details">App Details</string>
+    <string name="app_detail_load_error_title">Couldn’t load app details</string>
     <string name="install">Install</string>
     <string name="update">Update</string>
     <string name="open">Open</string>
     <string name="installed_version">Installed Version</string>
+    <string name="current_version">Current version</string>
+    <string name="available_version">Available version</string>
+    <string name="effective_release_channel">Effective channel</string>
+    <string name="not_installed">Not installed</string>
+    <string name="none_available">None available</string>
+    <string name="version_name_and_code">%1$s (%2$d)</string>
     <string name="about">About</string>
     <string name="latest_version">Latest Version</string>
     <string name="version_history">Version History</string>
@@ -71,6 +78,9 @@
     <string name="download_completed">Completed</string>
     <string name="download_failed">Failed</string>
     <string name="download_cancelled">Cancelled</string>
+    <string name="download_completed_hint">The installation request completed successfully.</string>
+    <string name="download_failed_hint">Installation did not complete. Use the action below to try again.</string>
+    <string name="download_cancelled_hint">The installation was cancelled. You can restart it when ready.</string>
     <string name="download_permission_required">Permission required</string>
     <string name="content_description_cancel_download">Cancel download</string>
 

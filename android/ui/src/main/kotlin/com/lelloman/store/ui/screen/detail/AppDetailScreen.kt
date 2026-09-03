@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -29,6 +31,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -38,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -54,8 +58,11 @@ import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreStateContent
+import com.lelloman.store.ui.components.LelloStoreStatusBadge
 import com.lelloman.store.ui.components.lelloStoreButtonColors
 import com.lelloman.store.ui.theme.LelloGreen
+import com.lelloman.store.ui.theme.LelloStoreSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,22 +119,14 @@ fun AppDetailScreen(
                     )
                 }
                 state.error != null && state.app == null -> {
-                    Column(
+                    LelloStoreStateContent(
+                        icon = Icons.Default.Refresh,
+                        title = stringResource(R.string.app_detail_load_error_title),
+                        message = state.error ?: stringResource(R.string.unknown_error),
+                        actionLabel = stringResource(R.string.retry),
+                        onAction = viewModel::onRetry,
                         modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = state.error ?: stringResource(R.string.unknown_error),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = viewModel::onRetry,
-                            colors = lelloStoreButtonColors(),
-                        ) {
-                            Text(stringResource(R.string.retry))
-                        }
-                    }
+                    )
                 }
                 state.app != null -> {
                     AppDetailContent(
@@ -162,8 +161,8 @@ private fun AppDetailContent(
     onReleaseChannelOverrideChanged: (ReleaseChannelOverride) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showAutoUpdateDialog by remember { mutableStateOf(false) }
-    var showReleaseChannelDialog by remember { mutableStateOf(false) }
+    var showAutoUpdateDialog by rememberSaveable { mutableStateOf(false) }
+    var showReleaseChannelDialog by rememberSaveable { mutableStateOf(false) }
     val isDownloading = downloadState != null &&
             downloadState != DownloadState.COMPLETED &&
             downloadState != DownloadState.FAILED &&
@@ -173,153 +172,123 @@ private fun AppDetailContent(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(LelloStoreSpacing.large),
     ) {
-        // App header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp)
+                .align(Alignment.CenterHorizontally),
         ) {
-            AsyncImage(
-                model = app.iconUrl,
-                contentDescription = "${app.name} icon",
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(16.dp)),
-            )
+            AppIdentityHeader(app = app)
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+            VersionSummary(app = app)
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = app.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = app.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                app.latestVersion?.let { latestVersion ->
-                    Text(
-                        text = "v${latestVersion.versionName}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Action buttons / Download progress
-        if (isDownloading) {
-            DownloadProgressSection(
-                downloadState = downloadState!!,
-                progress = downloadProgress,
-                onCancel = onCancelDownload,
-            )
-        } else if (downloadState == DownloadState.PERMISSION_REQUIRED) {
-            PermissionRequiredSection(
-                onGrantPermissionClick = onGrantPermissionClick,
-                onRetryClick = onInstallClick,
-            )
-        } else {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
+            if (downloadState == DownloadState.COMPLETED ||
+                downloadState == DownloadState.FAILED ||
+                downloadState == DownloadState.CANCELLED
             ) {
-                if (app.canInstall) {
-                    Button(
-                        onClick = onInstallClick,
-                        modifier = Modifier.weight(1f),
-                        colors = lelloStoreButtonColors(),
-                    ) {
-                        Text(stringResource(R.string.install))
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+                InstallationResultSection(downloadState = downloadState)
+            }
+
+            Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+
+            if (isDownloading) {
+                DownloadProgressSection(
+                    downloadState = downloadState!!,
+                    progress = downloadProgress,
+                    onCancel = onCancelDownload,
+                )
+            } else if (downloadState == DownloadState.PERMISSION_REQUIRED) {
+                PermissionRequiredSection(
+                    onGrantPermissionClick = onGrantPermissionClick,
+                    onRetryClick = onInstallClick,
+                )
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(LelloStoreSpacing.small),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (app.canInstall) {
+                        Button(
+                            onClick = onInstallClick,
+                            modifier = Modifier.weight(1f).height(52.dp),
+                            colors = lelloStoreButtonColors(),
+                        ) {
+                            Text(stringResource(R.string.install))
+                        }
                     }
-                }
-                if (app.canUpdate) {
-                    Button(
-                        onClick = onUpdateClick,
-                        modifier = Modifier.weight(1f),
-                        colors = lelloStoreButtonColors(),
-                    ) {
-                        Text(stringResource(R.string.update))
+                    if (app.canUpdate) {
+                        Button(
+                            onClick = onUpdateClick,
+                            modifier = Modifier.weight(1f).height(52.dp),
+                            colors = lelloStoreButtonColors(),
+                        ) {
+                            Text(stringResource(R.string.update))
+                        }
                     }
-                }
-                if (app.canOpen) {
-                    OutlinedButton(
-                        onClick = onOpenClick,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.open))
+                    if (app.canOpen) {
+                        OutlinedButton(
+                            onClick = onOpenClick,
+                            modifier = Modifier.weight(1f).height(52.dp),
+                        ) {
+                            Text(stringResource(R.string.open))
+                        }
                     }
                 }
             }
-        }
 
-        // Installed version info
-        app.installedVersion?.let { installed ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.installed_version),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = "v${installed.versionName} (${installed.versionCode})",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+            if (app.isPolicyConfigurable) {
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.xLarge))
+                SectionTitle(text = stringResource(R.string.app_update_preferences))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = 1.dp,
+                ) {
+                    Column {
+                        PolicyItem(
+                            title = stringResource(R.string.app_auto_update),
+                            value = app.autoUpdateOverride.displayName(app.effectiveAutoUpdate),
+                            onClick = { showAutoUpdateDialog = true },
+                        )
+                        PolicyItem(
+                            title = stringResource(R.string.app_release_channel),
+                            value = app.releaseChannelOverride.displayName(app.effectiveReleaseChannel),
+                            onClick = { showReleaseChannelDialog = true },
+                        )
+                    }
                 }
             }
-        }
-
-        if (app.isPolicyConfigurable) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.app_update_preferences),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            PolicyItem(
-                title = stringResource(R.string.app_auto_update),
-                value = app.autoUpdateOverride.displayName(app.effectiveAutoUpdate),
-                onClick = { showAutoUpdateDialog = true },
-            )
-            PolicyItem(
-                title = stringResource(R.string.app_release_channel),
-                value = app.releaseChannelOverride.displayName(app.effectiveReleaseChannel),
-                onClick = { showReleaseChannelDialog = true },
-            )
-        }
 
         // Description
         app.description?.let { description ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.about),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.xLarge))
+                SectionTitle(text = stringResource(R.string.about))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = 1.dp,
+                ) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(LelloStoreSpacing.large),
+                    )
+                }
         }
 
         // Version info
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.latest_version),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(LelloStoreSpacing.xLarge))
+            SectionTitle(text = stringResource(R.string.latest_version))
         app.latestVersion?.let { latestVersion ->
-            Card(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = 1.dp,
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
@@ -357,17 +326,15 @@ private fun AppDetailContent(
 
         // Version history
         if (app.versions.size > 1) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.version_history),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.xLarge))
+                SectionTitle(text = stringResource(R.string.version_history))
             app.versions.drop(1).forEach { version ->
-                Card(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = 1.dp,
                 ) {
                     Row(
                         modifier = Modifier
@@ -380,6 +347,7 @@ private fun AppDetailContent(
                     }
                 }
             }
+        }
         }
     }
 
@@ -416,6 +384,154 @@ private fun AppDetailContent(
 }
 
 @Composable
+private fun AppIdentityHeader(
+    app: AppDetailUiModel,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(LelloStoreSpacing.large),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AsyncImage(
+                model = app.iconUrl,
+                contentDescription = stringResource(R.string.content_description_app_icon, app.name),
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(MaterialTheme.shapes.medium),
+            )
+            Spacer(Modifier.width(LelloStoreSpacing.large))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = app.name, style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(LelloStoreSpacing.xSmall))
+                Text(
+                    text = app.packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f),
+                )
+                Spacer(Modifier.height(LelloStoreSpacing.small))
+                LelloStoreStatusBadge(
+                    label = app.effectiveReleaseChannel.displayName(),
+                    emphasized = app.effectiveReleaseChannel == ReleaseChannel.Beta,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersionSummary(
+    app: AppDetailUiModel,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.padding(LelloStoreSpacing.large)) {
+            SummaryLine(
+                label = stringResource(R.string.current_version),
+                value = app.installedVersion?.let {
+                    stringResource(R.string.version_name_and_code, it.versionName, it.versionCode)
+                } ?: stringResource(R.string.not_installed),
+            )
+            Spacer(Modifier.height(LelloStoreSpacing.medium))
+            SummaryLine(
+                label = stringResource(R.string.available_version),
+                value = app.latestVersion?.let {
+                    stringResource(R.string.version_name_and_code, it.versionName, it.versionCode)
+                } ?: stringResource(R.string.none_available),
+            )
+            Spacer(Modifier.height(LelloStoreSpacing.medium))
+            SummaryLine(
+                label = stringResource(R.string.effective_release_channel),
+                value = app.effectiveReleaseChannel.displayName(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(LelloStoreSpacing.large))
+        Text(text = value, style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(
+            start = LelloStoreSpacing.xSmall,
+            bottom = LelloStoreSpacing.small,
+        ),
+    )
+}
+
+@Composable
+private fun InstallationResultSection(
+    downloadState: DownloadState,
+    modifier: Modifier = Modifier,
+) {
+    val isError = downloadState == DownloadState.FAILED
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = if (isError) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        contentColor = if (isError) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        },
+    ) {
+        Column(modifier = Modifier.padding(LelloStoreSpacing.large)) {
+            Text(
+                text = when (downloadState) {
+                    DownloadState.COMPLETED -> stringResource(R.string.download_completed)
+                    DownloadState.FAILED -> stringResource(R.string.download_failed)
+                    DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
+                    else -> return@Surface
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(LelloStoreSpacing.xSmall))
+            Text(
+                text = when (downloadState) {
+                    DownloadState.COMPLETED -> stringResource(R.string.download_completed_hint)
+                    DownloadState.FAILED -> stringResource(R.string.download_failed_hint)
+                    DownloadState.CANCELLED -> stringResource(R.string.download_cancelled_hint)
+                    else -> return@Surface
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
 private fun AutoUpdateOverride.displayName(effective: Boolean): String = when (this) {
     AutoUpdateOverride.Inherit -> stringResource(
         R.string.use_default_with_value,
@@ -447,7 +563,7 @@ private fun PolicyItem(title: String, value: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(horizontal = LelloStoreSpacing.large, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {

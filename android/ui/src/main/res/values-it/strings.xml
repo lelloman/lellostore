@@ -51,10 +51,17 @@
 
     <!-- App Detail Screen -->
     <string name="app_details">Dettagli App</string>
+    <string name="app_detail_load_error_title">Impossibile caricare i dettagli dell’app</string>
     <string name="install">Installa</string>
     <string name="update">Aggiorna</string>
     <string name="open">Apri</string>
     <string name="installed_version">Versione installata</string>
+    <string name="current_version">Versione attuale</string>
+    <string name="available_version">Versione disponibile</string>
+    <string name="effective_release_channel">Canale effettivo</string>
+    <string name="not_installed">Non installata</string>
+    <string name="none_available">Nessuna disponibile</string>
+    <string name="version_name_and_code">%1$s (%2$d)</string>
     <string name="about">Informazioni</string>
     <string name="latest_version">Ultima versione</string>
     <string name="version_history">Cronologia versioni</string>
@@ -72,6 +79,9 @@
     <string name="download_completed">Completato</string>
     <string name="download_failed">Fallito</string>
     <string name="download_cancelled">Annullato</string>
+    <string name="download_completed_hint">La richiesta di installazione è stata completata correttamente.</string>
+    <string name="download_failed_hint">L’installazione non è stata completata. Usa l’azione qui sotto per riprovare.</string>
+    <string name="download_cancelled_hint">L’installazione è stata annullata. Puoi riavviarla quando vuoi.</string>
     <string name="download_permission_required">Permesso richiesto</string>
     <string name="content_description_cancel_download">Annulla download</string>
 
