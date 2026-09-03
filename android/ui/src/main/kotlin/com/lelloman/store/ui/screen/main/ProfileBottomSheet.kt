@@ -5,12 +5,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -21,7 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreBrandMark
 import com.lelloman.store.ui.components.lelloStoreButtonColors
+import com.lelloman.store.ui.theme.LelloStoreSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,26 +41,34 @@ fun ProfileBottomSheet(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                imageVector = Icons.Default.AccountCircle,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            LelloStoreBrandMark(contentDescription = null, size = 72.dp)
+            Spacer(Modifier.height(LelloStoreSpacing.large))
+            Text(
+                text = stringResource(R.string.profile_title),
+                style = MaterialTheme.typography.headlineSmall,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(LelloStoreSpacing.small))
+            Text(
+                text = stringResource(R.string.profile_signed_in_as),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(LelloStoreSpacing.xSmall))
             Text(
                 text = userEmail,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(LelloStoreSpacing.xLarge))
+            HorizontalDivider()
+            Spacer(Modifier.height(LelloStoreSpacing.xLarge))
             Button(
                 onClick = onLogout,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 colors = lelloStoreButtonColors(),
             ) {
                 Text(stringResource(R.string.logout))
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(LelloStoreSpacing.large))
         }
     }
 }

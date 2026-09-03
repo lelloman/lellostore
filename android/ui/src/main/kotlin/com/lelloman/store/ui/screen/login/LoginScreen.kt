@@ -3,17 +3,28 @@ package com.lelloman.store.ui.screen.login
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,9 +37,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.components.LelloStoreBrandMark
 import com.lelloman.store.ui.components.lelloStoreButtonColors
 import com.lelloman.store.ui.model.AuthResult
 import com.lelloman.store.ui.theme.Green20
+import com.lelloman.store.ui.theme.LelloStoreSpacing
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationResponse
 
@@ -90,60 +103,134 @@ private fun LoginScreenContent(
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .imePadding(),
     ) {
+        val isWide = maxWidth >= 600.dp && maxWidth > maxHeight
+        if (isWide) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = LelloStoreSpacing.hero, vertical = LelloStoreSpacing.xLarge),
+                horizontalArrangement = Arrangement.spacedBy(LelloStoreSpacing.hero),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LoginBrandPanel(
+                    modifier = Modifier.weight(1f),
+                    brandMarkSize = 104.dp,
+                )
+                LoginForm(
+                    state = state,
+                    onServerUrlChanged = onServerUrlChanged,
+                    onLoginClick = onLoginClick,
+                    modifier = Modifier.weight(1f).widthIn(max = 480.dp),
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(LelloStoreSpacing.xLarge),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                LoginBrandPanel(
+                    modifier = Modifier.widthIn(max = 480.dp),
+                    brandMarkSize = 88.dp,
+                )
+                Spacer(Modifier.height(LelloStoreSpacing.xxLarge))
+                LoginForm(
+                    state = state,
+                    onServerUrlChanged = onServerUrlChanged,
+                    onLoginClick = onLoginClick,
+                    modifier = Modifier.widthIn(max = 480.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoginBrandPanel(
+    brandMarkSize: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        LelloStoreBrandMark(contentDescription = null, size = brandMarkSize)
+        Spacer(Modifier.height(LelloStoreSpacing.large))
         Text(
             text = stringResource(R.string.login_welcome),
             style = MaterialTheme.typography.headlineMedium,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(LelloStoreSpacing.small))
         Text(
             text = stringResource(R.string.login_subtitle),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(32.dp))
+    }
+}
 
-        OutlinedTextField(
-            value = state.serverUrl,
-            onValueChange = onServerUrlChanged,
-            label = { Text(stringResource(R.string.login_server_url)) },
-            placeholder = { Text(stringResource(R.string.login_server_url_placeholder)) },
-            isError = state.serverUrlError != null,
-            supportingText = state.serverUrlError?.let { { Text(it) } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(16.dp))
-
-        if (state.error != null) {
-            Text(
-                text = state.error,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
+@Composable
+private fun LoginForm(
+    state: LoginScreenState,
+    onServerUrlChanged: (String) -> Unit,
+    onLoginClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+        shadowElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.padding(LelloStoreSpacing.xLarge)) {
+            OutlinedTextField(
+                value = state.serverUrl,
+                onValueChange = onServerUrlChanged,
+                label = { Text(stringResource(R.string.login_server_url)) },
+                placeholder = { Text(stringResource(R.string.login_server_url_placeholder)) },
+                isError = state.serverUrlError != null,
+                supportingText = state.serverUrlError?.let { { Text(it) } },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(16.dp))
-        }
+            Spacer(Modifier.height(LelloStoreSpacing.large))
 
-        Button(
-            onClick = onLoginClick,
-            enabled = !state.isLoading && state.serverUrl.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-            colors = lelloStoreButtonColors(),
-        ) {
-            if (state.isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.height(24.dp),
-                    color = Green20,
+            if (state.error != null) {
+                Text(
+                    text = state.error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
-            } else {
-                Text(stringResource(R.string.login_sign_in_oidc))
+                Spacer(Modifier.height(LelloStoreSpacing.large))
+            }
+
+            Button(
+                onClick = onLoginClick,
+                enabled = !state.isLoading && state.serverUrl.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = lelloStoreButtonColors(),
+            ) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Green20,
+                        strokeWidth = 3.dp,
+                    )
+                } else {
+                    Text(stringResource(R.string.login_sign_in_oidc))
+                }
             }
         }
     }

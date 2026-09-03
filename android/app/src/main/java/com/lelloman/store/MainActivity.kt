@@ -2,8 +2,11 @@ package com.lelloman.store
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
@@ -52,8 +55,29 @@ class MainActivity : ComponentActivity() {
             val shouldNavigateToLogin by sessionExpiredNavigation.collectAsState()
 
             val themeMode = domainThemeMode.toUiModel()
+            val useDarkSystemBars = when (domainThemeMode) {
+                DomainThemeMode.System -> isSystemInDarkTheme()
+                DomainThemeMode.Light -> false
+                DomainThemeMode.Dark -> true
+            }
             val isLoggedIn = domainAuthState is DomainAuthState.Authenticated
             val userEmail = (domainAuthState as? DomainAuthState.Authenticated)?.userEmail ?: ""
+
+            SideEffect {
+                val transparent = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (useDarkSystemBars) {
+                        SystemBarStyle.dark(transparent)
+                    } else {
+                        SystemBarStyle.light(transparent, transparent)
+                    },
+                    navigationBarStyle = if (useDarkSystemBars) {
+                        SystemBarStyle.dark(transparent)
+                    } else {
+                        SystemBarStyle.light(transparent, transparent)
+                    },
+                )
+            }
 
             AppUi(
                 themeMode = themeMode,
