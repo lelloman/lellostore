@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
 import com.lelloman.store.ui.model.ThemeMode
 
 internal val LelloStoreDarkColorScheme = darkColorScheme(
-    primary = Green80,
+    primary = LelloGreen,
     onPrimary = Green20,
     primaryContainer = Green30,
     onPrimaryContainer = Green90,
@@ -40,9 +40,9 @@ internal val LelloStoreDarkColorScheme = darkColorScheme(
 )
 
 internal val LelloStoreLightColorScheme = lightColorScheme(
-    primary = Green40,
-    onPrimary = Color.White,
-    primaryContainer = LelloGreen,
+    primary = LelloGreen,
+    onPrimary = Green20,
+    primaryContainer = Green95,
     onPrimaryContainer = Green20,
     secondary = Sage40,
     onSecondary = Color.White,

@@ -280,7 +280,7 @@ private fun SettingsSectionHeader(
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
+        color = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = modifier.padding(horizontal = 16.dp, vertical = 16.dp),
     )
 }
@@ -412,7 +412,7 @@ private fun <T> SelectionDialog(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = stringResource(R.string.content_description_selected),
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
                     }

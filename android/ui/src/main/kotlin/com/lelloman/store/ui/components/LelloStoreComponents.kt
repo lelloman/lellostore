@@ -195,7 +195,7 @@ fun LelloStoreStateContent(
     title: String,
     message: String,
     modifier: Modifier = Modifier,
-    iconTint: Color = MaterialTheme.colorScheme.primary,
+    iconTint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {

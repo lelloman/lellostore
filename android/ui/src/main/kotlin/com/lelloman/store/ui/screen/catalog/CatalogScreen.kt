@@ -324,7 +324,7 @@ private fun AppListItem(
                         Text(
                             text = stringResource(R.string.status_update),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(start = 8.dp),
                         )
                     } else if (app.isInstalled) {
