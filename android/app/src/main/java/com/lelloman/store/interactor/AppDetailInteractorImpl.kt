@@ -3,6 +3,7 @@ package com.lelloman.store.interactor
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
@@ -66,9 +67,8 @@ class AppDetailInteractorImpl @Inject constructor(
     override fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride> =
         userPreferencesStore.releaseChannelOverride(packageName)
 
-    override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
+    override suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult =
         downloadManager.downloadAndInstall(packageName, versionCode)
-    }
 
     override fun cancelDownload(packageName: String) {
         downloadManager.cancelDownload(packageName)

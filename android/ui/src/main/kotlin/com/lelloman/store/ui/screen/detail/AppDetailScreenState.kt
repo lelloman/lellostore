@@ -1,6 +1,7 @@
 package com.lelloman.store.ui.screen.detail
 
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
@@ -11,6 +12,7 @@ data class AppDetailScreenState(
     val error: String? = null,
     val downloadState: DownloadState? = null,
     val downloadProgress: Float = 0f,
+    val installationFailure: DownloadResult.Failed? = null,
 )
 
 data class AppDetailUiModel(

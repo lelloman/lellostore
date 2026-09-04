@@ -84,6 +84,10 @@
     <string name="download_cancelled">Annullato</string>
     <string name="download_completed_hint">La richiesta di installazione è stata completata correttamente.</string>
     <string name="download_failed_hint">L’installazione non è stata completata. Usa l’azione qui sotto per riprovare.</string>
+    <string name="incompatible_signature_title">Impossibile aggiornare l’app</string>
+    <string name="incompatible_signature_message">L’app installata e questo aggiornamento sono firmati con chiavi diverse, quindi Android non può sostituirla. Per continuare, disinstalla l’app installata e poi installala di nuovo. Attenzione: la disinstallazione potrebbe eliminare i dati dell’app.</string>
+    <string name="show_technical_details">Mostra dettagli tecnici</string>
+    <string name="hide_technical_details">Nascondi dettagli tecnici</string>
     <string name="download_cancelled_hint">L’installazione è stata annullata. Puoi riavviarla quando vuoi.</string>
     <string name="download_permission_required">Permesso richiesto</string>
     <string name="content_description_cancel_download">Annulla download</string>

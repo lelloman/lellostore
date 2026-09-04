@@ -10,6 +10,7 @@ import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.preferences.AppAccessLevel
 import com.lelloman.store.domain.preferences.AppUpdatePolicyResolver
@@ -191,9 +192,13 @@ class AppDetailViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            interactor.downloadAndInstall(
+            mutableState.value = mutableState.value.copy(installationFailure = null)
+            val result = interactor.downloadAndInstall(
                 packageName = app.packageName,
                 versionCode = latestVersion.versionCode,
+            )
+            mutableState.value = mutableState.value.copy(
+                installationFailure = result as? DownloadResult.Failed,
             )
         }
     }
@@ -251,7 +256,7 @@ class AppDetailViewModel @Inject constructor(
         fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride>
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
         suspend fun refreshInstalledApp(packageName: String)
-        suspend fun downloadAndInstall(packageName: String, versionCode: Int)
+        suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult
         fun cancelDownload(packageName: String)
         fun canInstallPackages(): Boolean
         fun openInstallPermissionSettings()

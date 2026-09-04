@@ -6,6 +6,7 @@ import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.download.DownloadResult
+import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.domain.model.AppDetail
@@ -112,6 +113,32 @@ class DownloadManagerImplTest {
 
         assertThat(result).isEqualTo(DownloadResult.Failed("Download failed"))
         verify { logger.e(any(), any(), any()) }
+    }
+
+    @Test
+    fun `signature mismatch is returned as an incompatible signature failure`() = runTest {
+        val bytes = "apk".toByteArray()
+        val detail = createAppDetail(
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong(),
+        )
+        val packageManagerReason =
+            "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.test.app " +
+                "signatures do not match newer version]"
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } returns
+            Result.success(ByteArrayInputStream(bytes))
+        coEvery { installationCoordinator.install(any()) } returns
+            InstallationResult.Failed(listOf("Legacy ADB: $packageManagerReason"))
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(
+            DownloadResult.Failed(
+                reason = "Legacy ADB: $packageManagerReason",
+                kind = DownloadFailureKind.INCOMPATIBLE_SIGNATURE,
+            )
+        )
     }
 
     @Test

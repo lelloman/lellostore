@@ -83,6 +83,10 @@
     <string name="download_cancelled">Cancelled</string>
     <string name="download_completed_hint">The installation request completed successfully.</string>
     <string name="download_failed_hint">Installation did not complete. Use the action below to try again.</string>
+    <string name="incompatible_signature_title">This app can’t be updated</string>
+    <string name="incompatible_signature_message">The installed app and this update were signed with different keys, so Android cannot replace it. To continue, uninstall the installed app and then install it again. Warning: uninstalling may delete the app’s data.</string>
+    <string name="show_technical_details">Show technical details</string>
+    <string name="hide_technical_details">Hide technical details</string>
     <string name="download_cancelled_hint">The installation was cancelled. You can restart it when ready.</string>
     <string name="download_permission_required">Permission required</string>
     <string name="content_description_cancel_download">Cancel download</string>

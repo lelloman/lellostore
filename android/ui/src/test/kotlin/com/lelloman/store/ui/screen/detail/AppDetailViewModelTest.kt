@@ -3,6 +3,8 @@ package com.lelloman.store.ui.screen.detail
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadFailureKind
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.AppAccessLevel
@@ -190,6 +192,41 @@ class AppDetailViewModelTest {
 
         assertThat(fakeInteractor.downloadAndInstallCalled).isTrue()
         assertThat(fakeInteractor.downloadAndInstallVersionCode).isEqualTo(2)
+    }
+
+    @Test
+    fun `incompatible signature failure is retained for a clear UI message`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 1, "1.0.0")
+        fakeInteractor.downloadAndInstallResult = DownloadResult.Failed(
+            reason = "INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match",
+            kind = DownloadFailureKind.INCOMPATIBLE_SIGNATURE,
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onUpdateClick()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationFailure)
+            .isEqualTo(fakeInteractor.downloadAndInstallResult)
+    }
+
+    @Test
+    fun `retry clears the previous installation failure while it runs`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        fakeInteractor.downloadAndInstallResult = DownloadResult.Failed("first failure")
+        createViewModel()
+        advanceUntilIdle()
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.installationFailure).isNotNull()
+
+        fakeInteractor.downloadAndInstallResult = DownloadResult.Success
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationFailure).isNull()
     }
 
     @Test
@@ -608,6 +645,7 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     var downloadAndInstallCalled = false
     var downloadAndInstallPackageName: String? = null
     var downloadAndInstallVersionCode: Int? = null
+    var downloadAndInstallResult: DownloadResult = DownloadResult.Success
     var cancelDownloadCalled = false
     var cancelDownloadPackageName: String? = null
     var openInstallPermissionSettingsCalled = false
@@ -633,10 +671,11 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
         refreshInstalledAppPackageName = packageName
     }
 
-    override suspend fun downloadAndInstall(packageName: String, versionCode: Int) {
+    override suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult {
         downloadAndInstallCalled = true
         downloadAndInstallPackageName = packageName
         downloadAndInstallVersionCode = versionCode
+        return downloadAndInstallResult
     }
 
     override fun cancelDownload(packageName: String) {

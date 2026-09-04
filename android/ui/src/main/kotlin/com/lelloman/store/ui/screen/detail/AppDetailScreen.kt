@@ -56,6 +56,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.DownloadFailureKind
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
@@ -136,6 +138,7 @@ fun AppDetailScreen(
                         app = state.app!!,
                         downloadState = state.downloadState,
                         downloadProgress = state.downloadProgress,
+                        installationFailure = state.installationFailure,
                         onInstallClick = viewModel::onInstallClick,
                         onUpdateClick = viewModel::onUpdateClick,
                         onOpenClick = viewModel::onOpenClick,
@@ -155,6 +158,7 @@ private fun AppDetailContent(
     app: AppDetailUiModel,
     downloadState: DownloadState?,
     downloadProgress: Float,
+    installationFailure: DownloadResult.Failed?,
     onInstallClick: () -> Unit,
     onUpdateClick: () -> Unit,
     onOpenClick: () -> Unit,
@@ -188,12 +192,15 @@ private fun AppDetailContent(
             Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
             VersionSummary(app = app)
 
-            if (downloadState == DownloadState.COMPLETED ||
+            if (installationFailure != null || downloadState == DownloadState.COMPLETED ||
                 downloadState == DownloadState.FAILED ||
                 downloadState == DownloadState.CANCELLED
             ) {
                 Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
-                InstallationResultSection(downloadState = downloadState)
+                InstallationResultSection(
+                    downloadState = downloadState,
+                    failure = installationFailure,
+                )
             }
 
             Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
@@ -491,10 +498,12 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun InstallationResultSection(
-    downloadState: DownloadState,
+    downloadState: DownloadState?,
+    failure: DownloadResult.Failed?,
     modifier: Modifier = Modifier,
 ) {
-    val isError = downloadState == DownloadState.FAILED
+    var showTechnicalDetails by rememberSaveable { mutableStateOf(false) }
+    val isError = failure != null || downloadState == DownloadState.FAILED
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -515,7 +524,13 @@ private fun InstallationResultSection(
             Text(
                 text = when (downloadState) {
                     DownloadState.COMPLETED -> stringResource(R.string.download_completed)
-                    DownloadState.FAILED -> stringResource(R.string.download_failed)
+                    DownloadState.FAILED, null -> stringResource(
+                        if (failure?.kind == DownloadFailureKind.INCOMPATIBLE_SIGNATURE) {
+                            R.string.incompatible_signature_title
+                        } else {
+                            R.string.download_failed
+                        }
+                    )
                     DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
                     else -> return@Surface
                 },
@@ -525,12 +540,34 @@ private fun InstallationResultSection(
             Text(
                 text = when (downloadState) {
                     DownloadState.COMPLETED -> stringResource(R.string.download_completed_hint)
-                    DownloadState.FAILED -> stringResource(R.string.download_failed_hint)
+                    DownloadState.FAILED, null -> stringResource(
+                        if (failure?.kind == DownloadFailureKind.INCOMPATIBLE_SIGNATURE) {
+                            R.string.incompatible_signature_message
+                        } else {
+                            R.string.download_failed_hint
+                        }
+                    )
                     DownloadState.CANCELLED -> stringResource(R.string.download_cancelled_hint)
                     else -> return@Surface
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (failure != null) {
+                TextButton(onClick = { showTechnicalDetails = !showTechnicalDetails }) {
+                    Text(
+                        stringResource(
+                            if (showTechnicalDetails) R.string.hide_technical_details
+                            else R.string.show_technical_details
+                        )
+                    )
+                }
+                if (showTechnicalDetails) {
+                    Text(
+                        text = failure.reason,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
     }
 }

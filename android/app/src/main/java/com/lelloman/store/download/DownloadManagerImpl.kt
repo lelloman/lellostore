@@ -7,6 +7,7 @@ import androidx.core.net.toUri
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
@@ -72,6 +73,7 @@ class DownloadManagerImpl @Inject constructor(
         var destination: File? = null
         var finalState = DownloadState.FAILED
         var retainVerifiedApk = false
+        var failure: DownloadResult.Failed? = null
 
         try {
             updateProgress(packageName, DownloadState.PENDING, 0f, 0, 0)
@@ -137,9 +139,17 @@ class DownloadManagerImpl @Inject constructor(
                     updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.Failed -> {
-                    throw IllegalStateException(
-                        installResult.reasons.joinToString("; ").ifEmpty { "Installation failed" }
+                    val reason = installResult.reasons.joinToString("; ")
+                        .ifEmpty { "Installation failed" }
+                    failure = DownloadResult.Failed(
+                        reason = reason,
+                        kind = if (reason.contains(INCOMPATIBLE_UPDATE_ERROR, ignoreCase = true)) {
+                            DownloadFailureKind.INCOMPATIBLE_SIGNATURE
+                        } else {
+                            DownloadFailureKind.GENERIC
+                        },
                     )
+                    throw InstallationFailedException(reason)
                 }
             }
 
@@ -172,7 +182,7 @@ class DownloadManagerImpl @Inject constructor(
             } else {
                 DownloadResult.PermissionRequired
             }
-            else -> DownloadResult.Failed("Download failed")
+            else -> failure ?: DownloadResult.Failed("Download failed")
         }
     }
 
@@ -253,5 +263,11 @@ class DownloadManagerImpl @Inject constructor(
                 state = state,
             ))
         }
+    }
+
+    private class InstallationFailedException(message: String) : IllegalStateException(message)
+
+    private companion object {
+        const val INCOMPATIBLE_UPDATE_ERROR = "INSTALL_FAILED_UPDATE_INCOMPATIBLE"
     }
 }
