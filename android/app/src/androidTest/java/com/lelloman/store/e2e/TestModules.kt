@@ -15,7 +15,10 @@ import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.OidcConfig
+import com.lelloman.store.domain.auth.SessionExpiredHandler
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.download.DownloadManager
@@ -77,6 +80,7 @@ import kotlinx.serialization.json.Json
 import java.io.InputStream
 import javax.inject.Qualifier
 import javax.inject.Singleton
+import okhttp3.OkHttpClient
 
 /**
  * Qualifier for the test application scope
@@ -137,6 +141,18 @@ object TestAppModule {
         @ApplicationScope scope: CoroutineScope,
         logger: Logger,
     ): AuthStoreImpl = AuthStoreImpl(context, oidcConfig, scope, logger)
+
+    @Provides
+    @Singleton
+    fun provideSessionExpiredHandler(): SessionExpiredHandler = object : SessionExpiredHandler {
+        private val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+        override val sessionExpiredEvents: SharedFlow<Unit> = events
+
+        override fun onSessionExpired() {
+            events.tryEmit(Unit)
+        }
+    }
 }
 
 /**
@@ -255,6 +271,10 @@ object TestLocalDataModule {
     replaces = [RemoteApiModule::class]
 )
 object TestRemoteApiModuleImpl {
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(): OkHttpClient = OkHttpClient()
 
     @Provides
     @Singleton

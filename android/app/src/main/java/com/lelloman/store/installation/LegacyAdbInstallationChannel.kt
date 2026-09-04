@@ -151,7 +151,7 @@ internal fun verifyAdbShell(adb: SelfAdbConnectionManager): String =
         }
     }
 
-private fun installedVersionCode(context: Context, packageName: String): Long = try {
+internal fun installedVersionCode(context: Context, packageName: String): Long = try {
     val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         context.packageManager.getPackageInfo(
             packageName,

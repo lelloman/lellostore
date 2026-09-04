@@ -17,6 +17,9 @@ class MockServerRule : TestWatcher() {
     override fun starting(description: Description) {
         mockWebServer = MockWebServer()
         mockWebServer.start()
+        // JUnit rules start before @Before and before createAndroidComposeRule launches the
+        // activity. Publish the URL here so the application's first request cannot race setup.
+        TestServerUrlHolder.serverUrl = baseUrl
     }
 
     override fun finished(description: Description) {

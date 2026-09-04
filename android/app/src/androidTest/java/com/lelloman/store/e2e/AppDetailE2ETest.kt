@@ -2,8 +2,10 @@ package com.lelloman.store.e2e
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lelloman.store.MainActivity
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -89,12 +91,12 @@ class AppDetailE2ETest {
         composeRule.onNodeWithText("A note-taking application for organizing your thoughts").assertIsDisplayed()
 
         // Check version info
-        composeRule.onNodeWithText("v2.0.0").assertIsDisplayed()
-        composeRule.onNodeWithText("About").assertIsDisplayed()
-        composeRule.onNodeWithText("Latest Version").assertIsDisplayed()
+        composeRule.onNodeWithText("2.0.0").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("About").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Latest Version").performScrollTo().assertIsDisplayed()
 
         // Check install button (app is not installed)
-        composeRule.onNodeWithText("Install").assertIsDisplayed()
+        composeRule.onNodeWithText("Install").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -154,9 +156,9 @@ class AppDetailE2ETest {
         }
 
         // Then: Version history is shown
-        composeRule.onNodeWithText("Version History").assertIsDisplayed()
-        composeRule.onNodeWithText("v2.0.0").assertIsDisplayed()
-        composeRule.onNodeWithText("v1.0.0").assertIsDisplayed()
+        composeRule.onNodeWithText("Version History").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("v2.0.0").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("v1.0.0").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -211,7 +213,7 @@ class AppDetailE2ETest {
         )
 
         // When: Press back
-        composeRule.onNodeWithText("Back", useUnmergedTree = true)
+        composeRule.onNodeWithContentDescription("Back")
             .performClick()
 
         // Then: Catalog is shown again
