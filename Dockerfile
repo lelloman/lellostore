@@ -104,7 +104,7 @@ USER lellostore
 ENV LISTEN_ADDR=0.0.0.0:8080
 ENV BUNDLETOOL_PATH=/usr/local/lib/bundletool.jar
 ENV JAVA_PATH=/usr/bin/java
-ENV AAPT2_PATH=/usr/bin/aapt
+ENV AAPT2_PATH=/usr/bin/aapt2
 
 # Expose default port
 EXPOSE 8080

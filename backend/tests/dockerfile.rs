@@ -21,7 +21,7 @@ fn container_enables_the_tools_it_installs_for_aab_uploads() {
         "the installed Java runtime must be configured for the backend",
     );
     assert!(
-        dockerfile.contains("AAPT2_PATH=/usr/bin/aapt"),
+        dockerfile.contains("AAPT2_PATH=/usr/bin/aapt2"),
         "the installed Android package tool must be configured for APK parsing",
     );
 }
