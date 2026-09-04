@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <lint>
     <!--
-      libadb-android also contains optional Wireless Debugging TLS code whose trust manager is
-      flagged by lint. LelloStore's current self-ADB channel uses only the plain ADB protocol on
-      the loopback interface; keep this exclusion limited to the third-party artifact.
+      Wireless Debugging uses adbd's self-signed certificate and authenticates the client with
+      its paired ADB key. Lint flags libadb-android's corresponding trust manager; keep this
+      exclusion limited to that third-party artifact.
     -->
     <issue id="TrustAllX509TrustManager">
         <ignore regexp=".*libadb-android.*" />

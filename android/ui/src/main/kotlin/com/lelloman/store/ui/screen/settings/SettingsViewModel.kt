@@ -103,6 +103,63 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { interactor.setReleaseChannelDefault(channel) }
     }
 
+    fun onTestWirelessDebugging() {
+        if (mutableState.value.wirelessDebugging.isBusy) return
+        mutableState.value = mutableState.value.copy(
+            wirelessDebugging = AdbConnectionState.Testing,
+        )
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                wirelessDebugging = interactor.testWirelessDebugging().fold(
+                    onSuccess = { AdbConnectionState.Ready(it) },
+                    onFailure = {
+                        AdbConnectionState.Unavailable(
+                            it.message ?: "Unknown connection error"
+                        )
+                    },
+                )
+            )
+        }
+    }
+
+    fun onTestLegacyAdb() {
+        if (mutableState.value.legacyAdb.isBusy) return
+        mutableState.value = mutableState.value.copy(
+            legacyAdb = AdbConnectionState.Testing,
+        )
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                legacyAdb = interactor.testLegacyAdb().fold(
+                    onSuccess = { AdbConnectionState.Ready(it) },
+                    onFailure = {
+                        AdbConnectionState.Unavailable(
+                            it.message ?: "Unknown connection error"
+                        )
+                    },
+                )
+            )
+        }
+    }
+
+    fun onPairWirelessDebugging(pairingCode: String) {
+        if (mutableState.value.wirelessDebugging.isBusy) return
+        mutableState.value = mutableState.value.copy(
+            wirelessDebugging = AdbConnectionState.Pairing,
+        )
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                wirelessDebugging = interactor.pairWirelessDebugging(pairingCode).fold(
+                    onSuccess = { AdbConnectionState.Ready(it) },
+                    onFailure = {
+                        AdbConnectionState.Unavailable(
+                            it.message ?: "Unknown pairing error"
+                        )
+                    },
+                )
+            )
+        }
+    }
+
     fun onLogoutClick() {
         viewModelScope.launch {
             interactor.logout()
@@ -145,6 +202,9 @@ class SettingsViewModel @Inject constructor(
         suspend fun setWifiOnlyDownloads(enabled: Boolean)
         suspend fun setAutoUpdateDefault(enabled: Boolean)
         suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption)
+        suspend fun testWirelessDebugging(): Result<String>
+        suspend fun pairWirelessDebugging(pairingCode: String): Result<String>
+        suspend fun testLegacyAdb(): Result<String>
         suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun logout()
     }
@@ -161,12 +221,25 @@ data class SettingsScreenState(
     val wifiOnlyDownloads: Boolean = true,
     val autoUpdateDefault: Boolean = true,
     val releaseChannelDefault: ReleaseChannelOption = ReleaseChannelOption.Stable,
+    val wirelessDebugging: AdbConnectionState = AdbConnectionState.NotTested,
+    val legacyAdb: AdbConnectionState = AdbConnectionState.NotTested,
     val userEmail: String? = null,
     val serverUrl: String = "",
     val serverUrlInput: String = "",
     val serverUrlError: String? = null,
     val appVersion: String = "",
 )
+
+sealed interface AdbConnectionState {
+    data object NotTested : AdbConnectionState
+    data object Testing : AdbConnectionState
+    data object Pairing : AdbConnectionState
+    data class Ready(val device: String) : AdbConnectionState
+    data class Unavailable(val reason: String) : AdbConnectionState
+}
+
+private val AdbConnectionState.isBusy: Boolean
+    get() = this == AdbConnectionState.Testing || this == AdbConnectionState.Pairing
 
 sealed interface SettingsScreenEvent {
     data object NavigateToLogin : SettingsScreenEvent

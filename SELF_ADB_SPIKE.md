@@ -542,7 +542,7 @@ The critical finding is:
 
 This is consistent with an external `adb install` path and supports the developer-verification hypothesis. It is not sufficient on its own to prove that future Developer Verifier versions will treat the paths identically.
 
-The same APK-stream installation still needs to be repeated over the TLS connection specifically. TLS shell access and legacy self-ADB installation have each been proven; their combination is implemented but has not yet been recorded as a separate device experiment.
+The same APK-stream installation still needs to be repeated over the TLS connection specifically. TLS shell access and legacy self-ADB installation have each been proven; their combination is implemented and is tracked by the compatibility-validation story.
 
 ### Installation-channel abstraction
 
@@ -556,7 +556,7 @@ priority
 supportsBackgroundInstallation = !requiresUserInteraction
 ```
 
-The currently registered debug channels are:
+The production application registers these channels:
 
 | Priority | Channel | Requires user during install | Background-capable |
 |---:|---|:---:|:---:|
@@ -588,13 +588,13 @@ The installation coordinator has unit coverage for:
 * foreground fallback to an interactive channel;
 * stopping after a definitive or ambiguous install failure.
 
-The Android debug unit tests passed. Both debug and release application variants built successfully. The self-ADB implementation and test UI remain debug-only while the dependency licensing, security model, and production UX are evaluated.
+The Android unit tests and lint pass, and the signed release variant builds successfully. Both self-ADB channels are integrated into the production installation coordinator. Settings provides separate setup and connection tests for legacy port 5555 and Wireless Debugging TLS; no general-purpose shell UI or exported ADB IPC is exposed.
 
 ### Library decision and licensing caveat
 
 The spike uses `libadb-android` 3.1.1 because it supports both legacy ADB and Android 11+ TLS pairing/connect flows with the repository's current Kotlin and compile-SDK versions.
 
-The core library can be used under Apache-2.0, but its SPAKE2 dependency is LGPL-3.0. Licensing and distribution obligations must be reviewed before moving the self-ADB channels into a release build.
+The core library is used under Apache-2.0, but its SPAKE2 dependency is LGPL-3.0. The dependency decision and distribution obligations are recorded in `android/THIRD_PARTY_NOTICES.md`. The private ADB identity is unique per app installation, stored in Android's private no-backup directory, and never exposed through UI or IPC.
 
 ## Proposed User Experience
 

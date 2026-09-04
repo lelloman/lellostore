@@ -123,6 +123,59 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `wireless debugging test reports ready device`() = runTest {
+        fakeInteractor.wirelessDebuggingResult = Result.success("OnePlus CPH2493")
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onTestWirelessDebugging()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.wirelessDebugging)
+            .isEqualTo(AdbConnectionState.Ready("OnePlus CPH2493"))
+    }
+
+    @Test
+    fun `wireless debugging test reports connection failure`() = runTest {
+        fakeInteractor.wirelessDebuggingResult = Result.failure(Exception("Wireless debugging off"))
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onTestWirelessDebugging()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.wirelessDebugging)
+            .isEqualTo(AdbConnectionState.Unavailable("Wireless debugging off"))
+    }
+
+    @Test
+    fun `wireless debugging pairing passes code and reports ready device`() = runTest {
+        fakeInteractor.pairWirelessDebuggingResult = Result.success("OnePlus CPH2493")
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onPairWirelessDebugging("123456")
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.lastPairingCode).isEqualTo("123456")
+        assertThat(viewModel.state.value.wirelessDebugging)
+            .isEqualTo(AdbConnectionState.Ready("OnePlus CPH2493"))
+    }
+
+    @Test
+    fun `legacy ADB test reports ready device`() = runTest {
+        fakeInteractor.legacyAdbResult = Result.success("OnePlus CPH2493")
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onTestLegacyAdb()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.legacyAdb)
+            .isEqualTo(AdbConnectionState.Ready("OnePlus CPH2493"))
+    }
+
+    @Test
     fun `onServerUrlInputChanged updates state`() = runTest {
         createViewModel()
         advanceUntilIdle()
@@ -237,6 +290,10 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     var setServerUrlResult: SettingsViewModel.SetServerUrlResult = SettingsViewModel.SetServerUrlResult.Success
 
     var logoutCalled = false
+    var wirelessDebuggingResult: Result<String> = Result.success("Test device")
+    var pairWirelessDebuggingResult: Result<String> = Result.success("Test device")
+    var legacyAdbResult: Result<String> = Result.success("Test device")
+    var lastPairingCode: String? = null
 
     override fun themeMode(): StateFlow<ThemeModeOption> = mutableThemeMode
     override fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption> = mutableUpdateCheckInterval
@@ -272,6 +329,15 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     override suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption) {
         mutableReleaseChannelDefault.value = channel
     }
+
+    override suspend fun testWirelessDebugging(): Result<String> = wirelessDebuggingResult
+
+    override suspend fun pairWirelessDebugging(pairingCode: String): Result<String> {
+        lastPairingCode = pairingCode
+        return pairWirelessDebuggingResult
+    }
+
+    override suspend fun testLegacyAdb(): Result<String> = legacyAdbResult
 
     override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {
         setServerUrlCalled = true

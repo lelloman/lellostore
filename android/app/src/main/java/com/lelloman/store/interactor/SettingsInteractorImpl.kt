@@ -12,6 +12,8 @@ import com.lelloman.store.ui.screen.settings.ReleaseChannelOption
 import com.lelloman.store.ui.screen.settings.ThemeModeOption
 import com.lelloman.store.ui.screen.settings.UpdateCheckIntervalOption
 import com.lelloman.store.di.ApplicationScope
+import com.lelloman.store.installation.WirelessTlsAdbInstallationChannel
+import com.lelloman.store.installation.LegacyAdbInstallationChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,8 @@ class SettingsInteractorImpl @Inject constructor(
     private val userPreferencesStore: UserPreferencesStore,
     private val authStore: AuthStore,
     private val configStore: ConfigStore,
+    private val wirelessTlsAdbInstallationChannel: WirelessTlsAdbInstallationChannel,
+    private val legacyAdbInstallationChannel: LegacyAdbInstallationChannel,
     @ApplicationScope private val scope: CoroutineScope,
 ) : SettingsViewModel.Interactor {
 
@@ -88,6 +92,21 @@ class SettingsInteractorImpl @Inject constructor(
     override suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption) {
         userPreferencesStore.setReleaseChannelDefault(channel.toDomain())
     }
+
+    override suspend fun testWirelessDebugging(): Result<String> =
+        wirelessTlsAdbInstallationChannel.testConnection().map { output ->
+            output.lineSequence().lastOrNull { it.isNotBlank() } ?: "ADB shell"
+        }
+
+    override suspend fun pairWirelessDebugging(pairingCode: String): Result<String> =
+        wirelessTlsAdbInstallationChannel.pairAndTest(pairingCode).map { output ->
+            output.lineSequence().lastOrNull { it.isNotBlank() } ?: "ADB shell"
+        }
+
+    override suspend fun testLegacyAdb(): Result<String> =
+        legacyAdbInstallationChannel.testConnection().map { output ->
+            output.lineSequence().lastOrNull { it.isNotBlank() } ?: "ADB shell"
+        }
 
     override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {
         return when (configStore.setServerUrl(url)) {

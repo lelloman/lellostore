@@ -15,5 +15,11 @@ abstract class InstallationChannelModule {
 
     @Binds
     @IntoSet
+    abstract fun bindWirelessTlsAdbChannel(
+        impl: WirelessTlsAdbInstallationChannel,
+    ): InstallationChannel
+
+    @Binds
+    @IntoSet
     abstract fun bindPackageInstallerChannel(impl: PackageInstallerChannel): InstallationChannel
 }

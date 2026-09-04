@@ -70,7 +70,7 @@ public final class SelfAdbConnectionManager extends AbsAdbConnectionManager {
         }
 
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048, SecureRandom.getInstance("SHA1PRNG"));
+        generator.initialize(2048, new SecureRandom());
         KeyPair pair = generator.generateKeyPair();
         privateKey = pair.getPrivate();
         certificate = createCertificate(pair);

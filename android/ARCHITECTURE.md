@@ -79,6 +79,28 @@ including the Wi-Fi constraint, and posts local notifications when updates are
 available. The updates screen observes the same state and can start the normal
 authenticated download path.
 
+## Installation channels
+
+Verified APK downloads are submitted to an ordered installation coordinator.
+Foreground and background requests first try silent channels and only foreground
+requests may fall back to Android's interactive Package Installer:
+
+1. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
+2. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
+3. Android Package Installer for foreground requests.
+
+The ADB channels stream the exact verified APK length to `cmd package install -r`
+and serialize access to their shared connection. A failure after streaming starts
+is treated as ambiguous and never falls through to a second installer; when the
+connection closes after a self-update, the installed version is checked before
+reporting failure.
+
+Settings exposes bounded connection tests and the six-digit Wireless Debugging
+pairing flow. The generated ADB identity is stored in the application's private
+no-backup directory. No arbitrary shell command or ADB connection is exposed by
+UI or IPC. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the dependency
+and distribution review.
+
 ## Testing and quality gates
 
 Local JVM tests cover domain models, DTO mapping, repositories, auth/session
