@@ -10,6 +10,7 @@ import com.lelloman.store.domain.preferences.UpdateCheckInterval
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
+import com.lelloman.store.domain.preferences.InstallationChannelPreference
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -153,6 +154,31 @@ class UserPreferencesStoreImplTest {
 
         assertThat(preferencesStore.autoUpdateDefault.value).isFalse()
         assertThat(preferencesStore.releaseChannelDefault.value).isEqualTo(ReleaseChannel.Beta)
+    }
+
+    @Test
+    fun `installation channel order and enabled state persist`() = testScope.runTest {
+        val configured = listOf(
+            InstallationChannelPreference("wireless", enabled = true),
+            InstallationChannelPreference("legacy", enabled = false),
+            InstallationChannelPreference("interactive", enabled = true),
+        )
+
+        preferencesStore.setInstallationChannels(configured)
+
+        assertThat(preferencesStore.installationChannels.value).isEqualTo(configured)
+    }
+
+    @Test
+    fun `installation channels reject disabling every channel`() = testScope.runTest {
+        val failure = runCatching {
+            preferencesStore.setInstallationChannels(
+                listOf(InstallationChannelPreference("legacy", enabled = false))
+            )
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(IllegalArgumentException::class.java)
+        assertThat(preferencesStore.installationChannels.value).isEmpty()
     }
 
     @Test

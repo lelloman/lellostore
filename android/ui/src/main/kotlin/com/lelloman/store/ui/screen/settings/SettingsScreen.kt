@@ -21,10 +21,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
@@ -99,6 +102,8 @@ fun SettingsScreen(
         onWifiOnlyDownloadsChanged = viewModel::onWifiOnlyDownloadsChanged,
         onAutoUpdateDefaultChanged = viewModel::onAutoUpdateDefaultChanged,
         onReleaseChannelDefaultChanged = viewModel::onReleaseChannelDefaultChanged,
+        onInstallationChannelEnabledChanged = viewModel::onInstallationChannelEnabledChanged,
+        onMoveInstallationChannel = viewModel::onMoveInstallationChannel,
         onTestLegacyAdb = viewModel::onTestLegacyAdb,
         onTestWirelessDebugging = viewModel::onTestWirelessDebugging,
         onPairWirelessDebugging = viewModel::onPairWirelessDebugging,
@@ -120,6 +125,8 @@ internal fun SettingsContent(
     onWifiOnlyDownloadsChanged: (Boolean) -> Unit,
     onAutoUpdateDefaultChanged: (Boolean) -> Unit,
     onReleaseChannelDefaultChanged: (ReleaseChannelOption) -> Unit,
+    onInstallationChannelEnabledChanged: (String, Boolean) -> Unit,
+    onMoveInstallationChannel: (String, Int) -> Unit,
     onTestLegacyAdb: () -> Unit,
     onTestWirelessDebugging: () -> Unit,
     onPairWirelessDebugging: (String) -> Unit,
@@ -181,6 +188,28 @@ internal fun SettingsContent(
             }
 
             SettingsSection(title = stringResource(R.string.settings_installation)) {
+                Text(
+                    text = stringResource(R.string.installation_channels_intro),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+                SettingsDivider()
+                state.installationChannels.forEachIndexed { index, channel ->
+                    InstallationChannelItem(
+                        channel = channel,
+                        canDisable = !channel.enabled ||
+                            state.installationChannels.count { it.enabled } > 1,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < state.installationChannels.lastIndex,
+                        onEnabledChanged = { enabled ->
+                            onInstallationChannelEnabledChanged(channel.id, enabled)
+                        },
+                        onMoveUp = { onMoveInstallationChannel(channel.id, -1) },
+                        onMoveDown = { onMoveInstallationChannel(channel.id, 1) },
+                    )
+                    SettingsDivider()
+                }
                 SettingsClickableItem(
                     title = stringResource(R.string.legacy_adb_setup),
                     subtitle = stringResource(R.string.legacy_adb_setup_subtitle),
@@ -339,6 +368,71 @@ internal fun SettingsContent(
                     Text(stringResource(R.string.cancel))
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun InstallationChannelItem(
+    channel: InstallationChannelOption,
+    canDisable: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onEnabledChanged: (Boolean) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+) {
+    val name = when (channel.id) {
+        "legacy-adb" -> stringResource(R.string.installation_channel_legacy_adb)
+        "wireless-tls-adb" -> stringResource(R.string.installation_channel_wireless_adb)
+        "package-installer" -> stringResource(R.string.installation_channel_package_installer)
+        else -> channel.displayName
+    }
+    val type = stringResource(
+        if (channel.requiresUserInteraction) {
+            R.string.installation_channel_interactive
+        } else {
+            R.string.installation_channel_background
+        }
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = channel.enabled,
+                enabled = canDisable,
+                role = Role.Switch,
+                onValueChange = onEnabledChanged,
+            )
+            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = type,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                contentDescription = stringResource(R.string.installation_channel_move_up, name),
+            )
+        }
+        IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = stringResource(R.string.installation_channel_move_down, name),
+            )
+        }
+        Switch(
+            checked = channel.enabled,
+            onCheckedChange = null,
+            enabled = canDisable,
+            colors = lelloStoreSwitchColors(),
+            modifier = Modifier.padding(horizontal = 12.dp),
         )
     }
 }

@@ -10,6 +10,7 @@ internal object PreferencesKeys {
     val WIFI_ONLY_DOWNLOADS = booleanPreferencesKey("wifi_only_downloads")
     val AUTO_UPDATE_DEFAULT = booleanPreferencesKey("auto_update_default")
     val RELEASE_CHANNEL_DEFAULT = stringPreferencesKey("release_channel_default")
+    val INSTALLATION_CHANNELS = stringPreferencesKey("installation_channels")
 
     fun autoUpdateOverride(packageName: String) =
         stringPreferencesKey("app.$packageName.auto_update_override")

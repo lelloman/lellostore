@@ -34,11 +34,15 @@ class SettingsViewModel @Inject constructor(
             combine(
                 interactor.autoUpdateDefault(),
                 interactor.releaseChannelDefault(),
-            ) { autoUpdate, releaseChannel -> autoUpdate to releaseChannel }
-                .collect { (autoUpdate, releaseChannel) ->
+                interactor.installationChannels(),
+            ) { autoUpdate, releaseChannel, installationChannels ->
+                Triple(autoUpdate, releaseChannel, installationChannels)
+            }
+                .collect { (autoUpdate, releaseChannel, installationChannels) ->
                     mutableState.value = mutableState.value.copy(
                         autoUpdateDefault = autoUpdate,
                         releaseChannelDefault = releaseChannel,
+                        installationChannels = installationChannels,
                     )
                 }
         }
@@ -101,6 +105,26 @@ class SettingsViewModel @Inject constructor(
 
     fun onReleaseChannelDefaultChanged(channel: ReleaseChannelOption) {
         viewModelScope.launch { interactor.setReleaseChannelDefault(channel) }
+    }
+
+    fun onInstallationChannelEnabledChanged(id: String, enabled: Boolean) {
+        val updated = mutableState.value.installationChannels.map { channel ->
+            if (channel.id == id) channel.copy(enabled = enabled) else channel
+        }
+        if (updated.none { it.enabled }) return
+        mutableState.value = mutableState.value.copy(installationChannels = updated)
+        viewModelScope.launch { interactor.setInstallationChannels(updated) }
+    }
+
+    fun onMoveInstallationChannel(id: String, offset: Int) {
+        val channels = mutableState.value.installationChannels.toMutableList()
+        val from = channels.indexOfFirst { it.id == id }
+        val to = from + offset
+        if (from < 0 || to !in channels.indices) return
+        val moved = channels.removeAt(from)
+        channels.add(to, moved)
+        mutableState.value = mutableState.value.copy(installationChannels = channels)
+        viewModelScope.launch { interactor.setInstallationChannels(channels) }
     }
 
     fun onTestWirelessDebugging() {
@@ -194,6 +218,7 @@ class SettingsViewModel @Inject constructor(
         fun wifiOnlyDownloads(): StateFlow<Boolean>
         fun autoUpdateDefault(): StateFlow<Boolean>
         fun releaseChannelDefault(): StateFlow<ReleaseChannelOption>
+        fun installationChannels(): StateFlow<List<InstallationChannelOption>>
         fun userEmail(): StateFlow<String?>
         fun serverUrl(): StateFlow<String>
         fun getAppVersion(): String
@@ -202,6 +227,7 @@ class SettingsViewModel @Inject constructor(
         suspend fun setWifiOnlyDownloads(enabled: Boolean)
         suspend fun setAutoUpdateDefault(enabled: Boolean)
         suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption)
+        suspend fun setInstallationChannels(channels: List<InstallationChannelOption>)
         suspend fun testWirelessDebugging(): Result<String>
         suspend fun pairWirelessDebugging(pairingCode: String): Result<String>
         suspend fun testLegacyAdb(): Result<String>
@@ -221,6 +247,7 @@ data class SettingsScreenState(
     val wifiOnlyDownloads: Boolean = true,
     val autoUpdateDefault: Boolean = true,
     val releaseChannelDefault: ReleaseChannelOption = ReleaseChannelOption.Stable,
+    val installationChannels: List<InstallationChannelOption> = emptyList(),
     val wirelessDebugging: AdbConnectionState = AdbConnectionState.NotTested,
     val legacyAdb: AdbConnectionState = AdbConnectionState.NotTested,
     val userEmail: String? = null,
@@ -228,6 +255,13 @@ data class SettingsScreenState(
     val serverUrlInput: String = "",
     val serverUrlError: String? = null,
     val appVersion: String = "",
+)
+
+data class InstallationChannelOption(
+    val id: String,
+    val displayName: String,
+    val requiresUserInteraction: Boolean,
+    val enabled: Boolean,
 )
 
 sealed interface AdbConnectionState {

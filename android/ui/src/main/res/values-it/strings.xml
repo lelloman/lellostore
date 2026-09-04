@@ -126,6 +126,14 @@
     <string name="settings_wifi_only">Solo WiFi</string>
     <string name="settings_wifi_only_subtitle">Scarica gli aggiornamenti solo tramite WiFi</string>
     <string name="settings_installation">Installazione</string>
+    <string name="installation_channels_intro">I canali attivi vengono provati dall’alto verso il basso. Gli aggiornamenti in background ignorano i canali che richiedono conferma.</string>
+    <string name="installation_channel_legacy_adb">ADB sulla porta 5555</string>
+    <string name="installation_channel_wireless_adb">Debug wireless</string>
+    <string name="installation_channel_package_installer">Programma di installazione Android</string>
+    <string name="installation_channel_background">Automatico · nessuna conferma dopo la configurazione</string>
+    <string name="installation_channel_interactive">Interattivo · richiede conferma</string>
+    <string name="installation_channel_move_up">Sposta %1$s in alto</string>
+    <string name="installation_channel_move_down">Sposta %1$s in basso</string>
     <string name="legacy_adb_setup">Configura ADB sulla porta 5555</string>
     <string name="legacy_adb_setup_subtitle">Canale principale per le installazioni automatiche</string>
     <string name="legacy_adb_test">Verifica la connessione sulla porta 5555</string>

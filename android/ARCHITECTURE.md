@@ -89,6 +89,12 @@ requests may fall back to Android's interactive Package Installer:
 2. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
 3. Android Package Installer for foreground requests.
 
+This is also the migration-safe default for existing installs. Settings persists the
+complete ordered channel list and each enabled state. The coordinator applies that order
+for every request, skips disabled channels, and still excludes interactive channels from
+background work. Channels introduced by a later app version are appended enabled; the
+settings layer and preference store both prevent disabling every channel.
+
 The ADB channels stream the exact verified APK length to `cmd package install -r`
 and serialize access to their shared connection. A failure after streaming starts
 is treated as ambiguous and never falls through to a second installer; when the

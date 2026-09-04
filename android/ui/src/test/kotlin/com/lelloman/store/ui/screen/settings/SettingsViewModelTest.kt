@@ -108,6 +108,44 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `installation channels can be disabled and reordered`() = runTest {
+        fakeInteractor.mutableInstallationChannels.value = listOf(
+            InstallationChannelOption("legacy", "Legacy", false, true),
+            InstallationChannelOption("wireless", "Wireless", false, true),
+            InstallationChannelOption("interactive", "Installer", true, true),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onInstallationChannelEnabledChanged("wireless", false)
+        viewModel.onMoveInstallationChannel("interactive", -1)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationChannels.map { it.id })
+            .containsExactly("legacy", "interactive", "wireless").inOrder()
+        assertThat(viewModel.state.value.installationChannels.single { it.id == "wireless" }.enabled)
+            .isFalse()
+        assertThat(fakeInteractor.lastInstallationChannels)
+            .isEqualTo(viewModel.state.value.installationChannels)
+    }
+
+    @Test
+    fun `last enabled installation channel cannot be disabled`() = runTest {
+        fakeInteractor.mutableInstallationChannels.value = listOf(
+            InstallationChannelOption("legacy", "Legacy", false, true),
+            InstallationChannelOption("wireless", "Wireless", false, false),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onInstallationChannelEnabledChanged("legacy", false)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationChannels.first().enabled).isTrue()
+        assertThat(fakeInteractor.lastInstallationChannels).isNull()
+    }
+
+    @Test
     fun `onLogoutClick calls interactor and emits NavigateToLogin`() = runTest {
         createViewModel()
         advanceUntilIdle()
@@ -268,6 +306,7 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     val mutableWifiOnlyDownloads = MutableStateFlow(true)
     val mutableAutoUpdateDefault = MutableStateFlow(true)
     val mutableReleaseChannelDefault = MutableStateFlow(ReleaseChannelOption.Stable)
+    val mutableInstallationChannels = MutableStateFlow<List<InstallationChannelOption>>(emptyList())
     val mutableUserEmail = MutableStateFlow<String?>(null)
     val mutableServerUrl = MutableStateFlow("")
     private var _appVersion = "1.0.0"
@@ -294,12 +333,15 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     var pairWirelessDebuggingResult: Result<String> = Result.success("Test device")
     var legacyAdbResult: Result<String> = Result.success("Test device")
     var lastPairingCode: String? = null
+    var lastInstallationChannels: List<InstallationChannelOption>? = null
 
     override fun themeMode(): StateFlow<ThemeModeOption> = mutableThemeMode
     override fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption> = mutableUpdateCheckInterval
     override fun wifiOnlyDownloads(): StateFlow<Boolean> = mutableWifiOnlyDownloads
     override fun autoUpdateDefault(): StateFlow<Boolean> = mutableAutoUpdateDefault
     override fun releaseChannelDefault(): StateFlow<ReleaseChannelOption> = mutableReleaseChannelDefault
+    override fun installationChannels(): StateFlow<List<InstallationChannelOption>> =
+        mutableInstallationChannels
     override fun userEmail(): StateFlow<String?> = mutableUserEmail
     override fun serverUrl(): StateFlow<String> = mutableServerUrl
     override fun getAppVersion(): String = _appVersion
@@ -328,6 +370,11 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
 
     override suspend fun setReleaseChannelDefault(channel: ReleaseChannelOption) {
         mutableReleaseChannelDefault.value = channel
+    }
+
+    override suspend fun setInstallationChannels(channels: List<InstallationChannelOption>) {
+        lastInstallationChannels = channels
+        mutableInstallationChannels.value = channels
     }
 
     override suspend fun testWirelessDebugging(): Result<String> = wirelessDebuggingResult

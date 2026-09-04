@@ -3,7 +3,11 @@ package com.lelloman.store.installation
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.logger.Logger
 import com.lelloman.store.domain.download.InstallationMode
+import com.lelloman.store.domain.preferences.InstallationChannelPreference
+import com.lelloman.store.domain.preferences.UserPreferencesStore
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
@@ -20,7 +24,7 @@ class InstallationCoordinatorTest {
     fun `silent channel is selected before interactive channel`() = runTest {
         val interactive = fakeChannel("interactive", requiresUser = true, priority = 1)
         val silent = fakeChannel("silent", requiresUser = false, priority = 100)
-        val coordinator = InstallationCoordinator(setOf(interactive, silent), logger)
+        val coordinator = coordinator(setOf(interactive, silent))
 
         val result = coordinator.install(request())
 
@@ -34,7 +38,7 @@ class InstallationCoordinatorTest {
     @Test
     fun `background request excludes channels requiring user interaction`() = runTest {
         val interactive = fakeChannel("interactive", requiresUser = true)
-        val coordinator = InstallationCoordinator(setOf(interactive), logger)
+        val coordinator = coordinator(setOf(interactive))
 
         val result = coordinator.install(request(InstallationMode.BACKGROUND))
 
@@ -56,7 +60,7 @@ class InstallationCoordinatorTest {
             requiresUser = true,
             result = ChannelInstallationResult.UserActionStarted,
         )
-        val coordinator = InstallationCoordinator(setOf(interactive, silent), logger)
+        val coordinator = coordinator(setOf(interactive, silent))
 
         val result = coordinator.install(request())
 
@@ -79,7 +83,7 @@ class InstallationCoordinatorTest {
             priority = 20,
         )
         val interactive = fakeChannel("package-installer", requiresUser = true, priority = 100)
-        val coordinator = InstallationCoordinator(setOf(interactive, wireless, legacy), logger)
+        val coordinator = coordinator(setOf(interactive, wireless, legacy))
 
         val result = coordinator.install(request(InstallationMode.BACKGROUND))
 
@@ -98,13 +102,57 @@ class InstallationCoordinatorTest {
             result = ChannelInstallationResult.Failed("invalid APK"),
         )
         val second = fakeChannel("second", requiresUser = false, priority = 2)
-        val coordinator = InstallationCoordinator(setOf(second, first), logger)
+        val coordinator = coordinator(setOf(second, first))
 
         val result = coordinator.install(request())
 
         assertThat(result).isInstanceOf(InstallationResult.Failed::class.java)
         assertThat(first.attempts).isEqualTo(1)
         assertThat(second.attempts).isEqualTo(0)
+    }
+
+    @Test
+    fun `saved order overrides built in priorities and disabled channels are skipped`() = runTest {
+        val first = fakeChannel("first", requiresUser = false, priority = 1)
+        val second = fakeChannel("second", requiresUser = false, priority = 2)
+        val third = fakeChannel("third", requiresUser = false, priority = 3)
+        val preferences = listOf(
+            InstallationChannelPreference("third", enabled = true),
+            InstallationChannelPreference("first", enabled = false),
+            InstallationChannelPreference("second", enabled = true),
+        )
+
+        val result = coordinator(setOf(first, second, third), preferences).install(request())
+
+        assertThat(result).isEqualTo(InstallationResult.Installed(third.metadata))
+        assertThat(third.attempts).isEqualTo(1)
+        assertThat(first.attempts).isEqualTo(0)
+        assertThat(second.attempts).isEqualTo(0)
+    }
+
+    @Test
+    fun `new channel missing from saved configuration is enabled and appended`() {
+        val first = fakeChannel("first", requiresUser = false)
+        val added = fakeChannel("added", requiresUser = false)
+
+        val configured = configuredInstallationChannels(
+            channels = listOf(first, added),
+            preferences = listOf(InstallationChannelPreference("first", enabled = false)),
+        )
+
+        assertThat(configured.map { it.channel.metadata.id })
+            .containsExactly("first", "added").inOrder()
+        assertThat(configured.map { it.enabled }).containsExactly(false, true).inOrder()
+    }
+
+    private fun coordinator(
+        channels: Set<InstallationChannel>,
+        configured: List<InstallationChannelPreference> = emptyList(),
+    ): InstallationCoordinator {
+        val preferences = mockk<UserPreferencesStore> {
+            every { installationChannels } returns MutableStateFlow(configured)
+        }
+        return InstallationCoordinator(channels, logger, preferences)
     }
 
     private fun request(mode: InstallationMode = InstallationMode.FOREGROUND) = InstallationRequest(

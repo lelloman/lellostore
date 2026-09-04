@@ -9,17 +9,24 @@ interface UserPreferencesStore {
     val wifiOnlyDownloads: StateFlow<Boolean>
     val autoUpdateDefault: StateFlow<Boolean>
     val releaseChannelDefault: StateFlow<ReleaseChannel>
+    val installationChannels: StateFlow<List<InstallationChannelPreference>>
 
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setUpdateCheckInterval(interval: UpdateCheckInterval)
     suspend fun setWifiOnlyDownloads(enabled: Boolean)
     suspend fun setAutoUpdateDefault(enabled: Boolean)
     suspend fun setReleaseChannelDefault(channel: ReleaseChannel)
+    suspend fun setInstallationChannels(channels: List<InstallationChannelPreference>)
     fun autoUpdateOverride(packageName: String): Flow<AutoUpdateOverride>
     fun releaseChannelOverride(packageName: String): Flow<ReleaseChannelOverride>
     suspend fun setAutoUpdateOverride(packageName: String, override: AutoUpdateOverride)
     suspend fun setReleaseChannelOverride(packageName: String, override: ReleaseChannelOverride)
 }
+
+data class InstallationChannelPreference(
+    val id: String,
+    val enabled: Boolean,
+)
 
 enum class ThemeMode {
     System,

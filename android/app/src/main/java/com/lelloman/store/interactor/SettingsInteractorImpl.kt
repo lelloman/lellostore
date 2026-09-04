@@ -7,13 +7,16 @@ import com.lelloman.store.domain.preferences.ThemeMode
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.UpdateCheckInterval
 import com.lelloman.store.domain.preferences.UserPreferencesStore
+import com.lelloman.store.domain.preferences.InstallationChannelPreference
 import com.lelloman.store.ui.screen.settings.SettingsViewModel
+import com.lelloman.store.ui.screen.settings.InstallationChannelOption
 import com.lelloman.store.ui.screen.settings.ReleaseChannelOption
 import com.lelloman.store.ui.screen.settings.ThemeModeOption
 import com.lelloman.store.ui.screen.settings.UpdateCheckIntervalOption
 import com.lelloman.store.di.ApplicationScope
 import com.lelloman.store.installation.WirelessTlsAdbInstallationChannel
 import com.lelloman.store.installation.LegacyAdbInstallationChannel
+import com.lelloman.store.installation.InstallationCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,8 +30,11 @@ class SettingsInteractorImpl @Inject constructor(
     private val configStore: ConfigStore,
     private val wirelessTlsAdbInstallationChannel: WirelessTlsAdbInstallationChannel,
     private val legacyAdbInstallationChannel: LegacyAdbInstallationChannel,
+    installationCoordinator: InstallationCoordinator,
     @ApplicationScope private val scope: CoroutineScope,
 ) : SettingsViewModel.Interactor {
+
+    private val channelMetadata = installationCoordinator.channelMetadata
 
     override fun themeMode(): StateFlow<ThemeModeOption> {
         return userPreferencesStore.themeMode
@@ -52,6 +58,15 @@ class SettingsInteractorImpl @Inject constructor(
         userPreferencesStore.releaseChannelDefault
             .map { it.toOption() }
             .stateIn(scope, SharingStarted.Eagerly, ReleaseChannelOption.Stable)
+
+    override fun installationChannels(): StateFlow<List<InstallationChannelOption>> =
+        userPreferencesStore.installationChannels
+            .map(::installationChannelOptions)
+            .stateIn(
+                scope,
+                SharingStarted.Eagerly,
+                installationChannelOptions(emptyList()),
+            )
 
     override fun userEmail(): StateFlow<String?> {
         return authStore.authState
@@ -93,6 +108,14 @@ class SettingsInteractorImpl @Inject constructor(
         userPreferencesStore.setReleaseChannelDefault(channel.toDomain())
     }
 
+    override suspend fun setInstallationChannels(channels: List<InstallationChannelOption>) {
+        userPreferencesStore.setInstallationChannels(
+            channels.map { channel ->
+                InstallationChannelPreference(channel.id, channel.enabled)
+            }
+        )
+    }
+
     override suspend fun testWirelessDebugging(): Result<String> =
         wirelessTlsAdbInstallationChannel.testConnection().map { output ->
             output.lineSequence().lastOrNull { it.isNotBlank() } ?: "ADB shell"
@@ -117,6 +140,32 @@ class SettingsInteractorImpl @Inject constructor(
 
     override suspend fun logout() {
         authStore.logout()
+    }
+
+    private fun installationChannelOptions(
+        preferences: List<InstallationChannelPreference>,
+    ): List<InstallationChannelOption> {
+        val metadataById = channelMetadata.associateBy { it.id }
+        val configured = preferences.mapNotNull { preference ->
+            metadataById[preference.id]?.let { metadata ->
+                InstallationChannelOption(
+                    id = metadata.id,
+                    displayName = metadata.displayName,
+                    requiresUserInteraction = metadata.requiresUserInteraction,
+                    enabled = preference.enabled,
+                )
+            }
+        }
+        val configuredIds = configured.mapTo(mutableSetOf()) { it.id }
+        val added = channelMetadata.filterNot { it.id in configuredIds }.map { metadata ->
+            InstallationChannelOption(
+                id = metadata.id,
+                displayName = metadata.displayName,
+                requiresUserInteraction = metadata.requiresUserInteraction,
+                enabled = true,
+            )
+        }
+        return configured + added
     }
 
     private fun ThemeMode.toOption(): ThemeModeOption = when (this) {

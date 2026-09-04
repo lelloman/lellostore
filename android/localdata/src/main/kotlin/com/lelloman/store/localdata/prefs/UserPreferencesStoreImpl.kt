@@ -9,6 +9,7 @@ import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
+import com.lelloman.store.domain.preferences.InstallationChannelPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -54,6 +55,17 @@ class UserPreferencesStoreImpl(
         }
         .stateIn(scope, SharingStarted.Eagerly, ReleaseChannel.Stable)
 
+    override val installationChannels: StateFlow<List<InstallationChannelPreference>> =
+        dataStore.data
+            .map { preferences ->
+                preferences[PreferencesKeys.INSTALLATION_CHANNELS]
+                    ?.split(CHANNEL_SEPARATOR)
+                    ?.mapNotNull(::decodeInstallationChannel)
+                    ?.distinctBy { it.id }
+                    .orEmpty()
+            }
+            .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
     override suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -81,6 +93,26 @@ class UserPreferencesStoreImpl(
     override suspend fun setReleaseChannelDefault(channel: ReleaseChannel) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.RELEASE_CHANNEL_DEFAULT] = channel.name
+        }
+    }
+
+    override suspend fun setInstallationChannels(
+        channels: List<InstallationChannelPreference>,
+    ) {
+        require(channels.isNotEmpty()) { "At least one installation channel is required" }
+        require(channels.any { it.enabled }) { "At least one installation channel must be enabled" }
+        require(channels.map { it.id }.distinct().size == channels.size) {
+            "Installation channel IDs must be unique"
+        }
+        require(channels.all { it.id.isNotBlank() && CHANNEL_SEPARATOR !in it.id }) {
+            "Installation channel ID is invalid"
+        }
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.INSTALLATION_CHANNELS] = channels.joinToString(
+                separator = CHANNEL_SEPARATOR,
+            ) { channel ->
+                "${if (channel.enabled) ENABLED_PREFIX else DISABLED_PREFIX}${channel.id}"
+            }
         }
     }
 
@@ -116,5 +148,23 @@ class UserPreferencesStoreImpl(
             if (override == ReleaseChannelOverride.Inherit) preferences.remove(key)
             else preferences[key] = override.name
         }
+    }
+
+    private fun decodeInstallationChannel(value: String): InstallationChannelPreference? {
+        if (value.length < 2) return null
+        val enabled = when (value.first()) {
+            ENABLED_PREFIX -> true
+            DISABLED_PREFIX -> false
+            else -> return null
+        }
+        return value.drop(1).takeIf { it.isNotBlank() }?.let { id ->
+            InstallationChannelPreference(id = id, enabled = enabled)
+        }
+    }
+
+    private companion object {
+        const val CHANNEL_SEPARATOR = "|"
+        const val ENABLED_PREFIX = '+'
+        const val DISABLED_PREFIX = '-'
     }
 }

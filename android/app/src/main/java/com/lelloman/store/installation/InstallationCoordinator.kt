@@ -1,6 +1,8 @@
 package com.lelloman.store.installation
 
 import com.lelloman.store.domain.download.InstallationMode
+import com.lelloman.store.domain.preferences.InstallationChannelPreference
+import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.logger.Logger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -9,16 +11,21 @@ import javax.inject.Singleton
 class InstallationCoordinator @Inject constructor(
     channels: Set<@JvmSuppressWildcards InstallationChannel>,
     private val logger: Logger,
+    private val userPreferencesStore: UserPreferencesStore,
 ) {
-    private val orderedChannels = channels.sortedWith(
+    private val defaultChannels = channels.sortedWith(
         compareBy<InstallationChannel> { it.metadata.requiresUserInteraction }
             .thenBy { it.metadata.priority }
             .thenBy { it.metadata.id }
     )
 
-    val channelMetadata: List<InstallationChannelMetadata> = orderedChannels.map { it.metadata }
+    val channelMetadata: List<InstallationChannelMetadata> = defaultChannels.map { it.metadata }
 
     suspend fun install(request: InstallationRequest): InstallationResult {
+        val orderedChannels = configuredInstallationChannels(
+            channels = defaultChannels,
+            preferences = userPreferencesStore.installationChannels.value,
+        ).filter { it.enabled }.map { it.channel }
         val eligibleChannels = when (request.mode) {
             InstallationMode.FOREGROUND -> orderedChannels
             InstallationMode.BACKGROUND -> orderedChannels.filter {
@@ -80,6 +87,28 @@ class InstallationCoordinator @Inject constructor(
     private companion object {
         const val TAG = "InstallationCoordinator"
     }
+}
+
+internal data class ConfiguredInstallationChannel(
+    val channel: InstallationChannel,
+    val enabled: Boolean,
+)
+
+internal fun configuredInstallationChannels(
+    channels: List<InstallationChannel>,
+    preferences: List<InstallationChannelPreference>,
+): List<ConfiguredInstallationChannel> {
+    val channelsById = channels.associateBy { it.metadata.id }
+    val configured = preferences.mapNotNull { preference ->
+        channelsById[preference.id]?.let { channel ->
+            ConfiguredInstallationChannel(channel, preference.enabled)
+        }
+    }
+    val configuredIds = configured.mapTo(mutableSetOf()) { it.channel.metadata.id }
+    val newChannels = channels
+        .filterNot { it.metadata.id in configuredIds }
+        .map { ConfiguredInstallationChannel(it, enabled = true) }
+    return configured + newChannels
 }
 
 sealed interface InstallationResult {

@@ -125,6 +125,14 @@
     <string name="settings_wifi_only">WiFi only downloads</string>
     <string name="settings_wifi_only_subtitle">Only download app updates over WiFi</string>
     <string name="settings_installation">Installation</string>
+    <string name="installation_channels_intro">Enabled channels are tried from top to bottom. Background updates skip channels that require confirmation.</string>
+    <string name="installation_channel_legacy_adb">ADB on port 5555</string>
+    <string name="installation_channel_wireless_adb">Wireless debugging</string>
+    <string name="installation_channel_package_installer">Android package installer</string>
+    <string name="installation_channel_background">Automatic · no confirmation when provisioned</string>
+    <string name="installation_channel_interactive">Interactive · requires confirmation</string>
+    <string name="installation_channel_move_up">Move %1$s up</string>
+    <string name="installation_channel_move_down">Move %1$s down</string>
     <string name="legacy_adb_setup">Set up ADB on port 5555</string>
     <string name="legacy_adb_setup_subtitle">Primary channel for automatic installations</string>
     <string name="legacy_adb_test">Test port 5555 connection</string>
