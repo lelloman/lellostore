@@ -203,6 +203,16 @@ impl ApkParser {
             }
         }
 
+        for icon_path in icon_paths.iter().filter(|path| path.ends_with(".xml")) {
+            match self
+                .render_xml_launcher_icon(apk_path, icon_path, &resource_output)
+                .await
+            {
+                Ok(icon) => return Ok(icon),
+                Err(error) => last_error = Some(error),
+            }
+        }
+
         Err(last_error.unwrap_or_else(|| {
             ApkError::IconError("No decodable launcher icon resource found".to_string())
         }))
@@ -228,6 +238,66 @@ impl ApkParser {
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    async fn dump_xmltree(&self, apk_path: &Path, xml_path: &str) -> Result<String, ApkError> {
+        let mut command = Command::new(&self.aapt2_path);
+        command
+            .arg("dump")
+            .arg("xmltree")
+            .arg(apk_path)
+            .arg("--file")
+            .arg(xml_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(self.command_timeout, command.output())
+            .await
+            .map_err(|_| ApkError::TimedOut)??;
+
+        if !output.status.success() {
+            return Err(ApkError::Aapt2Failed(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    async fn render_xml_launcher_icon(
+        &self,
+        apk_path: &Path,
+        icon_path: &str,
+        resources: &str,
+    ) -> Result<Vec<u8>, ApkError> {
+        let tree = self.dump_xmltree(apk_path, icon_path).await?;
+        match root_element_name(&tree) {
+            Some("vector") | Some("shape") => render_xml_layer(&tree),
+            Some("adaptive-icon") => {
+                let (background_id, foreground_id) = parse_adaptive_icon_refs(&tree)?;
+                let background_path =
+                    resource_file_for_id(resources, &background_id).ok_or_else(|| {
+                        ApkError::IconError("Adaptive icon background not found".into())
+                    })?;
+                let foreground_path =
+                    resource_file_for_id(resources, &foreground_id).ok_or_else(|| {
+                        ApkError::IconError("Adaptive icon foreground not found".into())
+                    })?;
+                let background_tree = self.dump_xmltree(apk_path, &background_path).await?;
+                let foreground_tree = self.dump_xmltree(apk_path, &foreground_path).await?;
+                let background = render_xml_layer_image(&background_tree)?;
+                let foreground = render_xml_layer_image(&foreground_tree)?;
+                let mut composed = background;
+                image::imageops::overlay(&mut composed, &foreground, 0, 0);
+                encode_png(composed)
+            }
+            Some(kind) => Err(ApkError::IconError(format!(
+                "Unsupported launcher drawable type: {kind}"
+            ))),
+            None => Err(ApkError::IconError(
+                "Could not decode launcher drawable XML".into(),
+            )),
+        }
     }
 
     /// Extract icon from APK (which is a ZIP file)
@@ -465,6 +535,288 @@ fn density_score(config: &str) -> i32 {
         .unwrap_or(0)
 }
 
+#[derive(Debug)]
+struct XmlElement {
+    indent: usize,
+    name: String,
+    attributes: Vec<(String, String)>,
+}
+
+fn parse_xmltree_elements(output: &str) -> Vec<XmlElement> {
+    let mut elements: Vec<XmlElement> = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if let Some(name) = trimmed.strip_prefix("E: ") {
+            let name = name.split_whitespace().next().unwrap_or_default();
+            elements.push(XmlElement {
+                indent,
+                name: name.to_string(),
+                attributes: Vec::new(),
+            });
+        } else if let Some(attribute) = trimmed.strip_prefix("A: ") {
+            let Some(element) = elements.last_mut() else {
+                continue;
+            };
+            let Some(paren) = attribute.find('(') else {
+                continue;
+            };
+            let name = attribute[..paren]
+                .rsplit(':')
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            let Some(value_start) = attribute.find(")=") else {
+                continue;
+            };
+            let value = attribute[value_start + 2..]
+                .split(" (Raw:")
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .trim_matches('"')
+                .to_string();
+            element.attributes.push((name, value));
+        }
+    }
+    elements
+}
+
+fn root_element_name(output: &str) -> Option<&str> {
+    output.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix("E: ")?
+            .split_whitespace()
+            .next()
+    })
+}
+
+fn attribute<'a>(element: &'a XmlElement, name: &str) -> Option<&'a str> {
+    element
+        .attributes
+        .iter()
+        .find_map(|(candidate, value)| (candidate == name).then_some(value.as_str()))
+}
+
+fn parse_adaptive_icon_refs(output: &str) -> Result<(String, String), ApkError> {
+    let elements = parse_xmltree_elements(output);
+    let reference = |name: &str| {
+        elements
+            .iter()
+            .find(|element| element.name == name)
+            .and_then(|element| attribute(element, "drawable"))
+            .and_then(|value| value.strip_prefix('@'))
+            .map(str::to_string)
+    };
+    Ok((
+        reference("background")
+            .ok_or_else(|| ApkError::IconError("Adaptive icon has no background".into()))?,
+        reference("foreground")
+            .ok_or_else(|| ApkError::IconError("Adaptive icon has no foreground".into()))?,
+    ))
+}
+
+fn resource_file_for_id(resources: &str, wanted_id: &str) -> Option<String> {
+    let mut matches = false;
+    for line in resources.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("resource ") {
+            matches = trimmed
+                .split_whitespace()
+                .nth(1)
+                .is_some_and(|id| id == wanted_id);
+        } else if matches {
+            if let Some(marker) = trimmed.find("(file) ") {
+                return trimmed[marker + "(file) ".len()..]
+                    .split_whitespace()
+                    .next()
+                    .map(str::to_string);
+            }
+        }
+    }
+    None
+}
+
+fn render_xml_layer(output: &str) -> Result<Vec<u8>, ApkError> {
+    encode_png(render_xml_layer_image(output)?)
+}
+
+fn render_xml_layer_image(output: &str) -> Result<image::RgbaImage, ApkError> {
+    let elements = parse_xmltree_elements(output);
+    let root = elements
+        .first()
+        .ok_or_else(|| ApkError::IconError("Drawable XML is empty".into()))?;
+    match root.name.as_str() {
+        "shape" => {
+            let color = elements
+                .iter()
+                .find(|element| element.name == "solid")
+                .and_then(|element| attribute(element, "color"))
+                .ok_or_else(|| ApkError::IconError("Shape has no solid color".into()))?;
+            let rgba = android_color(color)?;
+            Ok(image::RgbaImage::from_pixel(192, 192, image::Rgba(rgba)))
+        }
+        "vector" => render_vector(&elements),
+        kind => Err(ApkError::IconError(format!(
+            "Unsupported adaptive icon layer: {kind}"
+        ))),
+    }
+}
+
+fn render_vector(elements: &[XmlElement]) -> Result<image::RgbaImage, ApkError> {
+    let vector = elements
+        .first()
+        .ok_or_else(|| ApkError::IconError("Vector drawable is empty".into()))?;
+    let viewport_width = attribute(vector, "viewportWidth")
+        .and_then(|value| value.parse::<f32>().ok())
+        .ok_or_else(|| ApkError::IconError("Vector has no viewportWidth".into()))?;
+    let viewport_height = attribute(vector, "viewportHeight")
+        .and_then(|value| value.parse::<f32>().ok())
+        .ok_or_else(|| ApkError::IconError("Vector has no viewportHeight".into()))?;
+    let mut svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 {viewport_width} {viewport_height}">"#
+    );
+    let mut groups: Vec<(usize, String)> = Vec::new();
+
+    for element in elements.iter().skip(1) {
+        while groups
+            .last()
+            .is_some_and(|(indent, _)| *indent >= element.indent)
+        {
+            svg.push_str("</g>");
+            groups.pop();
+        }
+
+        if element.name == "group" {
+            let transform = group_transform(element);
+            svg.push_str("<g");
+            if !transform.is_empty() {
+                svg.push_str(" transform=\"");
+                svg.push_str(&transform);
+                svg.push('"');
+            }
+            svg.push('>');
+            groups.push((element.indent, transform));
+        } else if element.name == "path" {
+            let Some(path_data) = attribute(element, "pathData") else {
+                continue;
+            };
+            svg.push_str("<path d=\"");
+            svg.push_str(&escape_xml(path_data));
+            svg.push('"');
+            append_svg_paint(&mut svg, element, "fillColor", "fill", "fillAlpha");
+            append_svg_paint(&mut svg, element, "strokeColor", "stroke", "strokeAlpha");
+            if let Some(width) = attribute(element, "strokeWidth") {
+                svg.push_str(" stroke-width=\"");
+                svg.push_str(width);
+                svg.push('"');
+            }
+            if attribute(element, "fillType") == Some("1") {
+                svg.push_str(" fill-rule=\"evenodd\"");
+            }
+            svg.push_str("/>");
+        }
+    }
+    for _ in groups {
+        svg.push_str("</g>");
+    }
+    svg.push_str("</svg>");
+
+    let tree = resvg::usvg::Tree::from_str(&svg, &resvg::usvg::Options::default())
+        .map_err(|error| ApkError::IconError(format!("Invalid vector drawable: {error}")))?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(192, 192)
+        .ok_or_else(|| ApkError::IconError("Could not allocate icon canvas".into()))?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::identity(),
+        &mut pixmap.as_mut(),
+    );
+    image::RgbaImage::from_raw(192, 192, pixmap.data().to_vec())
+        .ok_or_else(|| ApkError::IconError("Could not create rendered icon".into()))
+}
+
+fn group_transform(element: &XmlElement) -> String {
+    let pivot_x = attribute(element, "pivotX").unwrap_or("0");
+    let pivot_y = attribute(element, "pivotY").unwrap_or("0");
+    let rotation = attribute(element, "rotation").unwrap_or("0");
+    let scale_x = attribute(element, "scaleX").unwrap_or("1");
+    let scale_y = attribute(element, "scaleY").unwrap_or("1");
+    let translate_x = attribute(element, "translateX").unwrap_or("0");
+    let translate_y = attribute(element, "translateY").unwrap_or("0");
+    format!(
+        "translate({translate_x} {translate_y}) rotate({rotation} {pivot_x} {pivot_y}) translate({pivot_x} {pivot_y}) scale({scale_x} {scale_y}) translate(-{pivot_x} -{pivot_y})"
+    )
+}
+
+fn append_svg_paint(
+    svg: &mut String,
+    element: &XmlElement,
+    color_attribute: &str,
+    svg_attribute: &str,
+    alpha_attribute: &str,
+) {
+    let Some(color) = attribute(element, color_attribute) else {
+        if svg_attribute == "fill" {
+            svg.push_str(" fill=\"none\"");
+        }
+        return;
+    };
+    if let Ok(rgba) = android_color(color) {
+        svg.push(' ');
+        svg.push_str(svg_attribute);
+        svg.push_str("=\"");
+        svg.push_str(&format!("#{:02x}{:02x}{:02x}", rgba[0], rgba[1], rgba[2]));
+        svg.push('"');
+        let attribute_alpha = attribute(element, alpha_attribute)
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(1.0);
+        let alpha = (rgba[3] as f32 / 255.0) * attribute_alpha;
+        if alpha < 1.0 {
+            svg.push(' ');
+            svg.push_str(svg_attribute);
+            svg.push_str("-opacity=\"");
+            svg.push_str(&alpha.to_string());
+            svg.push('"');
+        }
+    }
+}
+
+fn android_color(value: &str) -> Result<[u8; 4], ApkError> {
+    let hex = value
+        .strip_prefix('#')
+        .ok_or_else(|| ApkError::IconError(format!("Unsupported drawable color: {value}")))?;
+    let parsed = u32::from_str_radix(hex, 16)
+        .map_err(|_| ApkError::IconError(format!("Invalid drawable color: {value}")))?;
+    match hex.len() {
+        8 => Ok([
+            (parsed >> 16) as u8,
+            (parsed >> 8) as u8,
+            parsed as u8,
+            (parsed >> 24) as u8,
+        ]),
+        6 => Ok([(parsed >> 16) as u8, (parsed >> 8) as u8, parsed as u8, 255]),
+        _ => Err(ApkError::IconError(format!(
+            "Unsupported drawable color: {value}"
+        ))),
+    }
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn encode_png(image: image::RgbaImage) -> Result<Vec<u8>, ApkError> {
+    let mut output = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut Cursor::new(&mut output), ImageFormat::Png)
+        .map_err(|error| ApkError::IconError(format!("Failed to encode PNG: {error}")))?;
+    Ok(output)
+}
+
 /// Extract a quoted value after a key like: name='value'
 fn extract_quoted_value(line: &str, key: &str) -> Option<String> {
     let start = line.find(key)? + key.len();
@@ -535,6 +887,7 @@ fn process_icon(data: &[u8]) -> Result<Vec<u8>, ApkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::GenericImageView;
     use std::time::{Duration, Instant};
     use tempfile::tempdir;
 
@@ -669,6 +1022,54 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
                 "res/MO.webp".to_string(),
                 "res/d2.webp".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn vector_drawable_is_rendered_to_png() {
+        let xmltree = r##"
+  E: vector
+    A: android:viewportWidth(0x01010402)=48
+    A: android:viewportHeight(0x01010403)=48
+      E: path
+        A: android:fillColor(0x01010404)=#ff006a67
+        A: android:pathData(0x01010405)="M0,0h48v48h-48z" (Raw: "M0,0h48v48h-48z")
+      E: path
+        A: android:fillColor(0x01010404)=#ffffffff
+        A: android:pathData(0x01010405)="M8,23.5L24,10l16,13.5v15a2,2 0,0 1,-2 2h-9v-11h-10v11h-9a2,2 0,0 1,-2 -2z"
+"##;
+
+        let icon = render_xml_layer(xmltree).unwrap();
+        let decoded = image::load_from_memory(&icon).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (192, 192));
+        assert_eq!(decoded.get_pixel(0, 0), image::Rgba([0, 106, 103, 255]));
+        assert_eq!(decoded.get_pixel(96, 96), image::Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn adaptive_icon_references_resolve_to_xml_files() {
+        let xmltree = r#"
+  E: adaptive-icon
+      E: background
+        A: android:drawable(0x01010199)=@0x7f060007
+      E: foreground
+        A: android:drawable(0x01010199)=@0x7f060008
+"#;
+        let resources = r#"
+    resource 0x7f060007 drawable/ic_launcher_background
+      () (file) res/background.xml type=XML
+    resource 0x7f060008 drawable/ic_launcher_foreground
+      () (file) res/foreground.xml type=XML
+"#;
+
+        let (background, foreground) = parse_adaptive_icon_refs(xmltree).unwrap();
+        assert_eq!(
+            resource_file_for_id(resources, &background).as_deref(),
+            Some("res/background.xml")
+        );
+        assert_eq!(
+            resource_file_for_id(resources, &foreground).as_deref(),
+            Some("res/foreground.xml")
         );
     }
 
