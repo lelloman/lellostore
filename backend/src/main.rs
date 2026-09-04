@@ -81,6 +81,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.max_upload_size,
     ));
 
+    match upload_service.repair_missing_icons().await {
+        Ok(0) => {}
+        Ok(count) => tracing::info!("Repaired icons for {} existing app(s)", count),
+        Err(error) => tracing::warn!("Failed to scan for missing app icons: {}", error),
+    }
+
     tracing::info!("Services initialized");
 
     // Initialize authentication (optional - skip if issuer URL is placeholder)

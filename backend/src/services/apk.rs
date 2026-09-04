@@ -151,9 +151,10 @@ impl ApkParser {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parsed = parse_aapt2_output(&stdout)?;
 
-        // Extract icon if path is available
-        let icon_data = if let Some(icon_path) = &parsed.icon_path {
-            match self.extract_icon(apk_path, icon_path).await {
+        // Extract the first usable icon. aapt2 often reports an adaptive-icon XML
+        // for every density, so fall back to the raster variants in resources.arsc.
+        let icon_data = if !parsed.icon_paths.is_empty() {
+            match self.extract_best_icon(apk_path, &parsed.icon_paths).await {
                 Ok(data) => Some(data),
                 Err(e) => {
                     tracing::warn!("Failed to extract icon: {}", e);
@@ -172,6 +173,61 @@ impl ApkParser {
             app_name: parsed.app_name,
             icon_data,
         })
+    }
+
+    async fn extract_best_icon(
+        &self,
+        apk_path: &Path,
+        icon_paths: &[String],
+    ) -> Result<Vec<u8>, ApkError> {
+        let mut last_error = None;
+
+        // Prefer a directly decodable badging entry when one is available.
+        for icon_path in icon_paths {
+            match self.extract_icon(apk_path, icon_path).await {
+                Ok(icon) => return Ok(icon),
+                Err(error) => last_error = Some(error),
+            }
+        }
+
+        // Adaptive icons are XML. Resolve their resource-table entry to legacy
+        // PNG/WebP variants. This also works when resource shrinking has renamed
+        // files, where matching by filename would be unreliable.
+        let resource_output = self.dump_resources(apk_path).await?;
+        for icon_path in icon_paths {
+            for fallback_path in parse_resource_file_variants(&resource_output, icon_path) {
+                match self.extract_icon(apk_path, &fallback_path).await {
+                    Ok(icon) => return Ok(icon),
+                    Err(error) => last_error = Some(error),
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            ApkError::IconError("No decodable launcher icon resource found".to_string())
+        }))
+    }
+
+    async fn dump_resources(&self, apk_path: &Path) -> Result<String, ApkError> {
+        let mut command = Command::new(&self.aapt2_path);
+        command
+            .arg("dump")
+            .arg("resources")
+            .arg(apk_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(self.command_timeout, command.output())
+            .await
+            .map_err(|_| ApkError::TimedOut)??;
+
+        if !output.status.success() {
+            return Err(ApkError::Aapt2Failed(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
     /// Extract icon from APK (which is a ZIP file)
@@ -217,7 +273,7 @@ struct ParsedAapt2Output {
     version_name: String,
     min_sdk: i64,
     app_name: String,
-    icon_path: Option<String>,
+    icon_paths: Vec<String>,
 }
 
 /// Parse aapt2 dump badging output
@@ -263,11 +319,22 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
                 icon_paths.push((density, path));
             }
         }
+
+        // Some aapt versions only emit the non-density-specific application line.
+        if line.starts_with("application:") {
+            if let Some(path) = extract_quoted_value(line, "icon=").filter(|path| !path.is_empty())
+            {
+                icon_paths.push((0, path));
+            }
+        }
     }
 
-    // Choose the highest density icon
-    icon_paths.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
-    let icon_path = icon_paths.into_iter().next().map(|(_, path)| path);
+    // Prefer directly decodable raster entries and then the highest density.
+    // Density 65534 is aapt's anydpi sentinel and commonly points to XML.
+    icon_paths.sort_by_key(|(density, path)| (is_raster_path(path), *density));
+    icon_paths.reverse();
+    let mut icon_paths: Vec<String> = icon_paths.into_iter().map(|(_, path)| path).collect();
+    icon_paths.dedup();
 
     let package_name =
         package_name.ok_or_else(|| ApkError::ParseError("Missing package name".to_string()))?;
@@ -298,9 +365,9 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
         package_name.clone()
     });
 
-    // Validate icon path doesn't contain path traversal
-    let icon_path = icon_path.filter(|path| {
-        if path.contains("..") || path.starts_with('/') {
+    // Validate icon paths don't contain path traversal.
+    icon_paths.retain(|path| {
+        if path.contains("..") || path.starts_with('/') || path.starts_with('\\') {
             warn!(
                 "APK {} has suspicious icon path '{}', ignoring",
                 package_name, path
@@ -317,8 +384,85 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
         version_name,
         min_sdk,
         app_name,
-        icon_path,
+        icon_paths,
     })
+}
+
+fn is_raster_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".png")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+}
+
+/// Find other configured files belonging to the same resource as `target_path`.
+/// `aapt2 dump resources` groups all density variants below one `resource` line.
+fn parse_resource_file_variants(output: &str, target_path: &str) -> Vec<String> {
+    fn finish_group(
+        files: &mut Vec<(i32, String)>,
+        target_path: &str,
+        result: &mut Vec<(i32, String)>,
+    ) {
+        if files.iter().any(|(_, path)| path == target_path) {
+            result.extend(files.drain(..).filter(|(_, path)| {
+                path != target_path
+                    && is_raster_path(path)
+                    && !path.contains("..")
+                    && !path.starts_with('/')
+                    && !path.starts_with('\\')
+            }));
+        } else {
+            files.clear();
+        }
+    }
+
+    let mut files = Vec::new();
+    let mut matches = Vec::new();
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("resource ") {
+            finish_group(&mut files, target_path, &mut matches);
+            continue;
+        }
+
+        let Some(file_marker) = trimmed.find("(file) ") else {
+            continue;
+        };
+        let remainder = &trimmed[file_marker + "(file) ".len()..];
+        let Some(path) = remainder.split_whitespace().next() else {
+            continue;
+        };
+        let config = trimmed
+            .strip_prefix('(')
+            .and_then(|value| value.split(')').next());
+        files.push((density_score(config.unwrap_or_default()), path.to_string()));
+    }
+    finish_group(&mut files, target_path, &mut matches);
+
+    matches.sort_by_key(|(density, _)| std::cmp::Reverse(*density));
+    matches.dedup_by(|left, right| left.1 == right.1);
+    matches.into_iter().map(|(_, path)| path).collect()
+}
+
+fn density_score(config: &str) -> i32 {
+    for (name, density) in [
+        ("xxxhdpi", 640),
+        ("xxhdpi", 480),
+        ("xhdpi", 320),
+        ("hdpi", 240),
+        ("mdpi", 160),
+        ("ldpi", 120),
+    ] {
+        if config.split('-').any(|part| part == name) {
+            return density;
+        }
+    }
+    config
+        .split('-')
+        .find_map(|part| part.strip_suffix("dpi")?.parse().ok())
+        .unwrap_or(0)
 }
 
 /// Extract a quoted value after a key like: name='value'
@@ -467,8 +611,14 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
         assert_eq!(parsed.min_sdk, 26);
         assert_eq!(parsed.app_name, "My Awesome App");
         assert_eq!(
-            parsed.icon_path,
-            Some("res/mipmap-xxxhdpi-v4/ic_launcher.png".to_string())
+            parsed.icon_paths,
+            vec![
+                "res/mipmap-xxxhdpi-v4/ic_launcher.png".to_string(),
+                "res/mipmap-xxhdpi-v4/ic_launcher.png".to_string(),
+                "res/mipmap-xhdpi-v4/ic_launcher.png".to_string(),
+                "res/mipmap-hdpi-v4/ic_launcher.png".to_string(),
+                "res/mipmap-mdpi-v4/ic_launcher.png".to_string(),
+            ]
         );
     }
 
@@ -483,7 +633,89 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
         assert_eq!(parsed.version_name, "1"); // Falls back to version code
         assert_eq!(parsed.min_sdk, 21); // Default
         assert_eq!(parsed.app_name, "com.test"); // Falls back to package name
-        assert_eq!(parsed.icon_path, None);
+        assert!(parsed.icon_paths.is_empty());
+    }
+
+    #[test]
+    fn test_parse_generic_application_icon() {
+        let output = "package: name='com.test' versionCode='1'\n\
+                      application: label='Test' icon='res/mipmap/icon.webp'\n";
+
+        let parsed = parse_aapt2_output(output).unwrap();
+
+        assert_eq!(parsed.icon_paths, vec!["res/mipmap/icon.webp"]);
+    }
+
+    #[test]
+    fn test_parse_resource_file_variants_for_minified_adaptive_icon() {
+        let output = r#"
+    resource 0x7f0c0000 mipmap/ic_launcher
+      (mdpi) (file) res/d2.webp
+      (hdpi) (file) res/MO.webp
+      (xhdpi) (file) res/qs.webp
+      (xxhdpi) (file) res/Sn.webp
+      (xxxhdpi) (file) res/sK.webp
+      (anydpi-v26) (file) res/BW.xml type=XML
+    resource 0x7f0c0001 mipmap/ic_launcher_round
+      (xxxhdpi) (file) res/other.webp
+"#;
+
+        assert_eq!(
+            parse_resource_file_variants(output, "res/BW.xml"),
+            vec![
+                "res/sK.webp".to_string(),
+                "res/Sn.webp".to_string(),
+                "res/qs.webp".to_string(),
+                "res/MO.webp".to_string(),
+                "res/d2.webp".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn adaptive_icon_uses_highest_density_raster_variant() {
+        use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use zip::write::SimpleFileOptions;
+
+        let temp = tempdir().unwrap();
+        let apk = temp.path().join("adaptive.apk");
+        let file = std::fs::File::create(&apk).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        archive.start_file("res/icon.xml", options).unwrap();
+        archive.write_all(b"not a raster image").unwrap();
+
+        let mut raster = Vec::new();
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255])))
+            .write_to(&mut Cursor::new(&mut raster), ImageFormat::Png)
+            .unwrap();
+        archive.start_file("res/icon-640.png", options).unwrap();
+        archive.write_all(&raster).unwrap();
+        archive.finish().unwrap();
+
+        let fake_aapt2 = temp.path().join("aapt2");
+        std::fs::write(
+            &fake_aapt2,
+            "#!/bin/sh\n\
+             if [ \"$2\" = badging ]; then\n\
+               printf \"package: name='com.test' versionCode='1'\\napplication-label:'Test'\\napplication-icon-65534:'res/icon.xml'\\n\"\n\
+             else\n\
+               printf \"resource 0x7f010000 mipmap/icon\\n  (xxxhdpi) (file) res/icon-640.png\\n  (anydpi-v26) (file) res/icon.xml type=XML\\n\"\n\
+             fi\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake_aapt2, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let metadata = ApkParser::new(fake_aapt2).parse(&apk).await.unwrap();
+        let icon = metadata
+            .icon_data
+            .expect("raster fallback should be extracted");
+        let decoded = image::load_from_memory(&icon).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (192, 192));
+        assert_eq!(decoded.get_pixel(0, 0), Rgba([1, 2, 3, 255]));
     }
 
     #[cfg(unix)]

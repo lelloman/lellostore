@@ -80,6 +80,74 @@ impl UploadService {
         }
     }
 
+    /// Re-extract icons for catalog entries created by an older or less capable
+    /// parser. Individual APK failures are logged and do not prevent startup.
+    pub async fn repair_missing_icons(&self) -> Result<usize, UploadError> {
+        let missing_apps = sqlx::query_as::<_, (String, i64)>(
+            r#"
+            SELECT apps.package_name, MAX(app_versions.version_code)
+            FROM apps
+            JOIN app_versions ON app_versions.package_name = apps.package_name
+            WHERE apps.icon_path IS NULL
+            GROUP BY apps.package_name
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await
+        .map_err(AppError::Database)?;
+
+        let mut repaired = 0;
+        for (package_name, version_code) in missing_apps {
+            let apk_path = self.storage.get_apk_path(&package_name, version_code);
+            let metadata = match self.apk_parser.parse(&apk_path).await {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    warn!(
+                        "Could not repair missing icon for {} from {}: {}",
+                        package_name,
+                        apk_path.display(),
+                        error
+                    );
+                    continue;
+                }
+            };
+            let Some(icon_data) = metadata.icon_data else {
+                continue;
+            };
+
+            let icon_path = match self.storage.save_icon(&package_name, &icon_data) {
+                Ok(path) => path,
+                Err(error) => {
+                    warn!(
+                        "Could not save repaired icon for {}: {}",
+                        package_name, error
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(error) =
+                db::update_app(&self.db, &package_name, None, None, Some(&icon_path)).await
+            {
+                warn!(
+                    "Could not record repaired icon for {}: {}",
+                    package_name, error
+                );
+                if let Err(cleanup_error) = self.storage.delete_icon(&package_name) {
+                    warn!(
+                        "Could not clean up repaired icon for {}: {}",
+                        package_name, cleanup_error
+                    );
+                }
+                continue;
+            }
+
+            repaired += 1;
+        }
+
+        Ok(repaired)
+    }
+
     /// Process an uploaded file (APK or AAB) from a bounded temporary file.
     pub async fn process_upload_file(
         &self,

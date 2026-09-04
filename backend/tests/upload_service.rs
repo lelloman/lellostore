@@ -25,6 +25,27 @@ fn create_fake_apk() -> Vec<u8> {
     buf
 }
 
+fn create_fake_apk_with_icon() -> Vec<u8> {
+    use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+
+    let mut icon = Vec::new();
+    DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([4, 5, 6, 255])))
+        .write_to(&mut Cursor::new(&mut icon), ImageFormat::Png)
+        .unwrap();
+
+    let mut apk = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(Cursor::new(&mut apk));
+        let options = SimpleFileOptions::default();
+        zip.start_file("AndroidManifest.xml", options).unwrap();
+        std::io::Write::write_all(&mut zip, b"fake manifest").unwrap();
+        zip.start_file("res/icon.png", options).unwrap();
+        std::io::Write::write_all(&mut zip, &icon).unwrap();
+        zip.finish().unwrap();
+    }
+    apk
+}
+
 #[cfg(unix)]
 fn create_fake_aapt2(
     temp_dir: &TempDir,
@@ -42,6 +63,20 @@ fn create_fake_aapt2(
          application-label:'{app_name}'\n"
     );
     std::fs::write(&path, format!("#!/bin/sh\nprintf '%s' \"{output}\"\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+fn create_fake_aapt2_with_icon(temp_dir: &TempDir) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = temp_dir.path().join("fake-aapt2-with-icon");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nprintf \"package: name='com.example.repair' versionCode='7' versionName='7.0'\\napplication-label:'Repair'\\napplication-icon-640:'res/icon.png'\\n\"\n",
+    )
+    .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
 }
@@ -220,6 +255,53 @@ async fn test_upload_apk_persists_app_version_and_file() {
         .path()
         .join("storage/apks/com.example.upload/1.apk")
         .is_file());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn repair_missing_icons_updates_existing_catalog_entries() {
+    let (temp_dir, pool, storage) = setup_test_env().await;
+    lellostore_backend::db::insert_app(&pool, "com.example.repair", "Repair", None, None)
+        .await
+        .unwrap();
+    let apk = create_fake_apk_with_icon();
+    let apk_path = storage.save_apk("com.example.repair", 7, &apk).unwrap();
+    lellostore_backend::db::insert_app_version(
+        &pool,
+        "com.example.repair",
+        7,
+        "7.0",
+        &apk_path,
+        apk.len() as i64,
+        "hash",
+        24,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let service = UploadService::new(
+        storage,
+        ApkParser::new(create_fake_aapt2_with_icon(&temp_dir)),
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+
+    assert_eq!(service.repair_missing_icons().await.unwrap(), 1);
+    let app = lellostore_backend::db::get_app(&pool, "com.example.repair")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        app.icon_path.as_deref(),
+        Some("icons/com.example.repair.png")
+    );
+    assert!(temp_dir
+        .path()
+        .join("storage/icons/com.example.repair.png")
+        .is_file());
+    assert_eq!(service.repair_missing_icons().await.unwrap(), 0);
 }
 
 /// Test duplicate version rejection
