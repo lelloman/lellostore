@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.lelloman.store.recovery.RecoveryCompanionClient
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -30,6 +31,8 @@ class LegacyAdbInstallationChannel @Inject constructor(
     override suspend fun install(request: InstallationRequest): ChannelInstallationResult =
         withContext(Dispatchers.IO) {
             selfAdbConnectionMutex.withLock {
+                val recovery = RecoveryCompanionClient(context)
+                recovery.restoreIdentityIfNeeded()
                 val adb = try {
                     SelfAdbConnectionManager.getInstance(context)
                 } catch (error: Exception) {
@@ -37,6 +40,7 @@ class LegacyAdbInstallationChannel @Inject constructor(
                         "Could not initialize the ADB identity: ${error.message.orUnknown()}"
                     )
                 }
+                recovery.backupIdentity(adb)
 
                 val connected = try {
                     if (adb.isConnected) adb.disconnect()
@@ -59,7 +63,10 @@ class LegacyAdbInstallationChannel @Inject constructor(
     suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
         selfAdbConnectionMutex.withLock {
             runCatching {
+                val recovery = RecoveryCompanionClient(context)
+                recovery.restoreIdentityIfNeeded()
                 val adb = SelfAdbConnectionManager.getInstance(context)
+                recovery.backupIdentity(adb)
                 if (adb.isConnected) adb.disconnect()
                 check(adb.connect(LOOPBACK_HOST, ADB_PORT)) {
                     "No authorized ADB service at $LOOPBACK_HOST:$ADB_PORT"

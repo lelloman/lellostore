@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- adbd uses a self-signed TLS certificate and authenticates the paired ADB client key. -->
+    <issue id="TrustAllX509TrustManager">
+        <ignore regexp=".*libadb-android.*" />
+    </issue>
+</lint>

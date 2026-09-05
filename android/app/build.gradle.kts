@@ -102,6 +102,7 @@ dependencies {
     implementation(project(":localdata"))
     implementation(project(":remoteapi"))
     implementation(project(":logger"))
+    implementation(project(":recovery-protocol"))
 
     // AndroidX Core
     implementation(libs.androidx.core.ktx)

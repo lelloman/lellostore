@@ -107,6 +107,18 @@ no-backup directory. No arbitrary shell command or ADB connection is exposed by
 UI or IPC. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the dependency
 and distribution review.
 
+## Recovery companion
+
+The separately installed `:recovery` application monitors Store self-update attempts
+through the versioned `:recovery-protocol` AIDL boundary. Both production APKs share
+the release signer; IPC also requires a signature permission and runtime package/cert
+verification. The companion owns an independent ADB identity, holds a Keystore-encrypted
+copy of the Store identity, and embeds a digest/package/signer-verified known-good Store
+APK. Missed health acknowledgement only raises a needs-attention state. Any full wipe
+is user-confirmed and bounded to one attempt. See
+[RECOVERY_COMPANION.md](RECOVERY_COMPANION.md) for provisioning, limitations, and the
+validation matrix.
+
 ## Testing and quality gates
 
 Local JVM tests cover domain models, DTO mapping, repositories, auth/session

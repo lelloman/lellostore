@@ -1,4 +1,4 @@
-package com.lelloman.store.installation;
+package com.lelloman.store.recovery;
 
 import android.content.Context;
 import android.os.Build;
@@ -35,121 +35,57 @@ import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.Signature;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 import io.github.muntashirakon.adb.AbsAdbConnectionManager;
 
-/** Owns the private ADB identity used to authenticate LelloStore to the local ADB daemon. */
-public final class SelfAdbConnectionManager extends AbsAdbConnectionManager {
-    private static final String PRIVATE_KEY_FILE = "self-adb-private.key";
-    private static final String CERTIFICATE_FILE = "self-adb-cert.pem";
-    private static SelfAdbConnectionManager instance;
+/** Independent, per-installation ADB identity used only by the recovery companion. */
+public final class RecoveryAdbConnectionManager extends AbsAdbConnectionManager {
+    private static final String PRIVATE_KEY_FILE = "recovery-adb-private.key";
+    private static final String CERTIFICATE_FILE = "recovery-adb-cert.pem";
+    private static RecoveryAdbConnectionManager instance;
 
     private final PrivateKey privateKey;
     private final Certificate certificate;
 
-    public static synchronized SelfAdbConnectionManager getInstance(@NonNull Context context)
+    public static synchronized RecoveryAdbConnectionManager getInstance(@NonNull Context context)
             throws Exception {
-        if (instance == null) {
-            instance = new SelfAdbConnectionManager(context.getApplicationContext());
-        }
+        if (instance == null) instance = new RecoveryAdbConnectionManager(context.getApplicationContext());
         return instance;
     }
 
-    private SelfAdbConnectionManager(Context context) throws Exception {
+    private RecoveryAdbConnectionManager(Context context) throws Exception {
         setApi(Build.VERSION.SDK_INT);
         setTimeout(15, TimeUnit.SECONDS);
-
         PrivateKey storedKey = readPrivateKey(context);
         Certificate storedCertificate = readCertificate(context);
         if (storedKey != null && storedCertificate != null) {
             privateKey = storedKey;
             certificate = storedCertificate;
-            return;
+        } else {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048, new SecureRandom());
+            KeyPair pair = generator.generateKeyPair();
+            privateKey = pair.getPrivate();
+            certificate = createCertificate(pair);
+            writePrivateKey(context, privateKey);
+            writeCertificate(context, certificate);
         }
-
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048, new SecureRandom());
-        KeyPair pair = generator.generateKeyPair();
-        privateKey = pair.getPrivate();
-        certificate = createCertificate(pair);
-
-        writePrivateKey(context, privateKey);
-        writeCertificate(context, certificate);
     }
 
-    @NonNull
-    @Override
-    protected PrivateKey getPrivateKey() {
-        return privateKey;
-    }
-
-    @NonNull
-    @Override
-    protected Certificate getCertificate() {
-        return certificate;
-    }
-
-    @NonNull
-    @Override
-    protected String getDeviceName() {
-        return "LelloStore";
-    }
-
-    @NonNull
-    public byte[] getPrivateKeyBytes() {
-        return privateKey.getEncoded().clone();
-    }
-
-    @NonNull
-    public byte[] getCertificateBytes() throws Exception {
-        return certificate.getEncoded();
-    }
-
-    public static boolean hasStoredIdentity(@NonNull Context context) {
-        return identityFile(context, PRIVATE_KEY_FILE).isFile()
-                && identityFile(context, CERTIFICATE_FILE).isFile();
-    }
-
-    public static synchronized void restoreIdentity(
-            @NonNull Context context,
-            @NonNull byte[] privateKeyBytes,
-            @NonNull byte[] certificateBytes
-    ) throws Exception {
-        if (hasStoredIdentity(context)) return;
-        PrivateKey restoredKey = KeyFactory.getInstance("RSA").generatePrivate(
-                new PKCS8EncodedKeySpec(privateKeyBytes)
-        );
-        Certificate restoredCertificate = CertificateFactory.getInstance("X.509")
-                .generateCertificate(new java.io.ByteArrayInputStream(certificateBytes));
-        byte[] challenge = "LelloStore recovery identity v1".getBytes(StandardCharsets.UTF_8);
-        Signature signer = Signature.getInstance("SHA256withRSA");
-        signer.initSign(restoredKey);
-        signer.update(challenge);
-        byte[] signed = signer.sign();
-        Signature verifier = Signature.getInstance("SHA256withRSA");
-        verifier.initVerify(restoredCertificate.getPublicKey());
-        verifier.update(challenge);
-        if (!verifier.verify(signed)) {
-            throw new IllegalArgumentException("ADB private key and certificate do not match");
-        }
-        writePrivateKey(context, restoredKey);
-        writeCertificate(context, restoredCertificate);
-        instance = null;
-    }
+    @NonNull @Override protected PrivateKey getPrivateKey() { return privateKey; }
+    @NonNull @Override protected Certificate getCertificate() { return certificate; }
+    @NonNull @Override protected String getDeviceName() { return "LelloStore Recovery"; }
 
     private static Certificate createCertificate(KeyPair pair) throws Exception {
         String algorithm = "SHA256withRSA";
         Date notBefore = new Date();
         Date notAfter = new Date(System.currentTimeMillis() + TimeUnit.DAYS.toMillis(3650));
-        X500Name subject = new X500Name("CN=LelloStore");
+        X500Name subject = new X500Name("CN=LelloStore Recovery");
         CertificateExtensions extensions = new CertificateExtensions();
-        extensions.set(
-                "SubjectKeyIdentifier",
-                new SubjectKeyIdentifierExtension(new KeyIdentifier(pair.getPublic()).getIdentifier())
-        );
+        extensions.set("SubjectKeyIdentifier", new SubjectKeyIdentifierExtension(
+                new KeyIdentifier(pair.getPublic()).getIdentifier()));
         X509CertInfo info = new X509CertInfo();
         info.set("version", new CertificateVersion(2));
         info.set("serialNumber", new CertificateSerialNumber(1));
@@ -167,9 +103,7 @@ public final class SelfAdbConnectionManager extends AbsAdbConnectionManager {
     private static PrivateKey readPrivateKey(Context context) throws Exception {
         File file = identityFile(context, PRIVATE_KEY_FILE);
         if (!file.exists()) return null;
-        return KeyFactory.getInstance("RSA").generatePrivate(
-                new PKCS8EncodedKeySpec(readFile(file))
-        );
+        return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(readFile(file)));
     }
 
     private static Certificate readCertificate(Context context) throws Exception {
@@ -206,9 +140,7 @@ public final class SelfAdbConnectionManager extends AbsAdbConnectionManager {
                 if (count < 0) break;
                 offset += count;
             }
-            if (offset != bytes.length) {
-                throw new IllegalStateException("Could not read complete ADB identity file");
-            }
+            if (offset != bytes.length) throw new IllegalStateException("Incomplete ADB identity file");
         }
         return bytes;
     }

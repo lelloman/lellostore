@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">LelloStore Recovery</string>
+    <string name="recovery_title">LelloStore recovery</string>
+    <string name="recovery_intro">Keeps an independent device identity and monitors LelloStore self-updates.</string>
+    <string name="refresh">Refresh status</string>
+    <string name="repair">Repair LelloStore</string>
+    <string name="repair_warning">Last-resort repair fully uninstalls LelloStore. Its local settings, login, caches, and any other local-only data will be deleted. Continue only when LelloStore cannot start.</string>
+    <string name="cancel">Cancel</string>
+    <string name="continue_repair">Erase and repair</string>
+    <string name="no_attempt">No recovery is currently needed.</string>
+    <string name="provision_test_adb">Provision / test recovery ADB</string>
+    <string name="testing_recovery_adb">Testing the independent recovery ADB identity…</string>
+    <string name="recovery_adb_authorized">Recovery ADB is authorized.\n%1$s</string>
+    <string name="recovery_adb_not_ready">Recovery ADB is not ready: %1$s</string>
+</resources>

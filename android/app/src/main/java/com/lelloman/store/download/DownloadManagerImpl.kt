@@ -16,6 +16,7 @@ import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
 import com.lelloman.store.installation.InstallationRequest
 import com.lelloman.store.installation.InstallationResult
+import com.lelloman.store.recovery.RecoveryCompanionClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -115,6 +116,10 @@ class DownloadManagerImpl @Inject constructor(
 
             // Install APK
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
+            val recovery = RecoveryCompanionClient(context)
+            val recoveryAttemptId = if (packageName == context.packageName) {
+                recovery.recordSelfUpdate(versionCode)
+            } else null
             when (val installResult = installationCoordinator.install(
                 InstallationRequest(
                     apk = destination,
@@ -129,11 +134,17 @@ class DownloadManagerImpl @Inject constructor(
                     updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.PermissionRequired -> {
+                    recoveryAttemptId?.let {
+                        recovery.cancelUnreplacedAttempt(it, installResult.reason)
+                    }
                     // Permission needed - keep the APK for retry after permission is granted
                     finalState = DownloadState.PERMISSION_REQUIRED
                     updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.UserActionRequired -> {
+                    recoveryAttemptId?.let {
+                        recovery.cancelUnreplacedAttempt(it, installResult.reasons.joinToString("; "))
+                    }
                     retainVerifiedApk = true
                     finalState = DownloadState.PERMISSION_REQUIRED
                     updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
@@ -141,6 +152,7 @@ class DownloadManagerImpl @Inject constructor(
                 is InstallationResult.Failed -> {
                     val reason = installResult.reasons.joinToString("; ")
                         .ifEmpty { "Installation failed" }
+                    recoveryAttemptId?.let { recovery.cancelUnreplacedAttempt(it, reason) }
                     failure = DownloadResult.Failed(
                         reason = reason,
                         kind = if (reason.contains(INCOMPATIBLE_UPDATE_ERROR, ignoreCase = true)) {

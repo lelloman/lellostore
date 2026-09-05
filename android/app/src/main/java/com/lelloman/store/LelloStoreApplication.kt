@@ -10,12 +10,19 @@ import coil3.intercept.Interceptor
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ImageResult
 import com.lelloman.store.worker.WorkManagerInitializer
+import com.lelloman.store.installation.SelfAdbConnectionManager
+import com.lelloman.store.recovery.RecoveryCompanionClient
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 @HiltAndroidApp
 class LelloStoreApplication : Application(), Configuration.Provider, SingletonImageLoader.Factory {
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -34,6 +41,18 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
     override fun onCreate() {
         super.onCreate()
         workManagerInitializer.initialize()
+        applicationScope.launch {
+            val recovery = RecoveryCompanionClient(this@LelloStoreApplication)
+            recovery.restoreIdentityIfNeeded()
+            if (SelfAdbConnectionManager.hasStoredIdentity(this@LelloStoreApplication)) {
+                runCatching {
+                    recovery.backupIdentity(
+                        SelfAdbConnectionManager.getInstance(this@LelloStoreApplication),
+                    )
+                }
+            }
+            recovery.acknowledgePendingHealth()
+        }
     }
 
     override fun newImageLoader(context: coil3.PlatformContext): ImageLoader {
