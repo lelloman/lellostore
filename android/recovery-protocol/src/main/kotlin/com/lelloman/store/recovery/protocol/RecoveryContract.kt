@@ -5,5 +5,6 @@ object RecoveryContract {
     const val RECOVERY_PACKAGE = "com.lelloman.store.recovery"
     const val SERVICE_CLASS = "$RECOVERY_PACKAGE.RecoveryService"
     const val SIGNATURE_PERMISSION = "$RECOVERY_PACKAGE.permission.RECOVERY_CONTROL"
-    const val PROTOCOL_VERSION = 1
+    const val PROTOCOL_VERSION = 2
+    const val MIN_COMPANION_VERSION = 2
 }

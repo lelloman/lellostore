@@ -3,4 +3,5 @@
 <full-backup-content>
     <!-- Exclude encrypted auth prefs - keys are in Keystore which isn't backed up -->
     <exclude domain="sharedpref" path="auth_prefs.xml"/>
+    <exclude domain="sharedpref" path="self-update-provisioning.xml"/>
 </full-backup-content>

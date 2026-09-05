@@ -244,6 +244,18 @@ internal fun SettingsContent(
                     },
                     onClick = onTestWirelessDebugging,
                 )
+                SettingsDivider()
+                val setupContext = LocalContext.current
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_recovery_setup),
+                    subtitle = stringResource(R.string.settings_recovery_setup_subtitle),
+                    onClick = {
+                        setupContext.startActivity(Intent().setClassName(
+                            setupContext.packageName,
+                            "com.lelloman.store.recovery.RecoverySetupActivity",
+                        ))
+                    },
+                )
             }
 
             SettingsSection(title = stringResource(R.string.settings_server)) {

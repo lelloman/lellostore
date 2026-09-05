@@ -113,8 +113,10 @@ The separately installed `:recovery` application monitors Store self-update atte
 through the versioned `:recovery-protocol` AIDL boundary. Both production APKs share
 the release signer; IPC also requires a signature permission and runtime package/cert
 verification. The companion owns an independent ADB identity, holds a Keystore-encrypted
-copy of the Store identity, and embeds a digest/package/signer-verified known-good Store
-APK. Missed health acknowledgement only raises a needs-attention state. Any full wipe
+copy of the Store identity, and retains a digest/package/signer-verified snapshot of the running Store
+APK before each self-update. Store bundles the companion for installation through Settings.
+The companion supports independent wireless pairing and legacy 5555. Explicit provisioning
+gates self-updates; missed health acknowledgement only raises a needs-attention state. Any full wipe
 is user-confirmed and bounded to one attempt. See
 [RECOVERY_COMPANION.md](RECOVERY_COMPANION.md) for provisioning, limitations, and the
 validation matrix.

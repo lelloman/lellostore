@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import com.lelloman.store.recovery.RecoveryCompanionClient
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
@@ -96,6 +99,12 @@ class MainActivity : ComponentActivity() {
                 forceNavigateToLogin = shouldNavigateToLogin,
                 onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
             )
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                val recovery = RecoveryCompanionClient(this@MainActivity)
+                recovery.restoreIdentityIfNeeded()
+                recovery.acknowledgePendingHealth()
+            }
         }
     }
 

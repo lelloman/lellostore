@@ -1,0 +1,26 @@
+<resources>
+    <string name="recovery_setup_installed">Companion installed and trusted</string>
+    <string name="recovery_setup_details">Open recovery status / resolve an attempt</string>
+    <string name="self_update_not_ready">Self-update paused. Open Settings → LelloStore self-updates and recovery to finish setup or restore the companion connection.</string>
+    <string name="recovery_setup_title">LelloStore self-updates</string>
+    <string name="recovery_setup_intro">The recovery companion keeps a protected copy of LelloStore and can repair a failed update. Set it up here; no catalogue download is needed.</string>
+    <string name="recovery_setup_back">Back to Settings</string>
+    <string name="recovery_setup_install_step">1. Install the recovery companion</string>
+    <string name="recovery_setup_install">Install / update companion</string>
+    <string name="recovery_setup_allow_install">Allow installs from LelloStore, then return and tap Install / update companion again.</string>
+    <string name="recovery_setup_return">Complete Android’s installation prompt, then return here for step 2.</string>
+    <string name="recovery_setup_pair_step">2. Authorize its independent connection</string>
+    <string name="recovery_setup_code">Six-digit pairing code</string>
+    <string name="recovery_setup_pair_help">Keep Android Settings and this screen visible in split screen. In Wireless debugging, request a fresh pairing code for the companion. Pairing LelloStore alone does not authorize the companion. If already paired, skip to step 3.</string>
+    <string name="recovery_setup_pair">Pair companion</string>
+    <string name="recovery_setup_paired">Companion paired and connected.</string>
+    <string name="recovery_setup_android_settings">Open Developer options</string>
+    <string name="recovery_setup_enable_step">3. Protect and enable self-updates</string>
+    <string name="recovery_setup_enabled">Self-updates enabled. Recovery readiness is checked before every self-update.</string>
+    <string name="recovery_setup_disabled">Self-updates disabled or companion needs an update.</string>
+    <string name="recovery_setup_verify_enable">Verify recovery and enable</string>
+    <string name="recovery_setup_disable">Disable self-updates</string>
+    <string name="recovery_setup_ready">Ready. Recovery holds this Store APK and its device identity, and its own connection works.</string>
+    <string name="recovery_setup_failed">Setup failed. Please try again.</string>
+    <string name="recovery_setup_limitations">Updates require a newer signed LelloStore release in your server catalogue and follow your automatic-update preference. After a reboot, re-enable Wireless debugging. Last-resort recovery requires your confirmation and may erase LelloStore settings and login data.</string>
+</resources>

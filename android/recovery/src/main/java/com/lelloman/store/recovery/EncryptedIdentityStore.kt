@@ -16,6 +16,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import android.util.AtomicFile
 
 internal class EncryptedIdentityStore(private val context: Context) {
     private val file get() = context.noBackupFilesDir.resolve("store-adb-identity-v1.enc")
@@ -36,18 +37,25 @@ internal class EncryptedIdentityStore(private val context: Context) {
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
         cipher.updateAAD(AAD)
         val encrypted = cipher.doFinal(cleartext)
-        file.outputStream().use { output ->
+        val atomic = AtomicFile(file)
+        val output = atomic.startWrite()
+        try {
             output.write(cipher.iv.size)
             output.write(cipher.iv)
             output.write(encrypted)
+            atomic.finishWrite(output)
+        } catch (error: Throwable) {
+            atomic.failWrite(output)
+            throw error
+        } finally {
+            cleartext.fill(0)
         }
-        cleartext.fill(0)
     }
 
     @Synchronized
     fun restore(): Pair<ByteArray, ByteArray>? {
         if (!file.isFile) return null
-        val payload = file.readBytes()
+        val payload = AtomicFile(file).readFully()
         val ivSize = payload.firstOrNull()?.toInt()?.and(0xff) ?: return null
         require(ivSize in 12..32 && payload.size > ivSize + 1) { "Invalid encrypted identity" }
         val cipher = Cipher.getInstance(TRANSFORMATION)

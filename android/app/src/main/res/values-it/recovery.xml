@@ -1,0 +1,26 @@
+<resources>
+    <string name="recovery_setup_installed">Companion installato e verificato</string>
+    <string name="recovery_setup_details">Apri stato ripristino / risolvi un tentativo</string>
+    <string name="self_update_not_ready">Aggiornamento sospeso. Apri Impostazioni → Aggiornamenti di LelloStore e ripristino per completare la configurazione o ripristinare la connessione del companion.</string>
+    <string name="recovery_setup_title">Aggiornamenti di LelloStore</string>
+    <string name="recovery_setup_intro">Il companion conserva una copia protetta di LelloStore e può ripristinarla dopo un aggiornamento fallito. Configuralo qui, senza cercarlo nel catalogo.</string>
+    <string name="recovery_setup_back">Torna alle impostazioni</string>
+    <string name="recovery_setup_install_step">1. Installa il companion di ripristino</string>
+    <string name="recovery_setup_install">Installa / aggiorna companion</string>
+    <string name="recovery_setup_allow_install">Consenti le installazioni da LelloStore, poi torna e premi di nuovo Installa / aggiorna companion.</string>
+    <string name="recovery_setup_return">Completa la richiesta di installazione di Android, poi torna qui per il passo 2.</string>
+    <string name="recovery_setup_pair_step">2. Autorizza la sua connessione indipendente</string>
+    <string name="recovery_setup_code">Codice di associazione a sei cifre</string>
+    <string name="recovery_setup_pair_help">Mantieni visibili le impostazioni Android e questa schermata in schermo diviso. In Debug wireless, richiedi un nuovo codice per il companion. Associare solo LelloStore non autorizza il companion. Se già associato, passa al punto 3.</string>
+    <string name="recovery_setup_pair">Associa companion</string>
+    <string name="recovery_setup_paired">Companion associato e connesso.</string>
+    <string name="recovery_setup_android_settings">Apri opzioni sviluppatore</string>
+    <string name="recovery_setup_enable_step">3. Proteggi e abilita gli aggiornamenti</string>
+    <string name="recovery_setup_enabled">Aggiornamenti abilitati. Il ripristino viene verificato prima di ogni aggiornamento di LelloStore.</string>
+    <string name="recovery_setup_disabled">Aggiornamenti disabilitati o companion da aggiornare.</string>
+    <string name="recovery_setup_verify_enable">Verifica ripristino e abilita</string>
+    <string name="recovery_setup_disable">Disabilita aggiornamenti</string>
+    <string name="recovery_setup_ready">Pronto. Il companion conserva questo APK e la sua identità dispositivo, e la connessione indipendente funziona.</string>
+    <string name="recovery_setup_failed">Configurazione fallita. Riprova.</string>
+    <string name="recovery_setup_limitations">Serve una versione firmata più recente di LelloStore nel catalogo del server. Viene rispettata la preferenza degli aggiornamenti automatici. Dopo un riavvio, riattiva Debug wireless. Il ripristino completo richiede conferma e può cancellare impostazioni e accesso di LelloStore.</string>
+</resources>

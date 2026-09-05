@@ -31,12 +31,14 @@ object RecoveryPolicy {
     fun record(current: RecoveryAttempt?, incoming: RecoveryAttempt): RecoveryAttempt? {
         if (incoming.id.isBlank() || incoming.targetVersion <= incoming.currentVersion) return null
         if (incoming.deadlineAtMillis <= incoming.startedAtMillis) return null
-        if (current?.status == RecoveryStatus.REPAIRING) return null
+        if (current != null && current.status !in setOf(RecoveryStatus.HEALTHY, RecoveryStatus.IDLE)) return null
         return incoming.copy(status = RecoveryStatus.AWAITING_HEALTH)
     }
 
     fun acknowledge(current: RecoveryAttempt?, attemptId: String, installedVersion: Int, now: Long): RecoveryAttempt? {
-        if (current == null || current.id != attemptId || installedVersion < current.targetVersion) return null
+        if (current == null || current.id != attemptId) return null
+        val expectedVersion = if (current.destructiveAttempts > 0) current.currentVersion else current.targetVersion
+        if (installedVersion < expectedVersion) return null
         if (current.status != RecoveryStatus.AWAITING_HEALTH && current.status != RecoveryStatus.NEEDS_ATTENTION) return null
         return current.copy(
             status = if (current.destructiveAttempts > 0) RecoveryStatus.RECOVERED else RecoveryStatus.HEALTHY,
@@ -46,9 +48,11 @@ object RecoveryPolicy {
     }
 
     fun evaluate(current: RecoveryAttempt?, now: Long): RecoveryAttempt? =
-        if (current?.status == RecoveryStatus.AWAITING_HEALTH && now > current.deadlineAtMillis) {
+        if (current?.status == RecoveryStatus.REPAIRING) {
+            current.copy(status = RecoveryStatus.MANUAL_RECOVERY, lastReason = "Repair interrupted; manual inspection required")
+        } else if (current?.status == RecoveryStatus.AWAITING_HEALTH && now >= current.deadlineAtMillis) {
             current.copy(
-                status = RecoveryStatus.NEEDS_ATTENTION,
+                status = if (current.destructiveAttempts > 0) RecoveryStatus.MANUAL_RECOVERY else RecoveryStatus.NEEDS_ATTENTION,
                 lastReason = "LelloStore did not acknowledge health before the update deadline",
             )
         } else {

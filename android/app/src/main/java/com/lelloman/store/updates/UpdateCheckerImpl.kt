@@ -1,5 +1,7 @@
 package com.lelloman.store.updates
 
+import com.lelloman.store.recovery.SelfUpdateGate
+
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.model.App
@@ -22,6 +24,7 @@ class UpdateCheckerImpl @Inject constructor(
     private val appsRepository: AppsRepository,
     private val installedAppsRepository: InstalledAppsRepository,
     private val userPreferencesStore: UserPreferencesStore,
+    private val selfUpdateGate: SelfUpdateGate,
 ) : UpdateChecker {
 
     private val mutableUpdates = MutableStateFlow<List<AvailableUpdate>>(emptyList())
@@ -46,7 +49,8 @@ class UpdateCheckerImpl @Inject constructor(
     ): List<AvailableUpdate> {
         val installedMap = installed.associateBy { it.packageName }
         return apps.mapNotNull { catalogApp ->
-            if (ProtectedStorePackages.contains(catalogApp.packageName)) return@mapNotNull null
+            val isSelf = catalogApp.packageName == selfUpdateGate.packageName
+            if (ProtectedStorePackages.contains(catalogApp.packageName) && !isSelf) return@mapNotNull null
             val installedApp = installedMap[catalogApp.packageName] ?: return@mapNotNull null
             val app = appsRepository.refreshApp(catalogApp.packageName).getOrThrow()
             val autoOverride = userPreferencesStore.autoUpdateOverride(app.packageName).first()
@@ -69,7 +73,7 @@ class UpdateCheckerImpl @Inject constructor(
                 app = catalogApp.copy(latestVersion = version, accessLevel = app.accessLevel),
                 installedVersionCode = installedApp.versionCode,
                 installedVersionName = installedApp.versionName,
-                autoUpdateEnabled = policy.autoUpdateEnabled,
+                autoUpdateEnabled = policy.autoUpdateEnabled && (!isSelf || selfUpdateGate.enabled()),
                 effectiveReleaseChannel = policy.effectiveChannel,
             )
         }

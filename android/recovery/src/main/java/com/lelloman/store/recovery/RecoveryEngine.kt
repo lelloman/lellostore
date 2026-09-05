@@ -9,24 +9,25 @@ import java.io.IOException
 import java.io.InputStream
 
 internal class RecoveryEngine(private val context: Context) {
-    fun testConnection(): Result<String> = runCatching {
+    fun testConnection(): Result<String> = adbOperation {
         val adb = connect()
         readText(adb.openStream("shell:id; getprop ro.product.model").openInputStream()).trim().also {
             check(it.contains("uid=2000(shell)")) { "ADB did not provide a shell" }
         }
     }
 
-    fun repair(attempt: RecoveryAttempt): Result<String> = runCatching {
+    fun repair(attempt: RecoveryAttempt): Result<String> = adbOperation {
         require(attempt.status == RecoveryStatus.REPAIRING) { "Repair was not explicitly approved" }
         val expectedSigner = SigningCertificates.sha256(context, context.packageName)
         check(attempt.expectedSignerSha256 in expectedSigner) { "Attempt signer does not match recovery signer" }
         verifyInstalledStoreSigner(expectedSigner)
 
-        val recoveryApk = extractAndVerifyRecoveryApk(expectedSigner)
+        val recoveryApk = RecoverySnapshot(context).verifiedApk(attempt.currentVersion)
         val adb = connect()
 
         val inPlace = install(adb, recoveryApk, allowDowngrade = true)
         if (!inPlace.startsWith("Success")) {
+            check(inPlace.startsWith("Failure [")) { "In-place repair result is uncertain; inspect Store before proceeding" }
             val uninstall = readText(
                 adb.openStream("shell:cmd package uninstall ${RecoveryPackages.STORE}").openInputStream()
             ).trim()
@@ -34,20 +35,40 @@ internal class RecoveryEngine(private val context: Context) {
             val cleanInstall = install(adb, recoveryApk, allowDowngrade = false)
             check(cleanInstall.startsWith("Success")) { "Recovery install failed: $cleanInstall" }
         }
-        runCatching {
-            readText(
-                adb.openStream(
-                    "shell:am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity"
-                ).openInputStream()
-            )
-        }
         "Known-good LelloStore installed; waiting for identity handover and health acknowledgement"
+    }
+
+    fun launchStore() = adbOperation {
+        val adb = connect()
+        readText(adb.openStream(
+            "shell:am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity"
+        ).openInputStream())
+    }.getOrThrow()
+
+    private fun <T> adbOperation(block: () -> T): Result<T> = runCatching {
+        synchronized(RecoveryAdbConnectionManager::class.java) {
+            val adb = RecoveryAdbConnectionManager.getInstance(context)
+            val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+            val expiry = watchdog.schedule({
+                runCatching { adb.disconnect() }
+            }, 60, java.util.concurrent.TimeUnit.SECONDS)
+            try {
+                block()
+            } finally {
+                expiry.cancel(false)
+                watchdog.shutdownNow()
+            }
+        }
     }
 
     private fun connect(): RecoveryAdbConnectionManager {
         val adb = RecoveryAdbConnectionManager.getInstance(context)
         if (adb.isConnected) adb.disconnect()
-        check(adb.connect("127.0.0.1", 5555)) { "No authorized ADB service at 127.0.0.1:5555" }
+        if (runCatching { adb.connectTls(context, 10_000) }.getOrDefault(false)) return adb
+        if (adb.isConnected) adb.disconnect()
+        check(adb.connect("127.0.0.1", 5555)) {
+            "Recovery is not connected. Enable Wireless Debugging and pair the recovery identity, or provision port 5555."
+        }
         return adb
     }
 
@@ -60,39 +81,6 @@ internal class RecoveryEngine(private val context: Context) {
         check(installed.intersect(expected).isNotEmpty()) {
             "Installed LelloStore has an unexpected signing certificate"
         }
-    }
-
-    private fun extractAndVerifyRecoveryApk(expected: Set<String>): File {
-        val destination = context.cacheDir.resolve("lellostore-recovery.apk")
-        context.assets.open("lellostore-recovery.apk").use { input ->
-            destination.outputStream().use(input::copyTo)
-        }
-        val expectedDigest = context.assets.open("lellostore-recovery.apk.sha256")
-            .bufferedReader().use { it.readText().trim() }
-        val actualDigest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(destination.readBytes())
-            .joinToString("") { "%02x".format(it) }
-        check(actualDigest == expectedDigest) { "Bundled recovery APK digest is invalid" }
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            context.packageManager.getPackageArchiveInfo(destination.path, PackageManager.GET_SIGNING_CERTIFICATES)
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageArchiveInfo(destination.path, PackageManager.GET_SIGNATURES)
-        } ?: error("Bundled recovery APK is invalid")
-        check(info.packageName == RecoveryPackages.STORE) { "Bundled APK has the wrong package name" }
-        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.signingInfo?.signingCertificateHistory.orEmpty()
-        } else {
-            @Suppress("DEPRECATION")
-            info.signatures.orEmpty()
-        }
-        val archiveDigests = signatures.mapTo(mutableSetOf()) { signature ->
-            java.security.MessageDigest.getInstance("SHA-256")
-                .digest(signature.toByteArray())
-                .joinToString("") { "%02x".format(it) }
-        }
-        check(archiveDigests.intersect(expected).isNotEmpty()) { "Bundled APK signer is not trusted" }
-        return destination
     }
 
     private fun install(adb: RecoveryAdbConnectionManager, apk: File, allowDowngrade: Boolean): String {

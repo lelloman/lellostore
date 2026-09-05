@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -11,21 +10,6 @@ val signingProperties = Properties().apply {
     if (file.exists()) file.inputStream().use(::load)
 }
 
-val recoveryAssets = layout.buildDirectory.dir("generated/recovery-assets")
-val bundleRecoveryStoreApk by tasks.registering(Copy::class) {
-    dependsOn(":app:assembleRelease")
-    from(project(":app").layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
-    into(recoveryAssets)
-    rename { "lellostore-recovery.apk" }
-    doLast {
-        val apk = recoveryAssets.get().file("lellostore-recovery.apk").asFile
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(apk.readBytes())
-            .joinToString("") { "%02x".format(it) }
-        recoveryAssets.get().file("lellostore-recovery.apk.sha256").asFile.writeText(digest)
-    }
-}
-
 android {
     namespace = "com.lelloman.store.recovery"
     compileSdk = 36
@@ -34,8 +18,8 @@ android {
         applicationId = "com.lelloman.store.recovery"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
     signingConfigs {
         if (signingProperties.containsKey("storeFile")) {
@@ -59,7 +43,6 @@ android {
             }
         }
     }
-    sourceSets["main"].assets.srcDir(recoveryAssets)
     buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -72,14 +55,13 @@ android {
     }
 }
 
-tasks.named("preBuild").configure { dependsOn(bundleRecoveryStoreApk) }
-
 dependencies {
     implementation(project(":recovery-protocol"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.libadb.android)
+    implementation(libs.conscrypt.android)
     implementation(libs.sun.security.android)
 
     testImplementation(libs.junit)

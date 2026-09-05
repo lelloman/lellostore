@@ -1,4 +1,6 @@
 <resources>
+    <string name="resolve_attempt">Resolve attempt</string>
+    <string name="resolve_warning">Confirm only if LelloStore opens and works correctly. This closes the recovery attempt and permits a new protected update. No app data is erased.</string>
     <string name="app_name">LelloStore Recovery</string>
     <string name="recovery_title">LelloStore recovery</string>
     <string name="recovery_intro">Keeps an independent device identity and monitors LelloStore self-updates.</string>

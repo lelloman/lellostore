@@ -24,8 +24,25 @@ class RecoveryPolicyTest {
     @Test
     fun `health acknowledgement after repair records recovery`() {
         val repaired = attempt.copy(destructiveAttempts = 1)
-        assertThat(RecoveryPolicy.acknowledge(repaired, "attempt-1", 2, 150)?.status)
+        assertThat(RecoveryPolicy.acknowledge(repaired, "attempt-1", 1, 150)?.status)
             .isEqualTo(RecoveryStatus.RECOVERED)
+    }
+
+    @Test
+    fun `new attempts cannot overwrite unresolved or recovered attempts`() {
+        for (status in listOf(RecoveryStatus.AWAITING_HEALTH, RecoveryStatus.NEEDS_ATTENTION,
+            RecoveryStatus.REPAIRING, RecoveryStatus.RECOVERED, RecoveryStatus.MANUAL_RECOVERY)) {
+            assertThat(RecoveryPolicy.record(attempt.copy(status = status), attempt.copy(id = "new"))).isNull()
+        }
+        assertThat(RecoveryPolicy.record(attempt.copy(status = RecoveryStatus.HEALTHY), attempt.copy(id = "new"))).isNotNull()
+    }
+
+    @Test
+    fun `interrupted repair and unhealthy restored version require manual recovery`() {
+        assertThat(RecoveryPolicy.evaluate(attempt.copy(status = RecoveryStatus.REPAIRING), 150)?.status)
+            .isEqualTo(RecoveryStatus.MANUAL_RECOVERY)
+        assertThat(RecoveryPolicy.evaluate(attempt.copy(destructiveAttempts = 1), 200)?.status)
+            .isEqualTo(RecoveryStatus.MANUAL_RECOVERY)
     }
 
     @Test

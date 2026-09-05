@@ -25,6 +25,14 @@ val signingProperties = Properties().apply {
     }
 }
 
+val companionAssets = layout.buildDirectory.dir("generated/companion-assets")
+val bundleRecoveryCompanion by tasks.registering(Copy::class) {
+    dependsOn(":recovery:assembleRelease")
+    from(project(":recovery").layout.buildDirectory.file("outputs/apk/release/recovery-release.apk"))
+    into(companionAssets)
+    rename { "lellostore-companion.apk" }
+}
+
 android {
     lint {
         warningsAsErrors = true
@@ -32,13 +40,14 @@ android {
     }
     namespace = "com.lelloman.store"
     compileSdk = 36
+    testBuildType = providers.gradleProperty("deviceTestBuildType").orElse("debug").get()
 
     defaultConfig {
         applicationId = "com.lelloman.store"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.gradleProperty("storeVersionCode").orElse("2").get().toInt()
+        versionName = providers.gradleProperty("storeVersionName").orElse("1.1").get()
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
@@ -93,7 +102,10 @@ android {
         compose = true
         buildConfig = true
     }
+    sourceSets["main"].assets.srcDir(companionAssets)
 }
+
+tasks.named("preBuild").configure { dependsOn(bundleRecoveryCompanion) }
 
 dependencies {
     // Modules

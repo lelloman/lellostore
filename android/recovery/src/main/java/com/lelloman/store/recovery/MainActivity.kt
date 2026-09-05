@@ -54,8 +54,30 @@ class MainActivity : ComponentActivity() {
                 setOnClickListener { testAdb() }
             }, matchWrap(top = padding / 2))
             addView(repair, matchWrap(top = padding / 2))
+            addView(Button(context).apply {
+                text = getString(R.string.resolve_attempt)
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setMessage(R.string.resolve_warning)
+                        .setNegativeButton(R.string.cancel, null)
+                        .setPositiveButton(R.string.resolve_attempt) { _, _ ->
+                            store.update { current ->
+                                if (current?.status == RecoveryStatus.REPAIRING) current
+                                else current?.copy(status = RecoveryStatus.HEALTHY,
+                                    lastReason = "User confirmed Store is working and resolved the attempt",
+                                    finishedAtMillis = System.currentTimeMillis())
+                            }
+                            refresh()
+                        }.show()
+                }
+            }, matchWrap(top = padding / 2))
         }
         setContentView(ScrollView(this).apply { addView(content) })
+        refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
         refresh()
     }
 
@@ -65,8 +87,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refresh() {
-        val evaluated = RecoveryPolicy.evaluate(store.read(), System.currentTimeMillis())
-        if (evaluated != null) store.write(evaluated)
+        val evaluated = store.update { current ->
+            if (current?.status == RecoveryStatus.REPAIRING) current
+            else RecoveryPolicy.evaluate(current, System.currentTimeMillis())
+        }
         status.text = evaluated?.let {
             buildString {
                 append("Status: ").append(it.status.name.replace('_', ' '))
@@ -100,23 +124,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun runRepair() {
-        val repairing = RecoveryPolicy.beginExplicitRepair(store.read()) ?: return
-        store.write(repairing)
+        val repairing = store.update(RecoveryPolicy::beginExplicitRepair) ?: return
+        RecoveryDeadlineScheduler.cancel(this)
         refresh()
+        val work = RecoveryRepairRunner.start(applicationContext, repairing)
         scope.launch {
-            val result = withContext(Dispatchers.IO) { engine.repair(repairing) }
-            val finished = RecoveryPolicy.finishRepair(
-                repairing,
-                success = result.isSuccess,
-                reason = result.fold({ it }, { it.message ?: "Unknown recovery error" }),
-                now = System.currentTimeMillis(),
-            )
-            store.write(finished)
-            if (finished.status == RecoveryStatus.AWAITING_HEALTH) {
-                RecoveryDeadlineScheduler.schedule(this@MainActivity, finished.deadlineAtMillis)
-            } else {
-                RecoveryDeadlineScheduler.cancel(this@MainActivity)
-            }
+            work.join()
             refresh()
         }
     }

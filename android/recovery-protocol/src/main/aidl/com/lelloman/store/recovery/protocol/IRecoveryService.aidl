@@ -1,4 +1,5 @@
 package com.lelloman.store.recovery.protocol;
+import android.os.ParcelFileDescriptor;
 
 interface IRecoveryService {
     int protocolVersion();
@@ -18,4 +19,8 @@ interface IRecoveryService {
     byte[] restoreStoreCertificate();
     String pendingAttemptId();
     int pendingTargetVersion();
+    boolean backupStoreApk(in ParcelFileDescriptor apk, String sha256, int versionCode);
+    String testRecoveryConnection();
+    String pairRecoveryWireless(String code);
+    void startUpdatedStore();
 }

@@ -120,6 +120,11 @@ class DownloadManagerImpl @Inject constructor(
             val recoveryAttemptId = if (packageName == context.packageName) {
                 recovery.recordSelfUpdate(versionCode)
             } else null
+            if (packageName == context.packageName && recoveryAttemptId == null) {
+                val reason = context.getString(com.lelloman.store.R.string.self_update_not_ready)
+                failure = DownloadResult.Failed(reason)
+                throw InstallationFailedException(reason)
+            }
             when (val installResult = installationCoordinator.install(
                 InstallationRequest(
                     apk = destination,

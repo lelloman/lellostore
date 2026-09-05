@@ -7,6 +7,9 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
+import androidx.core.content.pm.PackageInfoCompat
+import java.io.File
 import com.lelloman.store.installation.SelfAdbConnectionManager
 import com.lelloman.store.recovery.protocol.IRecoveryService
 import com.lelloman.store.recovery.protocol.RecoveryContract
@@ -18,7 +21,56 @@ import java.security.MessageDigest
 import java.util.UUID
 
 class RecoveryCompanionClient(private val context: Context) {
+    private val preferences get() = context.getSharedPreferences("self-update-provisioning", Context.MODE_PRIVATE)
+
+    fun selfUpdatesEnabled(): Boolean = preferences.getBoolean("enabled", false) && trustedCompanionInstalled()
+
+    @android.annotation.SuppressLint("UseKtx") // commit result must be checked before reporting readiness.
+    fun setSelfUpdatesEnabled(enabled: Boolean) {
+        check(preferences.edit().putBoolean("enabled", enabled).commit())
+    }
+
+    fun trustedCompanionInstalled(): Boolean = runCatching {
+        val info = context.packageManager.getPackageInfo(RecoveryContract.RECOVERY_PACKAGE, 0)
+        PackageInfoCompat.getLongVersionCode(info) >= RecoveryContract.MIN_COMPANION_VERSION &&
+            context.packageManager.checkSignatures(context.packageName, RecoveryContract.RECOVERY_PACKAGE) == PackageManager.SIGNATURE_MATCH
+    }.getOrDefault(false)
+
+    suspend fun pairRecovery(code: String): Result<Unit> = runCatching {
+        val error = call { it.pairRecoveryWireless(code) } ?: error("Install or update the recovery companion first")
+        check(error.isEmpty()) { error }
+    }
+
+    suspend fun startAfterReplacement() { call { it.startUpdatedStore() } }
+
+    suspend fun provision(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            check(trustedCompanionInstalled()) { "Install or update the recovery companion first" }
+            check(context.applicationInfo.splitSourceDirs.isNullOrEmpty()) { "Recovery currently requires a single APK installation" }
+            restoreIdentityIfNeeded()
+            check(backupIdentity(SelfAdbConnectionManager.getInstance(context))) { "Could not protect the Store identity" }
+            val apk = File(context.applicationInfo.sourceDir)
+            val digest = MessageDigest.getInstance("SHA-256")
+            apk.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
+            val saved = ParcelFileDescriptor.open(apk, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                call { it.backupStoreApk(fd, sha256, installedVersion()) } == true
+            }
+            check(saved) { "Recovery snapshot could not be saved. Resolve any pending recovery attempt first." }
+            val reason = call { it.testRecoveryConnection() } ?: error("Recovery companion is unavailable")
+            check(reason.isEmpty()) { reason }
+        }
+    }
+
     suspend fun recordSelfUpdate(targetVersion: Int): String? {
+        if (!selfUpdatesEnabled() || provision().isFailure) return null
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             packageInfo.longVersionCode.toInt()
@@ -67,6 +119,7 @@ class RecoveryCompanionClient(private val context: Context) {
     } == true
 
     private suspend fun <T> call(block: (IRecoveryService) -> T): T? = withContext(Dispatchers.IO) {
+        if (!trustedCompanionInstalled()) return@withContext null
         val connected = CompletableDeferred<IRecoveryService?>()
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -129,7 +182,7 @@ class RecoveryCompanionClient(private val context: Context) {
     }
 
     private companion object {
-        const val SERVICE_TIMEOUT_MILLIS = 5_000L
+        const val SERVICE_TIMEOUT_MILLIS = 60_000L
         const val HEALTH_DEADLINE_MILLIS = 2 * 60_000L
     }
 }

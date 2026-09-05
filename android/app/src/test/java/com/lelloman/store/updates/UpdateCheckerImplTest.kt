@@ -29,6 +29,10 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdateCheckerImplTest {
+    private fun recoveryGate(enabled: Boolean = false): com.lelloman.store.recovery.SelfUpdateGate = mockk {
+        every { packageName } returns "com.lelloman.store"
+        every { enabled() } returns enabled
+    }
 
     @Test
     fun `availableUpdates initially empty`() = runTest {
@@ -42,6 +46,7 @@ class UpdateCheckerImplTest {
             appsRepository = mockk { every { watchApps() } returns appsFlow },
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
             userPreferencesStore = createPreferences(),
+            selfUpdateGate = recoveryGate(),
         )
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
@@ -129,6 +134,7 @@ class UpdateCheckerImplTest {
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
+            selfUpdateGate = recoveryGate(),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -163,6 +169,7 @@ class UpdateCheckerImplTest {
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
+            selfUpdateGate = recoveryGate(),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -191,6 +198,7 @@ class UpdateCheckerImplTest {
             appsRepository = appsRepository,
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
+            selfUpdateGate = recoveryGate(),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -261,11 +269,34 @@ class UpdateCheckerImplTest {
         )
     }
 
+    @Test
+    fun `Store update is visible but cannot run automatically before provisioning`() = runTest {
+        val store = createApp("com.lelloman.store", 3)
+        val checker = createChecker(MutableStateFlow(listOf(store)),
+            MutableStateFlow(listOf(InstalledApp(store.packageName, 2, "1.1"))))
+        val update = checker.checkForUpdates().getOrThrow().single()
+        assertThat(update.app.packageName).isEqualTo(store.packageName)
+        assertThat(update.autoUpdateEnabled).isFalse()
+    }
+
+    @Test
+    fun `provisioned Store participates in automatic updates but companion stays excluded`() = runTest {
+        val store = createApp("com.lelloman.store", 3)
+        val companion = createApp("com.lelloman.store.recovery", 3)
+        val checker = createChecker(MutableStateFlow(listOf(store, companion)),
+            MutableStateFlow(listOf(InstalledApp(store.packageName, 2, "1.1"),
+                InstalledApp(companion.packageName, 2, "1.1"))), selfEnabled = true)
+        val update = checker.checkForUpdates().getOrThrow().single()
+        assertThat(update.app.packageName).isEqualTo(store.packageName)
+        assertThat(update.autoUpdateEnabled).isTrue()
+    }
+
     private fun createChecker(
         apps: MutableStateFlow<List<App>>,
         installed: MutableStateFlow<List<InstalledApp>>,
         preferences: UserPreferencesStore = createPreferences(),
         details: Map<String, AppDetail> = apps.value.associate { it.packageName to it.toDetail() },
+        selfEnabled: Boolean = false,
     ): UpdateCheckerImpl {
         val appsRepository: AppsRepository = mockk {
             every { watchApps() } returns apps
@@ -278,7 +309,7 @@ class UpdateCheckerImplTest {
             every { watchInstalledApps() } returns installed
             coEvery { refreshInstalledApps() } returns Unit
         }
-        return UpdateCheckerImpl(appsRepository, installedRepository, preferences)
+        return UpdateCheckerImpl(appsRepository, installedRepository, preferences, recoveryGate(selfEnabled))
     }
 
     private fun App.toDetail() = AppDetail(

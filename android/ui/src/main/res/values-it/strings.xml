@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="settings_recovery_setup">Aggiornamenti di LelloStore e ripristino</string>
+    <string name="settings_recovery_setup_subtitle">Installa e associa il companion, poi abilita gli aggiornamenti protetti</string>
     <!-- Common -->
     <string name="retry">Riprova</string>
     <string name="cancel">Annulla</string>

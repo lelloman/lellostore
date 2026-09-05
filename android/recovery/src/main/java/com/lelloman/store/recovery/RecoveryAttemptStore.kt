@@ -6,10 +6,9 @@ import androidx.core.content.edit
 class RecoveryAttemptStore(context: Context) {
     private val preferences = context.getSharedPreferences("recovery-state-v1", Context.MODE_PRIVATE)
 
-    @Synchronized
-    fun read(): RecoveryAttempt? {
-        val id = preferences.getString("id", null) ?: return null
-        return RecoveryAttempt(
+    fun read(): RecoveryAttempt? = synchronized(RecoveryService::class.java) {
+        val id = preferences.getString("id", null) ?: return@synchronized null
+        RecoveryAttempt(
             id = id,
             packageName = preferences.getString("package", "") ?: "",
             currentVersion = preferences.getInt("currentVersion", -1),
@@ -26,9 +25,8 @@ class RecoveryAttemptStore(context: Context) {
         )
     }
 
-    @Synchronized
-    fun write(attempt: RecoveryAttempt) {
-        preferences.edit {
+    fun write(attempt: RecoveryAttempt) = synchronized(RecoveryService::class.java) {
+        preferences.edit(commit = true) {
             putString("id", attempt.id)
             putString("package", attempt.packageName)
             putInt("currentVersion", attempt.currentVersion)
@@ -42,4 +40,9 @@ class RecoveryAttemptStore(context: Context) {
             putLong("finishedAt", attempt.finishedAtMillis ?: -1)
         }
     }
+
+    fun update(transform: (RecoveryAttempt?) -> RecoveryAttempt?): RecoveryAttempt? =
+        synchronized(RecoveryService::class.java) {
+            transform(read())?.also(::write)
+        }
 }

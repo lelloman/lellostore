@@ -51,7 +51,6 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
                     )
                 }
             }
-            recovery.acknowledgePendingHealth()
         }
     }
 

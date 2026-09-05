@@ -201,6 +201,23 @@ class DownloadManagerImplTest {
         coVerify(exactly = 1) { remoteApiClient.downloadApk("com.test.app", 1) }
     }
 
+    @Test
+    fun `self installation is blocked in foreground and background until recovery is provisioned`() = runTest {
+        val bytes = "apk".toByteArray()
+        val store = "com.lelloman.store"
+        val detail = createAppDetail(packageName = store,
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong())
+        every { context.getString(com.lelloman.store.R.string.self_update_not_ready) } returns "Set up recovery first"
+        coEvery { appsRepository.refreshApp(store) } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk(store, 1) } answers { Result.success(ByteArrayInputStream(bytes)) }
+        for (mode in listOf(InstallationMode.FOREGROUND, InstallationMode.BACKGROUND)) {
+            val result = downloadManager.downloadAndInstall(store, 1, mode)
+            assertThat(result).isEqualTo(DownloadResult.Failed("Set up recovery first"))
+        }
+        coVerify(exactly = 0) { installationCoordinator.install(any()) }
+    }
+
     private fun createAppDetail(
         packageName: String = "com.test.app",
         sha256: String = "abc123",
