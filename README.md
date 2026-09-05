@@ -124,6 +124,35 @@ metrics port private unless it is intentionally scraped.
 
 ## Publisher
 
+### Publish the LelloStore Android app
+
+With `android/signing.properties` configured, build and upload the signed Store
+APK using the same wrapper workflow as Pezzottify and My Home:
+
+```sh
+./scripts/publish-android-to-lellostore.sh --dry-run --json
+./scripts/publish-android-to-lellostore.sh
+```
+
+The release APK includes the recovery companion for installation through Settings;
+the wrapper uploads **only LelloStore**, not a separate companion catalogue entry.
+All arguments are forwarded to the common publisher, which handles authentication
+and asks for confirmation before uploading. `--dry-run` builds and validates locally
+without authentication or upload. `LELLOSTORE_PUBLISHER` can override the publisher;
+otherwise the wrapper uses this checkout's `scripts/publish-to-lellostore.py`.
+
+For subsequent releases, choose a version code greater than every previously
+published Store version. Gradle's environment properties allow overriding the
+build defaults without editing files:
+
+```sh
+ORG_GRADLE_PROJECT_storeVersionCode=3 \
+ORG_GRADLE_PROJECT_storeVersionName=1.2 \
+./scripts/publish-android-to-lellostore.sh --dry-run --json
+```
+
+### Common publisher
+
 The dependency-free publisher is the authoritative client for repository build
 scripts and agents. It uses the OIDC device authorization flow and accepts
 configuration through options or environment variables:
