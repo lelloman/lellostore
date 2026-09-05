@@ -137,6 +137,8 @@ dependencies {
 
     // Self-ADB installation through the conventional local TCP endpoint.
     implementation(libs.libadb.android)
+    // libadb detects this provider for TLS pairing without Android hidden APIs.
+    implementation(libs.conscrypt.android)
     implementation(libs.sun.security.android)
 
     // Coil

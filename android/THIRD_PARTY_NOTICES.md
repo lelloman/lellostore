@@ -31,6 +31,14 @@ insufficient while the LGPL binary remains packaged.
 
 ## Security decision
 
+The Store bundles `org.conscrypt:conscrypt-android` 2.5.3 for libadb TLS pairing.
+Libadb selects this provider locally for its TLS context, including its public
+key-export API, instead of reflecting into Android's restricted internal Conscrypt
+API. It does not replace the application's global security provider.
+
+- Source and notices: <https://github.com/google/conscrypt/tree/2.5.3>
+- License: Apache-2.0, with bundled third-party notices in the upstream distribution.
+
 The upstream library states that it has not received a security audit. LelloStore
 therefore limits its integration to fixed ADB services needed for identity
 verification and streamed package installation. It does not expose arbitrary
