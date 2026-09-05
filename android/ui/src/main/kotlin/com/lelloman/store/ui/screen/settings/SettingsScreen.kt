@@ -497,6 +497,7 @@ private fun WirelessDebuggingSetupDialog(
     onDismiss: () -> Unit,
 ) {
     var pairingCode by rememberSaveable { mutableStateOf("") }
+    var showInstructions by rememberSaveable { mutableStateOf(false) }
     val isPairing = state == AdbConnectionState.Pairing
 
     AlertDialog(
@@ -504,26 +505,6 @@ private fun WirelessDebuggingSetupDialog(
         title = { Text(stringResource(R.string.wireless_debugging_setup)) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    text = stringResource(R.string.wireless_debugging_setup_intro),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
-                Text(stringResource(R.string.wireless_debugging_step_one))
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
-                Text(stringResource(R.string.wireless_debugging_step_two))
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
-                Text(stringResource(R.string.wireless_debugging_step_three))
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
-                Text(stringResource(R.string.wireless_debugging_step_four))
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
-                OutlinedButton(
-                    onClick = onOpenDeveloperSettings,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.open_developer_settings))
-                }
-                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
                 OutlinedTextField(
                     value = pairingCode,
                     onValueChange = { input ->
@@ -538,7 +519,7 @@ private fun WirelessDebuggingSetupDialog(
                                 Text(stringResource(R.string.wireless_debugging_ready, state.device))
                             is AdbConnectionState.Unavailable ->
                                 Text(stringResource(R.string.wireless_debugging_unavailable, state.reason))
-                            else -> Unit
+                            else -> Text(stringResource(R.string.pairing_code_hint))
                         }
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -546,6 +527,36 @@ private fun WirelessDebuggingSetupDialog(
                     enabled = !isPairing,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                Text(
+                    stringResource(R.string.pairing_split_screen_reminder),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(onClick = { showInstructions = !showInstructions }) {
+                    Text(stringResource(
+                        if (showInstructions) R.string.pairing_hide_help else R.string.pairing_show_help
+                    ))
+                    Icon(
+                        if (showInstructions) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                    )
+                }
+                if (showInstructions) {
+                    Text(stringResource(R.string.wireless_debugging_step_one))
+                    Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                    Text(stringResource(R.string.wireless_debugging_step_two))
+                    Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                    Text(stringResource(R.string.wireless_debugging_step_three))
+                    Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                    Text(stringResource(R.string.wireless_debugging_step_four))
+                    Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                    OutlinedButton(
+                        onClick = onOpenDeveloperSettings,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.open_developer_settings))
+                    }
+                }
             }
         },
         confirmButton = {

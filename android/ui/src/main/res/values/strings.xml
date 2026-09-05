@@ -159,6 +159,10 @@
     <string name="wireless_debugging_step_four">4. For first-time setup only, choose “Pair device with pairing code” in Settings. Enter that code below, then pair and test. If this device was paired before, simply re-enable Wireless Debugging and use “Test connection”.</string>
     <string name="open_developer_settings">Open Developer settings</string>
     <string name="pairing_code">Six-digit pairing code</string>
+    <string name="pairing_code_hint">Enter all 6 digits to enable “Pair and test”.</string>
+    <string name="pairing_split_screen_reminder">Keep Android’s pairing code visible in split screen while entering it here.</string>
+    <string name="pairing_show_help">How do I get a code?</string>
+    <string name="pairing_hide_help">Hide instructions</string>
     <string name="pair_and_test">Pair and test</string>
     <string name="settings_wireless_debugging">Test connection</string>
     <string name="wireless_debugging_not_tested">Tap to test the paired TLS connection</string>
