@@ -3,12 +3,12 @@ package com.lelloman.store.recovery
 import android.content.Context
 import android.content.pm.PackageManager
 import java.io.File
-import java.io.InputStream
+import java.util.UUID
 
 internal class RecoveryEngine(private val context: Context) {
     fun testConnection(): Result<String> = adbOperation {
         val adb = connect()
-        readCommand(adb, "shell:id; getprop ro.product.model").trim().also {
+        readCommand(adb, "id; getprop ro.product.model").trim().also {
             check(it.contains("uid=2000(shell)")) { "ADB did not provide a shell" }
         }
     }
@@ -25,7 +25,7 @@ internal class RecoveryEngine(private val context: Context) {
         val inPlace = install(adb, recoveryApk, allowDowngrade = true)
         if (!inPlace.startsWith("Success")) {
             check(inPlace.startsWith("Failure [")) { "In-place repair result is uncertain; inspect Store before proceeding" }
-            val uninstall = readCommand(adb, "shell:cmd package uninstall ${RecoveryPackages.STORE}").trim()
+            val uninstall = readCommand(adb, "cmd package uninstall ${RecoveryPackages.STORE}").trim()
             check(uninstall.startsWith("Success")) { "Store uninstall failed: $uninstall" }
             val cleanInstall = install(adb, recoveryApk, allowDowngrade = false)
             check(cleanInstall.startsWith("Success")) { "Recovery install failed: $cleanInstall" }
@@ -35,7 +35,7 @@ internal class RecoveryEngine(private val context: Context) {
 
     fun launchStore() = adbOperation {
         val adb = connect()
-        readCommand(adb, "shell:am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity")
+        readCommand(adb, "am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity")
     }.getOrThrow()
 
     private fun <T> adbOperation(block: () -> T): Result<T> = runCatching {
@@ -78,14 +78,18 @@ internal class RecoveryEngine(private val context: Context) {
 
     private fun install(adb: RecoveryAdbConnectionManager, apk: File, allowDowngrade: Boolean): String {
         val downgrade = if (allowDowngrade) " -d" else ""
-        return adb.openStream("exec:cmd package install -r$downgrade -S ${apk.length()}").use { stream ->
+        val marker = "\nlellostore-${UUID.randomUUID()}\n"
+        val command = "cmd package install -r$downgrade -S ${apk.length()}; printf \"$marker\""
+        return adb.openStream("exec:sh -c '$command'").use { stream ->
             apk.inputStream().use { it.copyTo(stream.openOutputStream()) }
-            readText(stream.openInputStream()).trim()
+            RecoveryCommandOutput.read(stream.openInputStream(), marker).trim()
         }
     }
 
-    private fun readText(input: InputStream): String = RecoveryCommandOutput.read(input)
-
-    private fun readCommand(adb: RecoveryAdbConnectionManager, command: String): String =
-        adb.openStream(command).use { readText(it.openInputStream()) }
+    private fun readCommand(adb: RecoveryAdbConnectionManager, command: String): String {
+        val marker = "\nlellostore-${UUID.randomUUID()}\n"
+        return adb.openStream("shell:$command; printf '$marker'").use {
+            RecoveryCommandOutput.read(it.openInputStream(), marker)
+        }
+    }
 }

@@ -89,10 +89,11 @@ cannot cancel a repair waiting for health. A second timeout becomes Manual recov
 one repair per attempt and no automatic retry loop.
 
 Command responses are limited to 16 KiB and their streams are closed on every
-outcome. Oversized output or a transport error, including one after a success or
-failure prefix, leaves the result uncertain and stops repair for manual inspection.
-This also applies to devices that report an ADB close packet as an I/O error;
-partial output alone never authorizes uninstall or confirms a successful repair.
+outcome. Each command prints a fresh completion marker after it finishes. This
+allows normal ADB stream closure on devices that surface it as an I/O error.
+Oversized output, EOF, or a transport error before that marker leaves the result
+uncertain and stops repair for manual inspection; a success or failure prefix
+alone never authorizes uninstall or confirms a successful repair.
 
 ## Verification
 
@@ -124,3 +125,18 @@ skip them. Never run the upgrade fixture test on a personal phone.
 Still requiring physical-device review: bundled installer UI, independent companion
 Wireless Debugging pairing, revoked authorization, reboot, and deliberately broken
 startup/destructive recovery. No artifacts were published during these tests.
+
+### Physical-device follow-up (2026-09-06)
+
+On OnePlus CPH2493 / Android 16, updated the signed Store and companion in place
+without clearing app data. The companion initially reported `Stream closed` on
+a valid legacy ADB connection. Fresh per-command completion markers fixed that
+normal-close compatibility issue while preserving rejection of partial responses.
+
+The signed `provisionAndBindHealthToAttempt` instrumentation test passed on this
+phone using its existing port-5555 authorization: APK snapshot and identity escrow,
+independent companion shell access, wrong-version acknowledgement rejection,
+stale-attempt cancellation rejection, and cancellation of the unreplaced test
+attempt. This test enables Store self-updates after successful provisioning.
+No higher-version fixture, uninstall, data clear, or destructive recovery was run
+on the personal phone. Wireless pairing, reboot, and revocation checks remain open.
