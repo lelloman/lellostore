@@ -110,6 +110,8 @@ class RecoveryService : Service() {
         }
 
         override fun backupStoreIdentity(privateKey: ByteArray, certificate: ByteArray): Boolean = authorized {
+            val current = attemptStore.read()
+            if (current != null && current.status !in setOf(RecoveryStatus.HEALTHY, RecoveryStatus.IDLE)) return@authorized false
             runCatching { identityStore.backup(privateKey, certificate) }.isSuccess
         }
 

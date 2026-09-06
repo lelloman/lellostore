@@ -114,7 +114,7 @@ class RecoveryCompanionClient(private val context: Context) {
     suspend fun acknowledgePendingHealth(): Boolean = call { service ->
         val attemptId = service.pendingAttemptId()
         val targetVersion = service.pendingTargetVersion()
-        if (attemptId.isBlank() || installedVersion() < targetVersion) false
+        if (attemptId.isBlank() || installedVersion() != targetVersion) false
         else service.acknowledgeHealth(attemptId, installedVersion())
     } == true
 

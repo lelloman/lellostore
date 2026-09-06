@@ -49,6 +49,9 @@ class RecoveryPolicyTest {
     fun `stale or wrong-version acknowledgement is rejected`() {
         assertThat(RecoveryPolicy.acknowledge(attempt, "other", 2, 150)).isNull()
         assertThat(RecoveryPolicy.acknowledge(attempt, "attempt-1", 1, 150)).isNull()
+        assertThat(RecoveryPolicy.acknowledge(attempt, "attempt-1", 3, 150)).isNull()
+        val repaired = attempt.copy(destructiveAttempts = 1)
+        assertThat(RecoveryPolicy.acknowledge(repaired, "attempt-1", 2, 150)).isNull()
     }
 
     @Test
@@ -81,5 +84,11 @@ class RecoveryPolicyTest {
         val result = RecoveryPolicy.cancelUnreplaced(attempt, "attempt-1", 1, "install rejected", 160)
         assertThat(result?.status).isEqualTo(RecoveryStatus.HEALTHY)
         assertThat(result?.lastReason).contains("install rejected")
+    }
+
+    @Test
+    fun `late cancellation cannot bypass health acknowledgement after repair`() {
+        val restored = attempt.copy(destructiveAttempts = 1)
+        assertThat(RecoveryPolicy.cancelUnreplaced(restored, "attempt-1", 1, "late rejection", 300)).isNull()
     }
 }

@@ -2,16 +2,13 @@ package com.lelloman.store.recovery
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 
 internal class RecoveryEngine(private val context: Context) {
     fun testConnection(): Result<String> = adbOperation {
         val adb = connect()
-        readText(adb.openStream("shell:id; getprop ro.product.model").openInputStream()).trim().also {
+        readCommand(adb, "shell:id; getprop ro.product.model").trim().also {
             check(it.contains("uid=2000(shell)")) { "ADB did not provide a shell" }
         }
     }
@@ -28,9 +25,7 @@ internal class RecoveryEngine(private val context: Context) {
         val inPlace = install(adb, recoveryApk, allowDowngrade = true)
         if (!inPlace.startsWith("Success")) {
             check(inPlace.startsWith("Failure [")) { "In-place repair result is uncertain; inspect Store before proceeding" }
-            val uninstall = readText(
-                adb.openStream("shell:cmd package uninstall ${RecoveryPackages.STORE}").openInputStream()
-            ).trim()
+            val uninstall = readCommand(adb, "shell:cmd package uninstall ${RecoveryPackages.STORE}").trim()
             check(uninstall.startsWith("Success")) { "Store uninstall failed: $uninstall" }
             val cleanInstall = install(adb, recoveryApk, allowDowngrade = false)
             check(cleanInstall.startsWith("Success")) { "Recovery install failed: $cleanInstall" }
@@ -40,9 +35,7 @@ internal class RecoveryEngine(private val context: Context) {
 
     fun launchStore() = adbOperation {
         val adb = connect()
-        readText(adb.openStream(
-            "shell:am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity"
-        ).openInputStream())
+        readCommand(adb, "shell:am start -n ${RecoveryPackages.STORE}/com.lelloman.store.MainActivity")
     }.getOrThrow()
 
     private fun <T> adbOperation(block: () -> T): Result<T> = runCatching {
@@ -91,20 +84,8 @@ internal class RecoveryEngine(private val context: Context) {
         }
     }
 
-    private fun readText(input: InputStream): String {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        try {
-            input.use {
-                while (true) {
-                    val count = it.read(buffer)
-                    if (count < 0) break
-                    output.write(buffer, 0, count)
-                }
-            }
-        } catch (error: IOException) {
-            if (output.size() == 0) throw error
-        }
-        return output.toString(Charsets.UTF_8.name())
-    }
+    private fun readText(input: InputStream): String = RecoveryCommandOutput.read(input)
+
+    private fun readCommand(adb: RecoveryAdbConnectionManager, command: String): String =
+        adb.openStream(command).use { readText(it.openInputStream()) }
 }

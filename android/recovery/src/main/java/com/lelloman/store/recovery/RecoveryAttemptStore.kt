@@ -1,7 +1,6 @@
 package com.lelloman.store.recovery
 
 import android.content.Context
-import androidx.core.content.edit
 
 class RecoveryAttemptStore(context: Context) {
     private val preferences = context.getSharedPreferences("recovery-state-v1", Context.MODE_PRIVATE)
@@ -25,8 +24,9 @@ class RecoveryAttemptStore(context: Context) {
         )
     }
 
+    @android.annotation.SuppressLint("UseKtx") // Recovery must stop if durable state could not be committed.
     fun write(attempt: RecoveryAttempt) = synchronized(RecoveryService::class.java) {
-        preferences.edit(commit = true) {
+        val editor = preferences.edit().apply {
             putString("id", attempt.id)
             putString("package", attempt.packageName)
             putInt("currentVersion", attempt.currentVersion)
@@ -39,6 +39,7 @@ class RecoveryAttemptStore(context: Context) {
             putString("lastReason", attempt.lastReason)
             putLong("finishedAt", attempt.finishedAtMillis ?: -1)
         }
+        check(editor.commit()) { "Could not persist recovery state" }
     }
 
     fun update(transform: (RecoveryAttempt?) -> RecoveryAttempt?): RecoveryAttempt? =

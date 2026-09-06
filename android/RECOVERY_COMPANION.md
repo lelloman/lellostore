@@ -66,7 +66,8 @@ Store. The rendered Store activity restores its identity and acknowledges health
 Application startup alone does not. An idle-safe alarm monitors the deadline and
 is rescheduled at boot. Missing health means Needs attention, never an automatic wipe.
 
-An unresolved attempt cannot be overwritten by a new backup or update. Rejected
+An unresolved attempt cannot have its APK or identity backup overwritten by a new
+backup or update. State commits must succeed before an operation reports success. Rejected
 installations close an attempt only while the previous version remains installed.
 Interrupted repair enters Manual recovery. After recovery, the user must inspect
 Store and choose **Resolve attempt** before another update can proceed.
@@ -82,8 +83,16 @@ stalled ADB operations.
 Full uninstall deletes Store settings, login, caches and other local-only data.
 The companion preserves recovery metadata, the signed APK and encrypted ADB
 identity. Restored Store health is checked against the saved version, not the
-failed target version. A second timeout becomes Manual recovery. There is at most
+failed target version. Health must match the exact expected version; a later
+unrelated installation cannot acknowledge the attempt. A late update rejection
+cannot cancel a repair waiting for health. A second timeout becomes Manual recovery. There is at most
 one repair per attempt and no automatic retry loop.
+
+Command responses are limited to 16 KiB and their streams are closed on every
+outcome. Oversized output or a transport error, including one after a success or
+failure prefix, leaves the result uncertain and stops repair for manual inspection.
+This also applies to devices that report an ADB close packet as an I/O error;
+partial output alone never authorizes uninstall or confirms a successful repair.
 
 ## Verification
 

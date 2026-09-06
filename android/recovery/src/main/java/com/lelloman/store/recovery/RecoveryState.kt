@@ -38,7 +38,7 @@ object RecoveryPolicy {
     fun acknowledge(current: RecoveryAttempt?, attemptId: String, installedVersion: Int, now: Long): RecoveryAttempt? {
         if (current == null || current.id != attemptId) return null
         val expectedVersion = if (current.destructiveAttempts > 0) current.currentVersion else current.targetVersion
-        if (installedVersion < expectedVersion) return null
+        if (installedVersion != expectedVersion) return null
         if (current.status != RecoveryStatus.AWAITING_HEALTH && current.status != RecoveryStatus.NEEDS_ATTENTION) return null
         return current.copy(
             status = if (current.destructiveAttempts > 0) RecoveryStatus.RECOVERED else RecoveryStatus.HEALTHY,
@@ -67,6 +67,7 @@ object RecoveryPolicy {
         now: Long,
     ): RecoveryAttempt? {
         if (current == null || current.id != attemptId || current.status != RecoveryStatus.AWAITING_HEALTH) return null
+        if (current.destructiveAttempts != 0) return null
         if (installedVersion != current.currentVersion) return null
         return current.copy(
             status = RecoveryStatus.HEALTHY,
