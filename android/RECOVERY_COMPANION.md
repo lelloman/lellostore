@@ -139,4 +139,22 @@ independent companion shell access, wrong-version acknowledgement rejection,
 stale-attempt cancellation rejection, and cancellation of the unreplaced test
 attempt. This test enables Store self-updates after successful provisioning.
 No higher-version fixture, uninstall, data clear, or destructive recovery was run
-on the personal phone. Wireless pairing, reboot, and revocation checks remain open.
+on the personal phone.
+
+Independent wireless pairing subsequently passed through the signed
+`pairIndependentWirelessIdentity` test. With legacy TCP explicitly disabled
+(`service.adb.tcp.port=0`), the provisioning/attempt test passed in 1.271 seconds,
+confirming operation without the port-5555 fallback.
+
+After a user-performed reboot, Wireless Debugging was off and the legacy TCP port
+was unset. The positive provisioning test failed at the connection gate in 10.522
+seconds with `Recovery connection failed`; this records the unavailable-transport
+behavior, not a passing positive test. After the user re-enabled Wireless
+Debugging, the same provisioning test passed in 1.169 seconds without another
+pairing operation, with legacy TCP still unset. The companion identity and saved
+pairing therefore survived reboot on this phone. Wireless Debugging was left on;
+legacy TCP remains disabled.
+
+Targeted authorization revocation, bundled-installer UI, and deliberate startup
+failure/destructive recovery still require validation. The checks above do not
+establish those outcomes.
