@@ -128,7 +128,11 @@
 
           <div v-else class="group-list">
             <v-card v-for="group in groups" :key="group.id" class="group-card" variant="outlined">
-              <div class="group-toolbar">
+              <div v-if="group.system_kind === 'all'" class="group-toolbar">
+                <h2 class="text-h6">{{ group.name }}</h2>
+                <v-chip color="primary" size="small" variant="tonal">System group</v-chip>
+              </div>
+              <div v-else class="group-toolbar">
                 <v-text-field
                   v-model="groupNames[group.id]"
                   label="Group name"
@@ -144,7 +148,10 @@
               <div class="group-grid">
                 <section>
                   <h3 class="text-subtitle-2 mb-3">App rules</h3>
-                  <div v-for="app in apps" :key="app.package_name" class="rule-row">
+                  <v-alert v-if="group.system_kind === 'all'" type="info" variant="tonal">
+                    Members have access to stable and beta releases of every current and future app.
+                  </v-alert>
+                  <div v-for="app in group.system_kind === 'all' ? [] : apps" :key="app.package_name" class="rule-row">
                     <span>
                       <strong>{{ app.name }}</strong>
                       <small>{{ app.package_name }}</small>
@@ -159,7 +166,7 @@
                       @update:model-value="setGroupGrant(group, app.package_name, $event)"
                     />
                   </div>
-                  <p v-if="apps.length === 0" class="text-body-2 text-medium-emphasis">No apps published.</p>
+                  <p v-if="group.system_kind !== 'all' && apps.length === 0" class="text-body-2 text-medium-emphasis">No apps published.</p>
                 </section>
                 <section>
                   <h3 class="text-subtitle-2 mb-3">Members</h3>
@@ -235,7 +242,9 @@ function higherLevel(levels: Array<AccessLevel | undefined>): AccessLevel | null
 const userGrantRows = computed(() => apps.value.map(app => {
   const direct = selectedAccess.value?.direct_grants.find(grant => grant.package_name === app.package_name)?.access_level ?? null
   const memberGroups = groups.value.filter(group => group.user_subjects.includes(selectedSubject.value))
-  const groupLevel = higherLevel(memberGroups.map(group => group.grants.find(grant => grant.package_name === app.package_name)?.access_level))
+  const groupLevel = higherLevel(memberGroups.map(group => group.system_kind === 'all'
+    ? 'beta'
+    : group.grants.find(grant => grant.package_name === app.package_name)?.access_level))
   const effective = selectedAccess.value?.effective_access.find(grant => grant.package_name === app.package_name)?.access_level ?? null
   return { packageName: app.package_name, name: app.name, direct, groupLevel, effective }
 }))

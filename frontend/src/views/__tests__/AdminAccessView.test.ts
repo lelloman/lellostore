@@ -39,6 +39,12 @@ function mountView() {
         VTabs: { template: '<nav><slot /></nav>' },
         VTab: { template: '<button><slot /></button>' },
         VAlert: { template: '<div><slot /></div>' },
+        VChip: { template: '<span><slot /></span>' },
+        VSelect: {
+          name: 'VSelect',
+          props: ['modelValue', 'items'],
+          template: '<select />',
+        },
         VTextField: {
           name: 'VTextField',
           props: ['modelValue'],
@@ -64,6 +70,7 @@ describe('AdminAccessView', () => {
     vi.mocked(api.createAppGroup).mockResolvedValue({
       id: 1,
       name: 'Media apps',
+      system_kind: null,
       created_at: '2026-09-02',
       updated_at: '2026-09-02',
     })
@@ -90,5 +97,27 @@ describe('AdminAccessView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Access service unavailable')
+  })
+
+  it('presents the all system group as protected dynamic access', async () => {
+    vi.mocked(api.getAppGroups).mockResolvedValue({
+      groups: [{
+        id: 1,
+        name: 'all',
+        system_kind: 'all',
+        created_at: '2026-09-09',
+        updated_at: '2026-09-09',
+        grants: [],
+        user_subjects: [],
+      }],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('System group')
+    expect(wrapper.text()).toContain('stable and beta releases of every current and future app')
+    expect(wrapper.text()).not.toContain('Save name')
+    expect(wrapper.text()).not.toContain('Delete')
   })
 })

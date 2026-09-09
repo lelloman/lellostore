@@ -39,6 +39,7 @@ pub struct EffectiveAppAccess {
 pub struct AppGroup {
     pub id: i64,
     pub name: String,
+    pub system_kind: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -102,6 +103,7 @@ pub async fn set_group_grant(
     package_name: &str,
     access_level: AppAccessLevel,
 ) -> Result<(), AppError> {
+    require_regular_group(pool, group_id).await?;
     sqlx::query(
         r#"
         INSERT INTO app_group_grants (group_id, package_name, access_level)
@@ -125,12 +127,30 @@ pub async fn remove_group_grant(
     group_id: i64,
     package_name: &str,
 ) -> Result<(), AppError> {
+    require_regular_group(pool, group_id).await?;
     sqlx::query("DELETE FROM app_group_grants WHERE group_id = ? AND package_name = ?")
         .bind(group_id)
         .bind(package_name)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
+    Ok(())
+}
+
+async fn require_regular_group(pool: &SqlitePool, group_id: i64) -> Result<(), AppError> {
+    let system_kind =
+        sqlx::query_as::<_, (Option<String>,)>("SELECT system_kind FROM app_groups WHERE id = ?")
+            .bind(group_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?
+            .ok_or_else(|| AppError::NotFound(format!("App group {group_id} not found")))?
+            .0;
+    if let Some(kind) = system_kind {
+        return Err(AppError::BadRequest(format!(
+            "System group '{kind}' has built-in app access"
+        )));
+    }
     Ok(())
 }
 
@@ -187,6 +207,15 @@ pub async fn get_effective_app_access(
             FROM user_app_group_memberships memberships
             JOIN app_group_grants grants ON grants.group_id = memberships.group_id
             WHERE memberships.user_subject = ?
+
+            UNION ALL
+
+            SELECT apps.package_name, 2
+            FROM user_app_group_memberships memberships
+            JOIN app_groups groups ON groups.id = memberships.group_id
+            CROSS JOIN apps
+            WHERE memberships.user_subject = ?
+              AND groups.system_kind = 'all'
         )
         SELECT package_name, MAX(access_rank)
         FROM grant_levels
@@ -194,6 +223,7 @@ pub async fn get_effective_app_access(
         ORDER BY package_name
         "#,
     )
+    .bind(user_subject)
     .bind(user_subject)
     .bind(user_subject)
     .fetch_all(pool)
@@ -255,6 +285,51 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn all_system_group_grants_beta_access_to_current_and_future_apps() {
+        let pool = test_pool().await;
+        insert_app(&pool, "app.one").await;
+        let all_group: AppGroup =
+            sqlx::query_as("SELECT * FROM app_groups WHERE system_kind = 'all'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        add_user_to_group(&pool, "user", all_group.id)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            get_effective_access_for_app(&pool, "user", "app.one")
+                .await
+                .unwrap(),
+            Some(AppAccessLevel::Beta)
+        );
+
+        insert_app(&pool, "app.two").await;
+        assert_eq!(
+            get_effective_access_for_app(&pool, "user", "app.two")
+                .await
+                .unwrap(),
+            Some(AppAccessLevel::Beta)
+        );
+    }
+
+    #[tokio::test]
+    async fn all_system_group_rejects_per_app_rules() {
+        let pool = test_pool().await;
+        insert_app(&pool, "app.one").await;
+        let group_id: i64 =
+            sqlx::query_scalar("SELECT id FROM app_groups WHERE system_kind = 'all'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let error = set_group_grant(&pool, group_id, "app.one", AppAccessLevel::Stable)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
     }
 
     #[tokio::test]

@@ -203,6 +203,7 @@ pub async fn rename_group(
         ));
     }
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    require_regular_group(&mut tx, group_id).await?;
     let result =
         sqlx::query("UPDATE app_groups SET name = ?, updated_at = datetime('now') WHERE id = ?")
             .bind(name)
@@ -235,6 +236,7 @@ pub async fn rename_group(
 
 pub async fn delete_group(pool: &SqlitePool, actor: &str, group_id: i64) -> Result<(), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    require_regular_group(&mut tx, group_id).await?;
     let result = sqlx::query("DELETE FROM app_groups WHERE id = ?")
         .bind(group_id)
         .execute(&mut *tx)
@@ -281,6 +283,23 @@ async fn require_app(conn: &mut SqliteConnection, package_name: &str) -> Result<
     if !exists {
         return Err(AppError::NotFound(format!(
             "App '{package_name}' not found"
+        )));
+    }
+    Ok(())
+}
+
+async fn require_regular_group(conn: &mut SqliteConnection, group_id: i64) -> Result<(), AppError> {
+    let system_kind =
+        sqlx::query_as::<_, (Option<String>,)>("SELECT system_kind FROM app_groups WHERE id = ?")
+            .bind(group_id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(AppError::Database)?
+            .ok_or_else(|| AppError::NotFound(format!("App group {group_id} not found")))?
+            .0;
+    if let Some(kind) = system_kind {
+        return Err(AppError::BadRequest(format!(
+            "System group '{kind}' cannot be modified"
         )));
     }
     Ok(())
@@ -352,16 +371,7 @@ pub async fn set_group_grant(
     level: AppAccessLevel,
 ) -> Result<(), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM app_groups WHERE id = ?)")
-        .bind(group_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(AppError::Database)?;
-    if !exists {
-        return Err(AppError::NotFound(format!(
-            "App group {group_id} not found"
-        )));
-    }
+    require_regular_group(&mut tx, group_id).await?;
     require_app(&mut tx, package_name).await?;
     sqlx::query(r#"INSERT INTO app_group_grants (group_id, package_name, access_level) VALUES (?, ?, ?)
         ON CONFLICT(group_id, package_name) DO UPDATE SET access_level = excluded.access_level, updated_at = datetime('now')"#)
@@ -386,6 +396,7 @@ pub async fn remove_group_grant(
     package_name: &str,
 ) -> Result<(), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    require_regular_group(&mut tx, group_id).await?;
     let result =
         sqlx::query("DELETE FROM app_group_grants WHERE group_id = ? AND package_name = ?")
             .bind(group_id)

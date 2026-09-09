@@ -198,6 +198,7 @@ export interface AppGrant {
 export interface AppGroup {
   id: number
   name: string
+  system_kind: 'all' | null
   created_at: string
   updated_at: string
   grants: AppGrant[]

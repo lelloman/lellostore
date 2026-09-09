@@ -961,6 +961,126 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
 }
 
 #[tokio::test]
+async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
+    let (ctx, mock_oidc) = create_auth_test_context().await;
+    for package_name in ["com.example.one", "com.example.two"] {
+        sqlx::query("INSERT INTO apps (package_name, name) VALUES (?, ?)")
+            .bind(package_name)
+            .bind(package_name)
+            .execute(&ctx.pool)
+            .await
+            .unwrap();
+        for (version_code, is_beta) in [(1_i64, false), (2_i64, true)] {
+            sqlx::query(
+                r#"INSERT INTO app_versions
+                   (package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta)
+                   VALUES (?, ?, ?, ?, 1, 'hash', 24, ?)"#,
+            )
+            .bind(package_name)
+            .bind(version_code)
+            .bind(version_code.to_string())
+            .bind(format!("{package_name}-{version_code}.apk"))
+            .bind(is_beta)
+            .execute(&ctx.pool)
+            .await
+            .unwrap();
+        }
+    }
+
+    let server = TestServer::new(ctx.router).unwrap();
+    let admin_token = mock_oidc.get_admin_token();
+    let user_token = mock_oidc.get_user_token();
+    let authorization: axum::http::HeaderName = "Authorization".parse().unwrap();
+
+    // Register the OIDC user in the server's administration directory.
+    assert_eq!(
+        server
+            .get("/api/apps")
+            .add_header(
+                authorization.clone(),
+                format!("Bearer {user_token}").parse().unwrap(),
+            )
+            .await
+            .status_code(),
+        StatusCode::OK
+    );
+
+    let groups = server
+        .get("/api/admin/app-groups")
+        .add_header(
+            authorization.clone(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(groups.status_code(), StatusCode::OK);
+    let groups: serde_json::Value = groups.json();
+    let all = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|group| group["system_kind"] == "all")
+        .expect("the all system group must be seeded");
+    let group_id = all["id"].as_i64().unwrap();
+    assert_eq!(all["name"], "all");
+    assert!(all["grants"].as_array().unwrap().is_empty());
+
+    let add_member = server
+        .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
+        .add_header(
+            authorization.clone(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
+
+    let catalogue = server
+        .get("/api/apps")
+        .add_header(
+            authorization.clone(),
+            format!("Bearer {user_token}").parse().unwrap(),
+        )
+        .await;
+    let catalogue: serde_json::Value = catalogue.json();
+    let apps = catalogue["apps"].as_array().unwrap();
+    assert_eq!(apps.len(), 2);
+    assert!(apps.iter().all(|app| app["access_level"] == "beta"));
+    assert!(apps
+        .iter()
+        .all(|app| app["latest_version"]["version_code"] == 2));
+
+    let rename = server
+        .put(&format!("/api/admin/app-groups/{group_id}"))
+        .add_header(
+            authorization.clone(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"name": "renamed"}))
+        .await;
+    assert_eq!(rename.status_code(), StatusCode::BAD_REQUEST);
+
+    let set_rule = server
+        .put(&format!(
+            "/api/admin/app-groups/{group_id}/apps/com.example.one"
+        ))
+        .add_header(
+            authorization.clone(),
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .json(&serde_json::json!({"access_level": "stable"}))
+        .await;
+    assert_eq!(set_rule.status_code(), StatusCode::BAD_REQUEST);
+
+    let delete = server
+        .delete(&format!("/api/admin/app-groups/{group_id}"))
+        .add_header(
+            authorization,
+            format!("Bearer {admin_token}").parse().unwrap(),
+        )
+        .await;
+    assert_eq!(delete.status_code(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
     sqlx::query("INSERT INTO apps (package_name, name) VALUES ('com.example.private', 'Private')")

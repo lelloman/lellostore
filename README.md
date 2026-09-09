@@ -61,6 +61,13 @@ Important settings are:
 | `BUNDLETOOL_PATH` | unset | Optional bundletool JAR for AAB uploads |
 | `JAVA_PATH` | unset | Java executable used with bundletool |
 
+### Access groups
+
+Database migrations create a protected `all` system group. Membership grants
+beta-level access to every current and future application, which includes both
+stable and beta releases. Administrators can manage membership, but cannot
+rename or delete the group or replace its dynamic policy with per-app rules.
+
 ## Frontend
 
 Copy `frontend/.env.example` to `frontend/.env.local` and set the OIDC issuer,
