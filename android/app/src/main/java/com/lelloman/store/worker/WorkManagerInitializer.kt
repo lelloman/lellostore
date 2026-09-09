@@ -2,8 +2,10 @@ package com.lelloman.store.worker
 
 import android.content.Context
 import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.lelloman.store.di.ApplicationScope
@@ -34,16 +36,24 @@ class WorkManagerInitializer @Inject constructor(
         }
     }
 
+    fun enqueueImmediateUpdateCheck() {
+        val request = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+            .setConstraints(networkConstraints())
+            .build()
+
+        workManager.enqueueUniqueWork(
+            UpdateCheckWorker.IMMEDIATE_WORK_NAME,
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
+    }
+
     private fun scheduleUpdateCheck(interval: UpdateCheckInterval) {
         if (interval == UpdateCheckInterval.Manual) {
             // Cancel any existing periodic work when set to Manual
             workManager.cancelUniqueWork(UpdateCheckWorker.WORK_NAME)
             return
         }
-
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
 
         val intervalHours = when (interval) {
             UpdateCheckInterval.Hours6 -> 6L
@@ -56,7 +66,7 @@ class WorkManagerInitializer @Inject constructor(
             repeatInterval = intervalHours,
             repeatIntervalTimeUnit = TimeUnit.HOURS,
         )
-            .setConstraints(constraints)
+            .setConstraints(networkConstraints())
             .build()
 
         // Use REPLACE to update the interval if it changed
@@ -66,4 +76,8 @@ class WorkManagerInitializer @Inject constructor(
             updateCheckRequest,
         )
     }
+
+    private fun networkConstraints(): Constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .build()
 }

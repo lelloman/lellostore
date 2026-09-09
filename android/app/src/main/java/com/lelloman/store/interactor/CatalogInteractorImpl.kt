@@ -7,6 +7,7 @@ import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.ui.model.AppModel
 import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.screen.catalog.CatalogViewModel
+import com.lelloman.store.worker.WorkManagerInitializer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -15,6 +16,7 @@ class CatalogInteractorImpl @Inject constructor(
     private val appsRepository: AppsRepository,
     private val installedAppsRepository: InstalledAppsRepository,
     private val downloadManager: DownloadManager,
+    private val workManagerInitializer: WorkManagerInitializer,
 ) : CatalogViewModel.Interactor {
 
     override fun watchApps(): Flow<List<AppModel>> {
@@ -54,7 +56,9 @@ class CatalogInteractorImpl @Inject constructor(
     }
 
     override suspend fun refreshApps(): Result<Unit> {
-        return appsRepository.refreshApps()
+        return appsRepository.refreshApps().onSuccess {
+            workManagerInitializer.enqueueImmediateUpdateCheck()
+        }
     }
 
     override suspend fun refreshInstalledApps() {

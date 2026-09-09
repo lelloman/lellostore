@@ -108,6 +108,7 @@ class UpdateCheckWorker @AssistedInject constructor(
 
     companion object {
         const val WORK_NAME = "update_check_work"
+        const val IMMEDIATE_WORK_NAME = "immediate_update_check_work"
         private const val MAX_RETRIES = 3
     }
 }
