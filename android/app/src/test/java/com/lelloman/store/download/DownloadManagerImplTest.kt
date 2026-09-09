@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
+import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadState
@@ -42,6 +43,7 @@ class DownloadManagerImplTest {
     private lateinit var context: Context
     private lateinit var remoteApiClient: RemoteApiClient
     private lateinit var appsRepository: AppsRepository
+    private lateinit var installedAppsRepository: InstalledAppsRepository
     private lateinit var logger: Logger
     private lateinit var installationCoordinator: InstallationCoordinator
     private lateinit var downloadManager: DownloadManagerImpl
@@ -51,6 +53,7 @@ class DownloadManagerImplTest {
         context = mockk(relaxed = true)
         remoteApiClient = mockk()
         appsRepository = mockk()
+        installedAppsRepository = mockk(relaxed = true)
         logger = mockk(relaxed = true)
         installationCoordinator = mockk(relaxed = true)
 
@@ -65,6 +68,7 @@ class DownloadManagerImplTest {
             context = context,
             remoteApiClient = remoteApiClient,
             appsRepository = appsRepository,
+            installedAppsRepository = installedAppsRepository,
             logger = logger,
             installationCoordinator = installationCoordinator,
         )
@@ -199,6 +203,26 @@ class DownloadManagerImplTest {
         assertThat(backgroundResult).isEqualTo(DownloadResult.UserActionRequired)
         assertThat(foregroundResult).isEqualTo(DownloadResult.Success)
         coVerify(exactly = 1) { remoteApiClient.downloadApk("com.test.app", 1) }
+    }
+
+    @Test
+    fun `successful silent installation refreshes persistent installed state`() = runTest {
+        val bytes = "apk".toByteArray()
+        val detail = createAppDetail(
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong(),
+        )
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } returns
+            Result.success(ByteArrayInputStream(bytes))
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Installed(
+            InstallationChannelMetadata("legacy-adb", "ADB", false, 10)
+        )
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(DownloadResult.Success)
+        coVerify(exactly = 1) { installedAppsRepository.refreshInstalledApp("com.test.app") }
     }
 
     @Test

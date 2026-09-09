@@ -22,6 +22,7 @@ data class AppUiModel(
     val description: String?,
     val isInstalled: Boolean,
     val hasUpdate: Boolean,
+    val isUpdating: Boolean,
 )
 
 enum class CatalogFilter {

@@ -1,22 +1,38 @@
 package com.lelloman.store.interactor
 
 import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.apps.InstalledAppsRepository
+import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.model.AvailableUpdate
 import com.lelloman.store.domain.updates.UpdateChecker
 import com.lelloman.store.ui.screen.updates.UpdateUiModel
 import com.lelloman.store.ui.screen.updates.UpdatesViewModel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 
 class UpdatesInteractorImpl @Inject constructor(
     private val updateChecker: UpdateChecker,
     private val downloadManager: DownloadManager,
+    private val installedAppsRepository: InstalledAppsRepository,
 ) : UpdatesViewModel.Interactor {
 
     override fun watchUpdates(): Flow<List<UpdateUiModel>> {
-        return updateChecker.availableUpdates.map { updates ->
-            updates.map { it.toUiModel() }
+        return combine(
+            updateChecker.availableUpdates,
+            installedAppsRepository.watchInstalledApps(),
+            downloadManager.activeDownloads,
+        ) { updates, installedApps, activeDownloads ->
+            val installedVersions = installedApps.associate { it.packageName to it.versionCode }
+            updates.mapNotNull { update ->
+                val installedVersion = installedVersions[update.app.packageName]
+                    ?: return@mapNotNull null
+                if (installedVersion >= update.app.latestVersion.versionCode) {
+                    null
+                } else {
+                    update.toUiModel(activeDownloads[update.app.packageName])
+                }
+            }
         }
     }
 
@@ -34,7 +50,7 @@ class UpdatesInteractorImpl @Inject constructor(
         }
     }
 
-    private fun AvailableUpdate.toUiModel(): UpdateUiModel {
+    private fun AvailableUpdate.toUiModel(progress: DownloadProgress?): UpdateUiModel {
         return UpdateUiModel(
             packageName = app.packageName,
             appName = app.name,
@@ -43,6 +59,8 @@ class UpdatesInteractorImpl @Inject constructor(
             availableVersion = app.latestVersion.versionName,
             updateSize = formatSize(app.latestVersion.size),
             releaseChannel = effectiveReleaseChannel,
+            downloadState = progress?.state,
+            downloadProgress = progress?.progress ?: 0f,
         )
     }
 

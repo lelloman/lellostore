@@ -2,6 +2,10 @@ package com.lelloman.store.interactor
 
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.apps.InstalledAppsRepository
+import com.lelloman.store.domain.model.InstalledApp
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.domain.model.AvailableUpdate
@@ -24,20 +28,27 @@ class UpdatesInteractorImplTest {
 
     private lateinit var updateChecker: UpdateChecker
     private lateinit var downloadManager: DownloadManager
+    private lateinit var installedAppsRepository: InstalledAppsRepository
     private lateinit var interactor: UpdatesInteractorImpl
 
     private val updatesFlow = MutableStateFlow<List<AvailableUpdate>>(emptyList())
+    private val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
+    private val downloadsFlow = MutableStateFlow(emptyMap<String, DownloadProgress>())
 
     @Before
     fun setup() {
         updateChecker = mockk()
         downloadManager = mockk()
+        installedAppsRepository = mockk()
 
         every { updateChecker.availableUpdates } returns updatesFlow
+        every { installedAppsRepository.watchInstalledApps() } returns installedAppsFlow
+        every { downloadManager.activeDownloads } returns downloadsFlow
 
         interactor = UpdatesInteractorImpl(
             updateChecker = updateChecker,
             downloadManager = downloadManager,
+            installedAppsRepository = installedAppsRepository,
         )
     }
 
@@ -51,6 +62,7 @@ class UpdatesInteractorImplTest {
             effectiveReleaseChannel = ReleaseChannel.Beta,
         )
         updatesFlow.value = listOf(update)
+        installedAppsFlow.value = listOf(InstalledApp("com.test.app", 1, "1.0"))
 
         val uiModels = interactor.watchUpdates().first()
 
@@ -61,6 +73,34 @@ class UpdatesInteractorImplTest {
         assertThat(uiModel.installedVersion).isEqualTo("1.0")
         assertThat(uiModel.availableVersion).isEqualTo("2.0")
         assertThat(uiModel.releaseChannel).isEqualTo(ReleaseChannel.Beta)
+    }
+
+    @Test
+    fun `watchUpdates pushes active operation state`() = runTest {
+        updatesFlow.value = listOf(AvailableUpdate(createApp("com.test.app"), 1, "1.0"))
+        installedAppsFlow.value = listOf(InstalledApp("com.test.app", 1, "1.0"))
+        downloadsFlow.value = mapOf(
+            "com.test.app" to DownloadProgress(
+                packageName = "com.test.app",
+                progress = 0.4f,
+                bytesDownloaded = 400,
+                totalBytes = 1000,
+                state = DownloadState.DOWNLOADING,
+            )
+        )
+
+        val uiModel = interactor.watchUpdates().first().single()
+
+        assertThat(uiModel.downloadState).isEqualTo(DownloadState.DOWNLOADING)
+        assertThat(uiModel.downloadProgress).isEqualTo(0.4f)
+    }
+
+    @Test
+    fun `watchUpdates removes update when persisted installed version reaches target`() = runTest {
+        updatesFlow.value = listOf(AvailableUpdate(createApp("com.test.app"), 1, "1.0"))
+        installedAppsFlow.value = listOf(InstalledApp("com.test.app", 2, "2.0"))
+
+        assertThat(interactor.watchUpdates().first()).isEmpty()
     }
 
     @Test
@@ -109,6 +149,11 @@ class UpdatesInteractorImplTest {
             AvailableUpdate(app1kb, 1, "1.0"),
             AvailableUpdate(app1mb, 1, "1.0"),
             AvailableUpdate(app10mb, 1, "1.0"),
+        )
+        installedAppsFlow.value = listOf(
+            InstalledApp("com.test.1kb", 1, "1.0"),
+            InstalledApp("com.test.1mb", 1, "1.0"),
+            InstalledApp("com.test.10mb", 1, "1.0"),
         )
 
         val uiModels = interactor.watchUpdates().first()

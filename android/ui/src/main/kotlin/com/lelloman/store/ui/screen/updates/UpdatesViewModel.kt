@@ -3,6 +3,7 @@ package com.lelloman.store.ui.screen.updates
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.download.DownloadState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,4 +80,6 @@ data class UpdateUiModel(
     val availableVersion: String,
     val updateSize: String,
     val releaseChannel: ReleaseChannel,
+    val downloadState: DownloadState? = null,
+    val downloadProgress: Float = 0f,
 )

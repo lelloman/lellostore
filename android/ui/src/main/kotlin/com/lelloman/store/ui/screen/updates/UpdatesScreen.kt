@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.ui.R
 import com.lelloman.store.ui.components.LelloStoreAppIcon
 import com.lelloman.store.ui.components.LelloStoreStateContent
@@ -194,6 +195,12 @@ private fun UpdateRow(
     onUpdateClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isUpdating = update.downloadState != null && update.downloadState !in setOf(
+        DownloadState.COMPLETED,
+        DownloadState.FAILED,
+        DownloadState.CANCELLED,
+        DownloadState.PERMISSION_REQUIRED,
+    )
     val channel = stringResource(
         when (update.releaseChannel) {
             ReleaseChannel.Stable -> R.string.release_channel_stable
@@ -243,10 +250,21 @@ private fun UpdateRow(
             Spacer(Modifier.height(LelloStoreSpacing.medium))
             Button(
                 onClick = onUpdateClick,
+                enabled = !isUpdating,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 colors = lelloStoreButtonColors(),
             ) {
-                Text(stringResource(R.string.update))
+                if (isUpdating) {
+                    CircularProgressIndicator(
+                        progress = { update.downloadProgress },
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(LelloStoreSpacing.small))
+                    Text(stringResource(R.string.updating))
+                } else {
+                    Text(stringResource(R.string.update))
+                }
             }
         }
     }

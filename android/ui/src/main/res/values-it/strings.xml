@@ -59,6 +59,7 @@
     <string name="app_detail_load_error_title">Impossibile caricare i dettagli dell’app</string>
     <string name="install">Installa</string>
     <string name="update">Aggiorna</string>
+    <string name="updating">Aggiornamento…</string>
     <string name="open">Apri</string>
     <string name="installed_version">Versione installata</string>
     <string name="current_version">Versione attuale</string>

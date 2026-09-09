@@ -320,6 +320,7 @@ private fun CatalogAppRow(
     modifier: Modifier = Modifier,
 ) {
     val statusLabel = when {
+        app.isUpdating -> stringResource(R.string.updating)
         app.hasUpdate -> stringResource(R.string.status_update)
         app.isInstalled -> stringResource(R.string.status_installed)
         else -> null
@@ -331,7 +332,7 @@ private fun CatalogAppRow(
         supportingText = stringResource(R.string.version_value, app.versionName),
         description = app.description,
         statusLabel = statusLabel,
-        statusEmphasized = app.hasUpdate,
+        statusEmphasized = app.hasUpdate || app.isUpdating,
         onClick = onClick,
         modifier = modifier,
     )

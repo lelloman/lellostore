@@ -2,6 +2,8 @@ package com.lelloman.store.interactor
 
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
+import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.ui.model.AppModel
 import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.screen.catalog.CatalogViewModel
@@ -12,6 +14,7 @@ import javax.inject.Inject
 class CatalogInteractorImpl @Inject constructor(
     private val appsRepository: AppsRepository,
     private val installedAppsRepository: InstalledAppsRepository,
+    private val downloadManager: DownloadManager,
 ) : CatalogViewModel.Interactor {
 
     override fun watchApps(): Flow<List<AppModel>> {
@@ -42,6 +45,14 @@ class CatalogInteractorImpl @Inject constructor(
         }
     }
 
+    override fun watchUpdatingPackages(): Flow<Set<String>> {
+        return downloadManager.activeDownloads.map { downloads ->
+            downloads.values
+                .filter { it.state.isInProgress }
+                .mapTo(mutableSetOf()) { it.packageName }
+        }
+    }
+
     override suspend fun refreshApps(): Result<Unit> {
         return appsRepository.refreshApps()
     }
@@ -50,3 +61,9 @@ class CatalogInteractorImpl @Inject constructor(
         installedAppsRepository.refreshInstalledApps()
     }
 }
+
+private val DownloadState.isInProgress: Boolean
+    get() = this != DownloadState.COMPLETED &&
+        this != DownloadState.FAILED &&
+        this != DownloadState.CANCELLED &&
+        this != DownloadState.PERMISSION_REQUIRED

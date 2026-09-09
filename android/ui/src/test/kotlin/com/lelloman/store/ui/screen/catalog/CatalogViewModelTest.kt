@@ -92,6 +92,23 @@ class CatalogViewModelTest {
     }
 
     @Test
+    fun `active update state is pushed into app rows`() = runTest {
+        fakeInteractor.mutableApps.value = listOf(
+            createApp("com.test.app1", "Test App 1", versionCode = 2),
+        )
+        fakeInteractor.mutableInstalledApps.value = listOf(
+            InstalledAppModel("com.test.app1", 1, "1.0.0"),
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        fakeInteractor.mutableUpdatingPackages.value = setOf("com.test.app1")
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.apps.single().isUpdating).isTrue()
+    }
+
+    @Test
     fun `search query filters apps by name`() = runTest {
         fakeInteractor.mutableApps.value = listOf(
             createApp("com.test.app1", "Calculator"),
@@ -359,12 +376,15 @@ class CatalogViewModelTest {
 class FakeCatalogInteractor : CatalogViewModel.Interactor {
     val mutableApps = MutableStateFlow<List<AppModel>>(emptyList())
     val mutableInstalledApps = MutableStateFlow<List<InstalledAppModel>>(emptyList())
+    val mutableUpdatingPackages = MutableStateFlow<Set<String>>(emptySet())
     var refreshAppsResult: Result<Unit> = Result.success(Unit)
     var refreshAppsCalled = false
 
     override fun watchApps(): Flow<List<AppModel>> = mutableApps
 
     override fun watchInstalledApps(): Flow<List<InstalledAppModel>> = mutableInstalledApps
+
+    override fun watchUpdatingPackages(): Flow<Set<String>> = mutableUpdatingPackages
 
     override suspend fun refreshApps(): Result<Unit> {
         refreshAppsCalled = true

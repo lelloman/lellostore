@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.core.net.toUri
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.apps.AppsRepository
+import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadProgress
@@ -41,6 +42,7 @@ class DownloadManagerImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val remoteApiClient: RemoteApiClient,
     private val appsRepository: AppsRepository,
+    private val installedAppsRepository: InstalledAppsRepository,
     private val logger: Logger,
     private val installationCoordinator: InstallationCoordinator,
 ) : DownloadManager {
@@ -133,8 +135,16 @@ class DownloadManagerImpl @Inject constructor(
                     mode = installationMode,
                 )
             )) {
-                is InstallationResult.Installed,
+                is InstallationResult.Installed -> {
+                    // The package manager is the source of truth. Persist its new snapshot before
+                    // reporting completion so every Room observer updates in the same UI frame.
+                    installedAppsRepository.refreshInstalledApp(packageName)
+                    finalState = DownloadState.COMPLETED
+                    updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
+                }
                 is InstallationResult.UserActionStarted -> {
+                    // The package-change receiver refreshes persistent installed state after the
+                    // user confirms Android's installer. Until then this only means it was opened.
                     finalState = DownloadState.COMPLETED
                     updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
                 }

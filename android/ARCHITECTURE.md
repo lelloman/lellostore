@@ -65,11 +65,18 @@ The remote API resolves the current server URL for every request, so changing a
 setting does not leave a client pinned to an old endpoint. It sends the current
 access token and reports an expired session through the shared handler.
 
-The application owns active download jobs by package name. A download streams to
-cache, reports progress, verifies its SHA-256 digest, and launches Android's
-package installer through a FileProvider URI. Cancelling a download cancels the
-underlying coroutine and removes partial state instead of merely changing the
-UI. Installed-package state is refreshed when detail screens resume.
+The application owns active download jobs and a shared operation-state flow by
+package name. Catalog, updates, and detail surfaces observe that flow rather
+than maintaining local installation flags. A download streams to cache, reports
+progress, verifies its SHA-256 digest, and launches Android's package installer
+through a FileProvider URI. Cancelling a download cancels the underlying
+coroutine and removes partial state instead of merely changing the UI.
+
+Installed-package state is a persistent Room snapshot of Android's authoritative
+package-manager state. Silent installation success and package add, replace, or
+remove broadcasts refresh that snapshot; its Room flows push the resulting
+version change to every observing screen. Detail resume remains a reconciliation
+fallback for an interrupted or missed broadcast.
 
 ## Updates
 

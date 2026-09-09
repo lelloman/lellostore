@@ -58,6 +58,7 @@
     <string name="app_detail_load_error_title">Couldn’t load app details</string>
     <string name="install">Install</string>
     <string name="update">Update</string>
+    <string name="updating">Updating…</string>
     <string name="open">Open</string>
     <string name="installed_version">Installed Version</string>
     <string name="current_version">Current version</string>

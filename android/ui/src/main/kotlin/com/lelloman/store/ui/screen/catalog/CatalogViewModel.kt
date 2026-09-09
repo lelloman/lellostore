@@ -37,9 +37,10 @@ class CatalogViewModel @Inject constructor(
             combine(
                 interactor.watchApps(),
                 interactor.watchInstalledApps(),
+                interactor.watchUpdatingPackages(),
                 mutableState,
-            ) { apps, installedApps, state ->
-                processApps(apps, installedApps, state)
+            ) { apps, installedApps, updatingPackages, state ->
+                processApps(apps, installedApps, updatingPackages, state)
             }.collect { result ->
                 mutableState.value = mutableState.value.copy(
                     apps = result.filteredApps,
@@ -61,6 +62,7 @@ class CatalogViewModel @Inject constructor(
     private fun processApps(
         apps: List<AppModel>,
         installedApps: List<InstalledAppModel>,
+        updatingPackages: Set<String>,
         state: CatalogScreenState,
     ): ProcessedApps {
         val installedMap = installedApps.associateBy { it.packageName }
@@ -76,6 +78,7 @@ class CatalogViewModel @Inject constructor(
                 description = app.description,
                 isInstalled = installed != null,
                 hasUpdate = installed != null && installed.versionCode < app.latestVersionCode,
+                isUpdating = app.packageName in updatingPackages,
             )
         }
 
@@ -173,6 +176,7 @@ class CatalogViewModel @Inject constructor(
     interface Interactor {
         fun watchApps(): Flow<List<AppModel>>
         fun watchInstalledApps(): Flow<List<InstalledAppModel>>
+        fun watchUpdatingPackages(): Flow<Set<String>>
         suspend fun refreshApps(): Result<Unit>
         suspend fun refreshInstalledApps()
     }
