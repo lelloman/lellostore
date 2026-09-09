@@ -38,6 +38,12 @@ enum class DownloadState {
     PERMISSION_REQUIRED
 }
 
+val DownloadState.isInProgress: Boolean
+    get() = this != DownloadState.COMPLETED &&
+        this != DownloadState.FAILED &&
+        this != DownloadState.CANCELLED &&
+        this != DownloadState.PERMISSION_REQUIRED
+
 sealed interface DownloadResult {
     data object Success : DownloadResult
     data object Cancelled : DownloadResult

@@ -23,7 +23,11 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -46,6 +50,7 @@ class DownloadManagerImplTest {
     private lateinit var installedAppsRepository: InstalledAppsRepository
     private lateinit var logger: Logger
     private lateinit var installationCoordinator: InstallationCoordinator
+    private lateinit var foregroundServiceStarter: DownloadForegroundServiceStarter
     private lateinit var downloadManager: DownloadManagerImpl
 
     @Before
@@ -56,6 +61,7 @@ class DownloadManagerImplTest {
         installedAppsRepository = mockk(relaxed = true)
         logger = mockk(relaxed = true)
         installationCoordinator = mockk(relaxed = true)
+        foregroundServiceStarter = mockk(relaxed = true)
 
         val cacheDir = tempFolder.newFolder("cache")
         every { context.cacheDir } returns cacheDir
@@ -71,6 +77,8 @@ class DownloadManagerImplTest {
             installedAppsRepository = installedAppsRepository,
             logger = logger,
             installationCoordinator = installationCoordinator,
+            foregroundServiceStarter = foregroundServiceStarter,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
     }
 
@@ -92,7 +100,7 @@ class DownloadManagerImplTest {
         }
 
         // Start first download in background
-        launch {
+        val firstDownload = launch {
             downloadManager.downloadAndInstall("com.test.app", 1)
         }
 
@@ -103,6 +111,8 @@ class DownloadManagerImplTest {
         val result = downloadManager.downloadAndInstall("com.test.app", 1)
 
         assertThat(result).isEqualTo(DownloadResult.Failed("Download already in progress"))
+        downloadManager.cancelDownload("com.test.app")
+        firstDownload.cancelAndJoin()
     }
 
     @Test
@@ -165,13 +175,31 @@ class DownloadManagerImplTest {
         runCurrent()
 
         downloadManager.cancelDownload("com.test.app")
-        runCurrent()
+        download.join()
 
         try {
             assertThat(download.isCancelled).isTrue()
         } finally {
             download.cancel()
         }
+    }
+
+    @Test
+    fun `foreground download survives cancellation of the screen coroutine`() = runTest {
+        coEvery { appsRepository.refreshApp("com.test.app") } coAnswers { awaitCancellation() }
+
+        val screenRequest = launch {
+            downloadManager.downloadAndInstall("com.test.app", 1)
+        }
+        runCurrent()
+
+        screenRequest.cancelAndJoin()
+
+        assertThat(downloadManager.activeDownloads.value["com.test.app"]?.state)
+            .isEqualTo(DownloadState.PENDING)
+        verify { foregroundServiceStarter.start() }
+
+        downloadManager.cancelDownload("com.test.app")
     }
 
     @Test
@@ -223,6 +251,7 @@ class DownloadManagerImplTest {
 
         assertThat(result).isEqualTo(DownloadResult.Success)
         coVerify(exactly = 1) { installedAppsRepository.refreshInstalledApp("com.test.app") }
+        verify(exactly = 1) { foregroundServiceStarter.start() }
     }
 
     @Test

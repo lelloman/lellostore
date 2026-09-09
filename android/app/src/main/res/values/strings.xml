@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">LelloStore</string>
+    <string name="notification_channel_updates">App updates</string>
+    <string name="notification_channel_updates_description">Notifications about available app updates</string>
+    <string name="notification_channel_operations">Downloads and installations</string>
+    <string name="notification_channel_operations_description">Progress while downloading and installing apps</string>
+    <string name="operation_preparing_update">Preparing app update</string>
+    <string name="operation_starting">Starting…</string>
+    <string name="operation_preparing">Preparing…</string>
+    <string name="operation_downloading">Downloading… %1$d%%</string>
+    <string name="operation_verifying">Verifying…</string>
+    <string name="operation_installing">Installing…</string>
+    <string name="operation_completed">Completed</string>
+    <string name="operation_failed">Failed</string>
+    <string name="operation_cancelled">Cancelled</string>
+    <string name="operation_permission_required">Permission required</string>
+    <plurals name="operation_updating_apps">
+        <item quantity="one">Updating %1$d app</item>
+        <item quantity="other">Updating %1$d apps</item>
+    </plurals>
 </resources>

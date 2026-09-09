@@ -69,7 +69,11 @@ The application owns active download jobs and a shared operation-state flow by
 package name. Catalog, updates, and detail surfaces observe that flow rather
 than maintaining local installation flags. A download streams to cache, reports
 progress, verifies its SHA-256 digest, and launches Android's package installer
-through a FileProvider URI. Cancelling a download cancels the underlying
+through a FileProvider URI. Foreground user operations run in application scope
+and are protected by a `dataSync` foreground service whose notification observes
+the same state flow. Navigating away therefore does not cancel an update.
+Scheduled automatic updates use WorkManager's foreground execution support and
+the same notification renderer. Cancelling a download cancels the underlying
 coroutine and removes partial state instead of merely changing the UI.
 
 Installed-package state is a persistent Room snapshot of Android's authoritative

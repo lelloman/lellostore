@@ -3,7 +3,7 @@ package com.lelloman.store.interactor
 import com.lelloman.store.domain.apps.AppsRepository
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadManager
-import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.ui.model.AppModel
 import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.screen.catalog.CatalogViewModel
@@ -61,9 +61,3 @@ class CatalogInteractorImpl @Inject constructor(
         installedAppsRepository.refreshInstalledApps()
     }
 }
-
-private val DownloadState.isInProgress: Boolean
-    get() = this != DownloadState.COMPLETED &&
-        this != DownloadState.FAILED &&
-        this != DownloadState.CANCELLED &&
-        this != DownloadState.PERMISSION_REQUIRED

@@ -13,6 +13,7 @@ import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.download.InstallationMode
+import com.lelloman.store.di.ApplicationScope
 import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
 import com.lelloman.store.installation.InstallationRequest
@@ -20,11 +21,11 @@ import com.lelloman.store.installation.InstallationResult
 import com.lelloman.store.recovery.RecoveryCompanionClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,15 +46,15 @@ class DownloadManagerImpl @Inject constructor(
     private val installedAppsRepository: InstalledAppsRepository,
     private val logger: Logger,
     private val installationCoordinator: InstallationCoordinator,
+    private val foregroundServiceStarter: DownloadForegroundServiceStarter,
+    @ApplicationScope private val scope: CoroutineScope,
 ) : DownloadManager {
 
     private val tag = "DownloadManager"
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     private val mutableActiveDownloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     override val activeDownloads: StateFlow<Map<String, DownloadProgress>> = mutableActiveDownloads.asStateFlow()
 
-    private val downloadJobs = mutableMapOf<String, Job>()
+    private val downloadJobs = mutableMapOf<String, Deferred<DownloadResult>>()
     private val apksDir: File by lazy {
         File(context.cacheDir, "apks").also { it.mkdirs() }
     }
@@ -63,15 +64,30 @@ class DownloadManagerImpl @Inject constructor(
         versionCode: Int,
         installationMode: InstallationMode,
     ): DownloadResult {
-        val downloadJob = currentCoroutineContext()[Job]
-            ?: error("Download must run in a coroutine with a Job")
-        synchronized(downloadJobs) {
+        val task = synchronized(downloadJobs) {
             if (downloadJobs.containsKey(packageName)) {
                 return DownloadResult.Failed("Download already in progress")
             }
-            // Store the job doing the work so cancelDownload cancels the actual request.
-            downloadJobs[packageName] = downloadJob
+            scope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                performDownloadAndInstall(packageName, versionCode, installationMode)
+            }.also { downloadJobs[packageName] = it }
         }
+        task.start()
+        return try {
+            task.await()
+        } catch (error: CancellationException) {
+            // User-started work belongs to the foreground service and survives navigation away.
+            // Scheduled work remains owned by WorkManager and must stop when its worker is stopped.
+            if (installationMode == InstallationMode.BACKGROUND) task.cancel()
+            throw error
+        }
+    }
+
+    private suspend fun performDownloadAndInstall(
+        packageName: String,
+        versionCode: Int,
+        installationMode: InstallationMode,
+    ): DownloadResult {
 
         var destination: File? = null
         var finalState = DownloadState.FAILED
@@ -80,6 +96,10 @@ class DownloadManagerImpl @Inject constructor(
 
         try {
             updateProgress(packageName, DownloadState.PENDING, 0f, 0, 0)
+            if (installationMode == InstallationMode.FOREGROUND) {
+                runCatching { foregroundServiceStarter.start() }
+                    .onFailure { logger.w(tag, "Could not start download foreground service: ${it.message}") }
+            }
 
             // Get expected SHA256 from app details
             val appDetail = appsRepository.refreshApp(packageName).getOrElse { error ->

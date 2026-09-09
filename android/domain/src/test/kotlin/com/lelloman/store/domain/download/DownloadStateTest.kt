@@ -22,6 +22,18 @@ class DownloadStateTest {
     }
 
     @Test
+    fun `only non-terminal download states are in progress`() {
+        assertThat(
+            DownloadState.entries.filter { it.isInProgress }
+        ).containsExactly(
+            DownloadState.PENDING,
+            DownloadState.DOWNLOADING,
+            DownloadState.VERIFYING,
+            DownloadState.INSTALLING,
+        )
+    }
+
+    @Test
     fun `DownloadProgress holds progress information`() {
         val progress = DownloadProgress(
             packageName = "com.example.app",

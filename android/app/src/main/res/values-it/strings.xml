@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_channel_updates">Aggiornamenti app</string>
+    <string name="notification_channel_updates_description">Notifiche sugli aggiornamenti disponibili</string>
+    <string name="notification_channel_operations">Download e installazioni</string>
+    <string name="notification_channel_operations_description">Avanzamento del download e dell’installazione delle app</string>
+    <string name="operation_preparing_update">Preparazione aggiornamento</string>
+    <string name="operation_starting">Avvio…</string>
+    <string name="operation_preparing">Preparazione…</string>
+    <string name="operation_downloading">Download… %1$d%%</string>
+    <string name="operation_verifying">Verifica…</string>
+    <string name="operation_installing">Installazione…</string>
+    <string name="operation_completed">Completato</string>
+    <string name="operation_failed">Fallito</string>
+    <string name="operation_cancelled">Annullato</string>
+    <string name="operation_permission_required">Permesso richiesto</string>
+    <plurals name="operation_updating_apps">
+        <item quantity="one">Aggiornamento di %1$d app</item>
+        <item quantity="many">Aggiornamento di %1$d app</item>
+        <item quantity="other">Aggiornamento di %1$d app</item>
+    </plurals>
+</resources>

@@ -30,6 +30,11 @@ class UpdateCheckWorkerTest {
     }
     private val downloadManager: DownloadManager = mockk(relaxed = true)
     private val notifications: NotificationHelper = mockk(relaxed = true)
+    private val foregroundController: WorkerForegroundController = mockk(relaxed = true)
+
+    init {
+        every { downloadManager.activeDownloads } returns MutableStateFlow(emptyMap())
+    }
 
     @Test
     fun `enabled update uses background installation without notification on success`() = runTest {
@@ -48,6 +53,14 @@ class UpdateCheckWorkerTest {
             )
         }
         verify(exactly = 0) { notifications.showUpdatesAvailableNotification(any()) }
+        coVerify(exactly = 1) {
+            foregroundController.setForeground(any(), any())
+        }
+        verify {
+            notifications.cancelOperationNotification(
+                NotificationHelper.BACKGROUND_UPDATE_NOTIFICATION_ID
+            )
+        }
     }
 
     @Test
@@ -91,6 +104,7 @@ class UpdateCheckWorkerTest {
         updateChecker = updateChecker,
         downloadManager = downloadManager,
         notificationHelper = notifications,
+        workerForegroundController = foregroundController,
     )
 
     private fun update(autoUpdate: Boolean) = AvailableUpdate(
