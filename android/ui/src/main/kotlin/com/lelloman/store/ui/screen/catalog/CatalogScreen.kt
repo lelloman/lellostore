@@ -1,5 +1,10 @@
 package com.lelloman.store.ui.screen.catalog
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -37,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +109,29 @@ private fun CatalogScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
+    val listState = rememberLazyListState()
+    var controlsVisible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            Triple(
+                listState.canScrollBackward,
+                listState.lastScrolledForward,
+                listState.lastScrolledBackward,
+            )
+        }.collect { (canScrollBackward, scrolledForward, scrolledBackward) ->
+            controlsVisible = when {
+                !canScrollBackward -> true
+                scrolledForward -> false
+                scrolledBackward -> true
+                else -> controlsVisible
+            }
+        }
+    }
+
+    LaunchedEffect(controlsVisible) {
+        if (!controlsVisible) focusManager.clearFocus()
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         PullToRefreshBox(
@@ -110,16 +140,22 @@ private fun CatalogScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CatalogControls(
-                    state = state,
-                    onSearchQueryChanged = onSearchQueryChanged,
-                    onClearSearch = onClearSearch,
-                    onFilterChanged = {
-                        focusManager.clearFocus()
-                        onFilterChanged(it)
-                    },
-                    onSortOptionChanged = onSortOptionChanged,
-                )
+                AnimatedVisibility(
+                    visible = controlsVisible || state.apps.isEmpty(),
+                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                ) {
+                    CatalogControls(
+                        state = state,
+                        onSearchQueryChanged = onSearchQueryChanged,
+                        onClearSearch = onClearSearch,
+                        onFilterChanged = {
+                            focusManager.clearFocus()
+                            onFilterChanged(it)
+                        },
+                        onSortOptionChanged = onSortOptionChanged,
+                    )
+                }
 
                 when {
                     state.isLoading && state.apps.isEmpty() -> {
@@ -159,6 +195,7 @@ private fun CatalogScreenContent(
                     }
                     else -> {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(
                                 start = LelloStoreSpacing.large,
                                 top = LelloStoreSpacing.small,
