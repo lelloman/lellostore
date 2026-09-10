@@ -90,6 +90,14 @@ including the Wi-Fi constraint, and posts local notifications when updates are
 available. The updates screen observes the same state and can start the normal
 authenticated download path.
 
+While the authenticated app is foregrounded it keeps an authenticated WebSocket
+to `/api/events`; catalog invalidations enqueue a serialized update check. Moving
+to the background closes that connection and starts a bounded one-hour sequence
+of inexact alarm checks at cumulative minutes 1, 3, 6, 10, 15, 21, 28, 36, 45,
+and 55. Returning to the foreground cancels the alarm sequence and performs a
+catch-up check. These mechanisms run independently of the long-term periodic
+WorkManager interval.
+
 ## Installation channels
 
 Verified APK downloads are submitted to an ordered installation coordinator.
