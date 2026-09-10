@@ -1,8 +1,12 @@
 package com.lelloman.store
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -12,6 +16,8 @@ import androidx.compose.runtime.withFrameNanos
 import com.lelloman.store.recovery.RecoveryCompanionClient
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.SessionExpiredHandler
@@ -31,6 +37,10 @@ import com.lelloman.store.domain.preferences.ThemeMode as DomainThemeMode
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
 
     @Inject
     lateinit var userPreferencesStore: UserPreferencesStore
@@ -99,6 +109,9 @@ class MainActivity : ComponentActivity() {
                 forceNavigateToLogin = shouldNavigateToLogin,
                 onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
             )
+            LaunchedEffect(isLoggedIn) {
+                if (isLoggedIn) requestNotificationPermissionIfNeeded()
+            }
             LaunchedEffect(Unit) {
                 withFrameNanos { }
                 val recovery = RecoveryCompanionClient(this@MainActivity)
@@ -106,6 +119,28 @@ class MainActivity : ComponentActivity() {
                 recovery.acknowledgePendingHealth()
             }
         }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val preferences = getSharedPreferences(
+            NOTIFICATION_PERMISSION_PREFERENCES,
+            MODE_PRIVATE,
+        )
+        if (preferences.getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false)) return
+
+        preferences.edit {
+            putBoolean(NOTIFICATION_PERMISSION_REQUESTED, true)
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun observeSessionExpiredEvents() {
@@ -128,5 +163,10 @@ class MainActivity : ComponentActivity() {
         is DomainAuthResult.Success -> AuthResult.Success
         is DomainAuthResult.Cancelled -> AuthResult.Cancelled
         is DomainAuthResult.Error -> AuthResult.Error(message)
+    }
+
+    private companion object {
+        const val NOTIFICATION_PERMISSION_PREFERENCES = "notification-permission"
+        const val NOTIFICATION_PERMISSION_REQUESTED = "requested"
     }
 }
