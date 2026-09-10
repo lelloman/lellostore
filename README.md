@@ -153,8 +153,8 @@ published Store version. Gradle's environment properties allow overriding the
 build defaults without editing files:
 
 ```sh
-ORG_GRADLE_PROJECT_storeVersionCode=6 \
-ORG_GRADLE_PROJECT_storeVersionName=1.5 \
+ORG_GRADLE_PROJECT_storeVersionCode=7 \
+ORG_GRADLE_PROJECT_storeVersionName=1.6 \
 ./scripts/publish-android-to-lellostore.sh --dry-run --json
 ```
 

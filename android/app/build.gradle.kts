@@ -46,8 +46,8 @@ android {
         applicationId = "com.lelloman.store"
         minSdk = 24
         targetSdk = 36
-        versionCode = providers.gradleProperty("storeVersionCode").orElse("5").get().toInt()
-        versionName = providers.gradleProperty("storeVersionName").orElse("1.4").get()
+        versionCode = providers.gradleProperty("storeVersionCode").orElse("6").get().toInt()
+        versionName = providers.gradleProperty("storeVersionName").orElse("1.5").get()
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
