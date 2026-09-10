@@ -1,10 +1,5 @@
 package com.lelloman.store.ui.screen.catalog
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,13 +35,22 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -57,6 +61,7 @@ import com.lelloman.store.ui.components.LelloStoreStateContent
 import com.lelloman.store.ui.components.lelloStoreFilterChipColors
 import com.lelloman.store.ui.theme.LelloGreen
 import com.lelloman.store.ui.theme.LelloStoreSpacing
+import kotlin.math.roundToInt
 
 @Composable
 fun SortOption.getDisplayName(): String = when (this) {
@@ -110,27 +115,36 @@ private fun CatalogScreenContent(
 ) {
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsHeightPx by remember { mutableIntStateOf(0) }
+    var controlsOffsetPx by remember { mutableFloatStateOf(0f) }
+    val controlsCollapsed by remember {
+        derivedStateOf {
+            controlsHeightPx > 0 && controlsOffsetPx <= -controlsHeightPx.toFloat()
+        }
+    }
+    val controlsScrollConnection = remember(state.apps.isEmpty()) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (controlsHeightPx == 0 || state.apps.isEmpty()) return Offset.Zero
 
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            Triple(
-                listState.canScrollBackward,
-                listState.lastScrolledForward,
-                listState.lastScrolledBackward,
-            )
-        }.collect { (canScrollBackward, scrolledForward, scrolledBackward) ->
-            controlsVisible = when {
-                !canScrollBackward -> true
-                scrolledForward -> false
-                scrolledBackward -> true
-                else -> controlsVisible
+                val previousOffset = controlsOffsetPx
+                controlsOffsetPx = (previousOffset + available.y)
+                    .coerceIn(-controlsHeightPx.toFloat(), 0f)
+                return Offset(x = 0f, y = controlsOffsetPx - previousOffset)
             }
         }
     }
 
-    LaunchedEffect(controlsVisible) {
-        if (!controlsVisible) focusManager.clearFocus()
+    LaunchedEffect(controlsHeightPx) {
+        controlsOffsetPx = controlsOffsetPx.coerceIn(-controlsHeightPx.toFloat(), 0f)
+    }
+
+    LaunchedEffect(state.apps.isEmpty()) {
+        if (state.apps.isEmpty()) controlsOffsetPx = 0f
+    }
+
+    LaunchedEffect(controlsCollapsed) {
+        if (controlsCollapsed) focusManager.clearFocus()
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -139,11 +153,14 @@ private fun CatalogScreenContent(
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = controlsVisible || state.apps.isEmpty(),
-                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(controlsScrollConnection),
+            ) {
+                CollapsibleCatalogControls(
+                    offsetPx = controlsOffsetPx,
+                    onHeightChanged = { controlsHeightPx = it },
                 ) {
                     CatalogControls(
                         state = state,
@@ -233,6 +250,37 @@ private fun CatalogScreenContent(
         }
     }
 }
+
+@Composable
+private fun CollapsibleCatalogControls(
+    offsetPx: Float,
+    onHeightChanged: (Int) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            Box(modifier = Modifier.onSizeChanged { onHeightChanged(it.height) }) {
+                content()
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clipToBounds(),
+    ) { measurables, constraints ->
+        val controls = measurables.single().measure(constraints.copy(minHeight = 0))
+        val visibleHeight = (controls.height + offsetPx.roundToInt())
+            .coerceIn(0, controls.height)
+
+        layout(controls.width, visibleHeight) {
+            controls.placeRelative(
+                x = 0,
+                y = (offsetPx * CatalogControlsParallax).roundToInt(),
+            )
+        }
+    }
+}
+
+private const val CatalogControlsParallax = 0.5f
 
 @Composable
 private fun CatalogControls(
