@@ -43,7 +43,7 @@ class WorkManagerInitializer @Inject constructor(
 
         workManager.enqueueUniqueWork(
             UpdateCheckWorker.IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
     }

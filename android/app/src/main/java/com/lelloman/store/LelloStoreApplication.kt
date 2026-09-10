@@ -11,6 +11,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ImageResult
 import com.lelloman.store.worker.WorkManagerInitializer
 import com.lelloman.store.worker.WarmUpdateLifecycleObserver
+import com.lelloman.store.worker.ForegroundUpdateLifecycleObserver
 import com.lelloman.store.installation.SelfAdbConnectionManager
 import com.lelloman.store.recovery.RecoveryCompanionClient
 import dagger.hilt.android.HiltAndroidApp
@@ -35,6 +36,9 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
     lateinit var warmUpdateLifecycleObserver: WarmUpdateLifecycleObserver
 
     @Inject
+    lateinit var foregroundUpdateLifecycleObserver: ForegroundUpdateLifecycleObserver
+
+    @Inject
     lateinit var okHttpClient: OkHttpClient
 
     override val workManagerConfiguration: Configuration
@@ -46,6 +50,7 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
         super.onCreate()
         workManagerInitializer.initialize()
         warmUpdateLifecycleObserver.initialize()
+        foregroundUpdateLifecycleObserver.initialize()
         applicationScope.launch {
             val recovery = RecoveryCompanionClient(this@LelloStoreApplication)
             recovery.restoreIdentityIfNeeded()
