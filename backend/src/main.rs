@@ -126,6 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth: auth_state,
         upload_service,
         storage,
+        catalog_events: Default::default(),
     };
 
     // Create router

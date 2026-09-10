@@ -95,6 +95,7 @@ async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> Tes
         auth: None, // No auth for tests by default
         upload_service,
         storage,
+        catalog_events: Default::default(),
     };
 
     let router = if allow_unauthenticated_for_tests {

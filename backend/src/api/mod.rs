@@ -1,3 +1,4 @@
+pub mod events;
 pub mod file_response;
 pub mod handlers;
 pub mod routes;
@@ -17,4 +18,5 @@ pub struct AppState {
     pub auth: Option<AuthState>,
     pub upload_service: Arc<UploadService>,
     pub storage: Arc<StorageService>,
+    pub catalog_events: events::CatalogEventHub,
 }

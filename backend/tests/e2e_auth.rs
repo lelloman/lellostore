@@ -103,6 +103,7 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
         auth: Some(auth_state),
         upload_service,
         storage,
+        catalog_events: Default::default(),
     };
 
     let router = create_router(state);

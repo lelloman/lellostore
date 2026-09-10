@@ -549,6 +549,7 @@ pub async fn upload_app(
         version: to_version_info(version),
     };
 
+    state.catalog_events.notify_catalog_changed();
     Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
@@ -591,6 +592,7 @@ pub async fn update_app(
     let versions = db::get_app_versions(&state.db, &package_name).await?;
     let version_infos: Vec<AppVersionInfo> = versions.iter().map(to_version_info).collect();
 
+    state.catalog_events.notify_catalog_changed();
     Ok(Json(AppDetailResponse {
         package_name: app.package_name.clone(),
         name: app.name,
@@ -625,6 +627,7 @@ pub async fn delete_app(
         );
     }
 
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -671,6 +674,7 @@ pub async fn upload_icon(
     // Update database
     db::update_app(&state.db, &package_name, None, None, Some(&icon_path)).await?;
 
+    state.catalog_events.notify_catalog_changed();
     Ok(Json(json!({
         "message": "Icon uploaded successfully",
         "icon_url": make_icon_url(&package_name)
@@ -756,6 +760,7 @@ pub async fn delete_version(
         }
     }
 
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -815,6 +820,7 @@ pub async fn set_admin_direct_grant(
         request.access_level,
     )
     .await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -824,6 +830,7 @@ pub async fn remove_admin_direct_grant(
     Path((subject, package_name)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     db::admin::remove_direct_grant(&state.db, &admin.0.subject, &subject, &package_name).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -842,6 +849,7 @@ pub async fn create_admin_group(
     Json(request): Json<GroupNameRequest>,
 ) -> Result<(StatusCode, Json<db::access::AppGroup>), AppError> {
     let group = db::admin::create_group(&state.db, &admin.0.subject, &request.name).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok((StatusCode::CREATED, Json(group)))
 }
 
@@ -852,6 +860,7 @@ pub async fn rename_admin_group(
     Json(request): Json<GroupNameRequest>,
 ) -> Result<StatusCode, AppError> {
     db::admin::rename_group(&state.db, &admin.0.subject, group_id, &request.name).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -861,6 +870,7 @@ pub async fn delete_admin_group(
     Path(group_id): Path<i64>,
 ) -> Result<StatusCode, AppError> {
     db::admin::delete_group(&state.db, &admin.0.subject, group_id).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -878,6 +888,7 @@ pub async fn set_admin_group_grant(
         request.access_level,
     )
     .await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -887,6 +898,7 @@ pub async fn remove_admin_group_grant(
     Path((group_id, package_name)): Path<(i64, String)>,
 ) -> Result<StatusCode, AppError> {
     db::admin::remove_group_grant(&state.db, &admin.0.subject, group_id, &package_name).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -896,6 +908,7 @@ pub async fn add_admin_group_member(
     Path((group_id, subject)): Path<(i64, String)>,
 ) -> Result<StatusCode, AppError> {
     db::admin::set_membership(&state.db, &admin.0.subject, group_id, &subject, true).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -905,6 +918,7 @@ pub async fn remove_admin_group_member(
     Path((group_id, subject)): Path<(i64, String)>,
 ) -> Result<StatusCode, AppError> {
     db::admin::set_membership(&state.db, &admin.0.subject, group_id, &subject, false).await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -922,5 +936,6 @@ pub async fn set_admin_release_channel(
         request.is_beta,
     )
     .await?;
+    state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }

@@ -7,7 +7,7 @@ use axum::{
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-use super::{handlers, static_files, AppState};
+use super::{events, handlers, static_files, AppState};
 use crate::auth::{auth_middleware, AuthState};
 use crate::metrics::track_metrics;
 
@@ -74,6 +74,7 @@ fn public_routes() -> Router<AppState> {
 fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
         .route("/me", get(handlers::get_current_user))
+        .route("/events", get(events::catalog_events))
         .route("/apps", get(handlers::list_authorized_apps))
         .route("/apps/:package_name", get(handlers::get_authorized_app))
         .route(
