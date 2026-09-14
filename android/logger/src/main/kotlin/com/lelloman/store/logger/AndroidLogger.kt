@@ -2,7 +2,9 @@ package com.lelloman.store.logger
 
 import android.util.Log
 
-class AndroidLogger : Logger {
+class AndroidLogger(private val auditLog: AuditLog) : Logger {
+    override fun audit(event: String, fields: Map<String, Any?>) = auditLog.record(event, fields)
+
     override fun d(tag: String, message: String) {
         Log.d(tag, message)
     }

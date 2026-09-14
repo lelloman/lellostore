@@ -30,7 +30,9 @@ class LegacyAdbInstallationChannel @Inject constructor(
 
     override suspend fun install(request: InstallationRequest): ChannelInstallationResult =
         withContext(Dispatchers.IO) {
+            request.audit("adb.lock_waiting", emptyMap())
             selfAdbConnectionMutex.withLock {
+                request.audit("adb.lock_acquired", emptyMap())
                 val recovery = RecoveryCompanionClient(context)
                 recovery.restoreIdentityIfNeeded()
                 val adb = try {
@@ -42,6 +44,7 @@ class LegacyAdbInstallationChannel @Inject constructor(
                 }
                 recovery.backupIdentity(adb)
 
+                request.audit("adb.connect_started", emptyMap())
                 val connected = try {
                     if (adb.isConnected) adb.disconnect()
                     adb.connect(LOOPBACK_HOST, ADB_PORT)
@@ -56,6 +59,7 @@ class LegacyAdbInstallationChannel @Inject constructor(
                     )
                 }
 
+                request.audit("adb.connected", emptyMap())
                 installApkOverAdb(context, adb, request)
             }
         }
@@ -89,18 +93,25 @@ internal fun installApkOverAdb(
     adb: SelfAdbConnectionManager,
     request: InstallationRequest,
 ): ChannelInstallationResult {
+    request.audit("adb.stream_opening", emptyMap())
     val response = try {
         adb.openStream(adbInstallCommand(request.apk.length())).use { stream ->
+            request.audit("adb.stream_opened", emptyMap())
             request.apk.inputStream().use { input ->
                 // AdbOutputStream.close() performs another flush. The package service can close
                 // immediately after receiving the declared byte count, making that redundant
                 // flush throw even though installation already succeeded.
                 input.copyTo(stream.openOutputStream())
             }
-            readAdbText(stream.openInputStream()).trim()
+            request.audit("adb.bytes_sent", mapOf("bytes" to request.apk.length()))
+            readAdbText(stream.openInputStream()).trim().also {
+                request.audit("adb.response_received", mapOf("success" to it.startsWith("Success")))
+            }
         }
     } catch (error: IOException) {
+        request.audit("adb.stream_error", mapOf("error_type" to error.javaClass.simpleName))
         if (installedVersionCode(context, request.packageName) >= request.versionCode.toLong()) {
+            request.audit("adb.reconciled_installed", emptyMap())
             return ChannelInstallationResult.Installed
         }
         // Once streaming begins, the package-manager state is ambiguous. Do not submit the same

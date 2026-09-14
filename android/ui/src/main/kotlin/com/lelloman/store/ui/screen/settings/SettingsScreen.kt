@@ -258,6 +258,20 @@ internal fun SettingsContent(
                 )
             }
 
+            SettingsSection(title = stringResource(R.string.settings_audit_title)) {
+                val auditContext = LocalContext.current
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_audit_title),
+                    subtitle = stringResource(R.string.settings_audit_subtitle),
+                    onClick = {
+                        auditContext.startActivity(Intent().setClassName(
+                            auditContext.packageName,
+                            "com.lelloman.store.diagnostics.AuditActivity",
+                        ))
+                    },
+                )
+            }
+
             SettingsSection(title = stringResource(R.string.settings_server)) {
                 ServerUrlInput(
                     serverUrlInput = state.serverUrlInput,

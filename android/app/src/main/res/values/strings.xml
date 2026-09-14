@@ -19,4 +19,10 @@
         <item quantity="one">Updating %1$d app</item>
         <item quantity="other">Updating %1$d apps</item>
     </plurals>
+    <string name="audit_title">Update diagnostics</string>
+    <string name="audit_refresh">Refresh</string>
+    <string name="audit_export">Export audit log</string>
+    <string name="audit_exported">Audit log exported</string>
+    <string name="audit_error">Could not read or export diagnostics. Try again.</string>
+    <string name="audit_summary">Retained bytes: %1$d (capacity: 4 MiB)\nEvents: %2$d\nFinished operations: %3$d\nCompleted: %4$d\nAverage total duration: %5$d ms\nStatistics cover only retained records. Latest 100 events below.</string>
 </resources>

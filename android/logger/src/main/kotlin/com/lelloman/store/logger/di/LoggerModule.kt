@@ -14,5 +14,5 @@ object LoggerModule {
 
     @Provides
     @Singleton
-    fun provideLogger(): Logger = AndroidLogger()
+    fun provideLogger(auditLog: com.lelloman.store.logger.AuditLog): Logger = AndroidLogger(auditLog)
 }

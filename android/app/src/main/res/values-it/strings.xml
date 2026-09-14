@@ -19,4 +19,10 @@
         <item quantity="many">Aggiornamento di %1$d app</item>
         <item quantity="other">Aggiornamento di %1$d app</item>
     </plurals>
+    <string name="audit_title">Diagnostica aggiornamenti</string>
+    <string name="audit_refresh">Aggiorna</string>
+    <string name="audit_export">Esporta registro</string>
+    <string name="audit_exported">Registro esportato</string>
+    <string name="audit_error">Impossibile leggere o esportare la diagnostica. Riprova.</string>
+    <string name="audit_summary">Byte conservati: %1$d (capacità: 4 MiB)\nEventi: %2$d\nOperazioni terminate: %3$d\nCompletate: %4$d\nDurata media totale: %5$d ms\nStatistiche relative ai soli record conservati. Ultimi 100 eventi di seguito.</string>
 </resources>

@@ -89,6 +89,16 @@ class DownloadManagerImpl @Inject constructor(
         installationMode: InstallationMode,
     ): DownloadResult {
 
+        val operationId = java.util.UUID.randomUUID().toString()
+        val started = System.nanoTime()
+        fun audit(event: String, fields: Map<String, Any?> = emptyMap()) {
+            logger.audit(event, fields + mapOf(
+                "operation_id" to operationId, "package" to packageName,
+                "version_code" to versionCode, "mode" to installationMode.name,
+                "duration_ms" to (System.nanoTime() - started) / 1_000_000,
+            ))
+        }
+        audit("operation.started")
         var destination: File? = null
         var finalState = DownloadState.FAILED
         var retainVerifiedApk = false
@@ -107,6 +117,7 @@ class DownloadManagerImpl @Inject constructor(
                 throw error
             }
 
+            audit("metadata.completed")
             val versionInfo = appDetail.versions.find { it.versionCode == versionCode }
                 ?: throw IllegalArgumentException("Version $versionCode not found for $packageName")
 
@@ -120,14 +131,18 @@ class DownloadManagerImpl @Inject constructor(
             val cachedApkIsValid = destination.isFile &&
                 destination.length() == expectedSize &&
                 calculateSha256(destination).equals(expectedSha256, ignoreCase = true)
+            audit("download.started", mapOf("expected_bytes" to expectedSize, "cache_hit" to cachedApkIsValid))
             if (!cachedApkIsValid) {
                 destination.delete()
                 val inputStream = remoteApiClient.downloadApk(packageName, versionCode).getOrThrow()
-                downloadToFile(inputStream, destination, packageName, expectedSize)
+                downloadToFile(inputStream, destination, packageName, expectedSize) { bytes ->
+                    audit("download.progress", mapOf("bytes" to bytes, "expected_bytes" to expectedSize))
+                }
             } else {
                 logger.i(tag, "Reusing verified APK for $packageName")
             }
 
+            audit("download.completed", mapOf("bytes" to destination.length()))
             // Verify SHA256
             updateProgress(packageName, DownloadState.VERIFYING, 1f, destination.length(), destination.length())
             val actualSha256 = calculateSha256(destination)
@@ -136,8 +151,10 @@ class DownloadManagerImpl @Inject constructor(
             }
             logger.i(tag, "SHA256 verification passed for $packageName")
 
+            audit("verification.completed")
             // Install APK
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
+            audit("installation.started")
             val recovery = RecoveryCompanionClient(context)
             val recoveryAttemptId = if (packageName == context.packageName) {
                 recovery.recordSelfUpdate(versionCode)
@@ -153,12 +170,16 @@ class DownloadManagerImpl @Inject constructor(
                     packageName = packageName,
                     versionCode = versionCode,
                     mode = installationMode,
+                    operationId = operationId,
+                    audit = { event, fields -> audit(event, fields) },
                 )
             )) {
                 is InstallationResult.Installed -> {
                     // The package manager is the source of truth. Persist its new snapshot before
                     // reporting completion so every Room observer updates in the same UI frame.
+                    audit("installed_snapshot.started")
                     installedAppsRepository.refreshInstalledApp(packageName)
+                    audit("installed_snapshot.completed")
                     finalState = DownloadState.COMPLETED
                     updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
                 }
@@ -207,10 +228,12 @@ class DownloadManagerImpl @Inject constructor(
             throw e
         } catch (e: Exception) {
             finalState = DownloadState.FAILED
+            audit("operation.error", mapOf("error_type" to e.javaClass.simpleName))
             logger.e(tag, "Download failed for $packageName: ${e.message}", e)
             updateProgress(packageName, DownloadState.FAILED, 0f, 0, 0)
             destination?.delete()
         } finally {
+            audit("operation.finished", mapOf("state" to finalState.name))
             synchronized(downloadJobs) {
                 downloadJobs.remove(packageName)
             }
@@ -218,6 +241,7 @@ class DownloadManagerImpl @Inject constructor(
             scope.launch {
                 delay(3000)
                 mutableActiveDownloads.update { it - packageName }
+                audit("operation.ui_cleared")
             }
         }
 
@@ -264,16 +288,23 @@ class DownloadManagerImpl @Inject constructor(
         destination: File,
         packageName: String,
         totalSize: Long,
+        onSample: (Long) -> Unit,
     ) {
         inputStream.use { input ->
             destination.outputStream().use { output ->
                 val buffer = ByteArray(8192)
                 var bytesDownloaded = 0L
                 var bytesRead: Int
+                var lastSample = System.nanoTime()
 
                 while (input.read(buffer).also { bytesRead = it } != -1) {
                     output.write(buffer, 0, bytesRead)
                     bytesDownloaded += bytesRead
+                    val now = System.nanoTime()
+                    if (now - lastSample >= 5_000_000_000L) {
+                        onSample(bytesDownloaded)
+                        lastSample = now
+                    }
 
                     val progress = if (totalSize > 0) bytesDownloaded.toFloat() / totalSize else 0f
                     updateProgress(packageName, DownloadState.DOWNLOADING, progress, bytesDownloaded, totalSize)

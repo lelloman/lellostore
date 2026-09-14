@@ -127,6 +127,14 @@ class DownloadManagerImplTest {
 
         assertThat(result).isEqualTo(DownloadResult.Failed("Download failed"))
         verify { logger.e(any(), any(), any()) }
+        // Verify the failure can be correlated with its start without relying on log messages.
+        val starts = mutableListOf<Map<String, Any?>>()
+        val finishes = mutableListOf<Map<String, Any?>>()
+        verify(exactly = 1) { logger.audit("operation.started", capture(starts)) }
+        verify(exactly = 1) { logger.audit("operation.finished", capture(finishes)) }
+        assertThat(finishes.single()["operation_id"]).isEqualTo(starts.single()["operation_id"])
+        assertThat(finishes.single()["state"]).isEqualTo("FAILED")
+        assertThat(finishes.single()["package"]).isEqualTo("com.test.app")
     }
 
     @Test

@@ -51,7 +51,29 @@ class InstallationCoordinator @Inject constructor(
             val metadata = channel.metadata
             logger.i(TAG, "Trying installation channel ${metadata.id}")
 
-            when (val result = channel.install(request)) {
+            val started = System.nanoTime()
+            val fields = mapOf("operation_id" to request.operationId,
+                "package" to request.packageName, "channel" to metadata.id)
+            logger.audit("channel.started", fields)
+            val result = try {
+                channel.install(request)
+            } catch (error: Exception) {
+                logger.audit("channel.exception", fields + mapOf(
+                    "error_type" to error.javaClass.simpleName,
+                    "duration_ms" to (System.nanoTime() - started) / 1_000_000))
+                throw error
+            }
+            logger.audit("channel.finished", fields + mapOf(
+                "result" to when (result) {
+                    ChannelInstallationResult.Installed -> "installed"
+                    ChannelInstallationResult.UserActionStarted -> "user_action_started"
+                    is ChannelInstallationResult.Unavailable -> "unavailable"
+                    is ChannelInstallationResult.PermissionRequired -> "permission_required"
+                    is ChannelInstallationResult.Failed -> "failed"
+                },
+                "can_try_next" to ((result as? ChannelInstallationResult.Failed)?.canTryNextChannel),
+                "duration_ms" to (System.nanoTime() - started) / 1_000_000))
+            when (result) {
                 ChannelInstallationResult.Installed -> {
                     return InstallationResult.Installed(metadata)
                 }

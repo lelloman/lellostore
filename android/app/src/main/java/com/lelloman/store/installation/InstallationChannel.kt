@@ -19,6 +19,8 @@ data class InstallationRequest(
     val packageName: String,
     val versionCode: Int,
     val mode: InstallationMode = InstallationMode.FOREGROUND,
+    val operationId: String = java.util.UUID.randomUUID().toString(),
+    val audit: (String, Map<String, Any?>) -> Unit = { _, _ -> },
 )
 
 interface InstallationChannel {

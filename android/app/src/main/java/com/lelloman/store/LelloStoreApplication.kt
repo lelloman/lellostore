@@ -46,8 +46,12 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
             .setWorkerFactory(workerFactory)
             .build()
 
+    @Inject
+    lateinit var auditLog: com.lelloman.store.logger.AuditLog
+
     override fun onCreate() {
         super.onCreate()
+        auditLog.record("process.started", mapOf("version" to BuildConfig.VERSION_NAME, "version_code" to BuildConfig.VERSION_CODE))
         workManagerInitializer.initialize()
         warmUpdateLifecycleObserver.initialize()
         foregroundUpdateLifecycleObserver.initialize()

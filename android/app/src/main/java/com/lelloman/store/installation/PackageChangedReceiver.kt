@@ -18,16 +18,22 @@ class PackageChangedReceiver : BroadcastReceiver() {
     @Inject
     lateinit var installedAppsRepository: InstalledAppsRepository
 
+    @Inject
+    lateinit var logger: com.lelloman.store.logger.Logger
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in SUPPORTED_ACTIONS) return
         if (intent.action == Intent.ACTION_PACKAGE_REMOVED &&
             intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
         ) return
         val packageName = intent.data?.schemeSpecificPart ?: return
+        logger.audit("package.changed", mapOf("package" to packageName, "action" to intent.action))
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 installedAppsRepository.refreshInstalledApp(packageName)
+                logger.audit("package.snapshot_refreshed", mapOf("package" to packageName,
+                    "installed_version_code" to installedVersionCode(context, packageName)))
             } finally {
                 pendingResult.finish()
             }

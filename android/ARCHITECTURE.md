@@ -82,6 +82,31 @@ remove broadcasts refresh that snapshot; its Room flows push the resulting
 version change to every observing screen. Detail resume remains a reconciliation
 fallback for an interrupted or missed broadcast.
 
+## Local update diagnostics
+
+Settings → Update diagnostics shows retained event counts, completed operation counts,
+mean operation duration, and the latest 100 structured events. Export writes a JSONL
+snapshot through Android's document picker. Statistics describe the retained window,
+not lifetime totals; an interactive installer handoff is not proof of installation.
+
+The logger keeps eight rotating 512 KiB segments (4 MiB maximum) in private
+`noBackupFilesDir/audit`. Rotation evicts the oldest segment and preserves whole
+records in chronological order. An interrupted final write is discarded. A single
+background writer uses a bounded 256-event queue; overload or disk failures never
+block updates and are counted in a subsequent `audit.dropped` event. Pending queued
+records can be lost if Android kills the process; startup gets a new session ID.
+Exports flush queued records before taking a consistent snapshot.
+
+Schema 1 events have wall-clock and monotonic timestamps, a process session ID,
+and named fields. Each update carries an operation UUID, package, requested version,
+mode, and cumulative monotonic duration. Events cover metadata, cache reuse, download
+bytes (at most every five seconds), verification, channel attempts/results, ADB lock,
+connection, upload and response, installed snapshot refresh, terminal state and UI
+cleanup. Package broadcasts independently record the observed installed version,
+allowing an installed APK to be distinguished from an installer call still waiting.
+Only explicitly structured events are persisted; free-form logs, credentials,
+pairing codes, URLs and raw ADB output are excluded.
+
 ## Updates
 
 The update checker compares cached catalog version codes with installed package

@@ -200,4 +200,6 @@
 
     <!-- Splash Screen -->
     <string name="splash_title">LelloStore</string>
+    <string name="settings_audit_title">Update diagnostics</string>
+    <string name="settings_audit_subtitle">Timing, results, and export · 4 MiB rolling history</string>
 </resources>

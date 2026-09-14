@@ -27,7 +27,10 @@ class WirelessTlsAdbInstallationChannel @Inject constructor(
 
     override suspend fun install(request: InstallationRequest): ChannelInstallationResult =
         withContext(Dispatchers.IO) {
+            request.audit("adb.lock_waiting", emptyMap())
             selfAdbConnectionMutex.withLock {
+                request.audit("adb.lock_acquired", emptyMap())
+                request.audit("adb.connect_started", emptyMap())
                 val adb = try {
                     connect()
                 } catch (error: Exception) {
@@ -37,6 +40,7 @@ class WirelessTlsAdbInstallationChannel @Inject constructor(
                 } ?: return@withLock ChannelInstallationResult.Unavailable(
                     "No authorized Wireless debugging endpoint was discovered"
                 )
+                request.audit("adb.connected", emptyMap())
                 installApkOverAdb(context, adb, request)
             }
         }
