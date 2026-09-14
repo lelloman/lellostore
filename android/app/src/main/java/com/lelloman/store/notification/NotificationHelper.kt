@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.LruCache
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -29,6 +30,7 @@ class NotificationHelper @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val notificationManager = NotificationManagerCompat.from(context)
+    private val appNames = LruCache<String, String>(64)
 
     init {
         createNotificationChannel()
@@ -106,8 +108,8 @@ class NotificationHelper @Inject constructor(
         }
         val text = when {
             progresses.isEmpty() -> context.getString(R.string.operation_starting)
-            progress != null -> progress.packageName
-            else -> progresses.joinToString(limit = 2) { it.packageName }
+            progress != null -> appName(progress.packageName)
+            else -> progresses.joinToString(limit = 2) { appName(it.packageName) }
         }
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -137,12 +139,31 @@ class NotificationHelper @Inject constructor(
             builder.setStyle(
                 NotificationCompat.InboxStyle().also { style ->
                     progresses.forEach { item ->
-                        style.addLine("${item.packageName} — ${operationStateLabel(item)}")
+                        style.addLine("${appName(item.packageName)} — ${operationStateLabel(item)}")
                     }
                 }
             )
         }
         return builder.build()
+    }
+
+    private fun appName(packageName: String): String {
+        appNames.get(packageName)?.let { return it }
+        val name = try {
+            val packageManager = context.packageManager
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+            packageManager.getApplicationLabel(info).toString().takeIf { it.isNotBlank() }
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+        // Avoid repeatedly loading application resources for every progress notification.
+        if (name != null) appNames.put(packageName, name)
+        return name ?: packageName
     }
 
     @SuppressLint("MissingPermission") // Foreground-operation notifications are required by Android.
