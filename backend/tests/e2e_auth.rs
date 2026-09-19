@@ -1145,3 +1145,41 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
     .await
     .expect("catalog WebSocket shutdown timed out");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn replacement_upload_parameter_replaces_release_and_validates_boolean() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::new(ctx.router.clone()).unwrap();
+    let authorization = format!("Bearer {}", oidc.get_admin_token());
+    for (code, value, status) in [
+        (1, "false", StatusCode::CREATED),
+        (2, "yes", StatusCode::BAD_REQUEST),
+        (2, "true", StatusCode::CREATED),
+        (1, "true", StatusCode::CONFLICT),
+    ] {
+        let parser = ctx.temp_dir.path().join("fake-aapt2");
+        std::fs::write(&parser, format!("#!/bin/sh\necho \"package: name='com.test.app' versionCode='{code}' versionName='{code}.0'\"\necho \"sdkVersion:'24'\"\necho \"application-label:'Test App'\"\n")).unwrap();
+        server
+            .post("/api/admin/apps")
+            .add_header("Authorization", authorization.clone())
+            .multipart(
+                axum_test::multipart::MultipartForm::new()
+                    .add_part(
+                        "file",
+                        axum_test::multipart::Part::bytes(create_test_apk("com.test.app", code))
+                            .file_name("test.apk"),
+                    )
+                    .add_text("replace_latest", value),
+            )
+            .await
+            .assert_status(status);
+    }
+    let versions = lellostore_backend::db::get_app_versions(&ctx.pool, "com.test.app")
+        .await
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].version_code, 2);
+    assert!(ctx.storage_path.join("apks/com.test.app/2.apk").exists());
+    assert!(!ctx.storage_path.join("apks/com.test.app/1.apk").exists());
+}

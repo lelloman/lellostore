@@ -203,6 +203,24 @@ publisher=${LELLOSTORE_PUBLISHER:-$HOME/lelloprojects/lellostore/scripts/publish
 "$publisher" upload app/build/outputs/apk/release/app-release.apk --yes --json
 ```
 
+Use `--replace-latest` to replace the highest version code in the selected channel
+(stable by default, or beta with `--beta`) and delete its APK after saving the new
+release:
+
+```bash
+python scripts/publish-to-lellostore.py upload path/to/app.apk --replace-latest
+./scripts/publish-android-to-lellostore.sh --replace-latest
+```
+
+The API equivalent is multipart field `replace_latest=true` on
+`POST /api/admin/apps`. It defaults to `false` and accepts only `true` or `false`.
+Replacement requires a higher version code; duplicate codes remain conflicts.
+If the channel has no releases, this behaves as a normal upload. Older history
+and the other channel are retained. The new release and removal of the previous
+catalog entry commit together; failed uploads retain the previous release.
+APK cleanup happens after commit; filesystem cleanup errors are logged for
+operator attention. Existing stale history is not bulk-deleted.
+
 Only pass `--yes` after the upload has already been authorized; without it the
 publisher asks for interactive confirmation immediately before authentication
 and upload. Direct invocation with only an artifact path remains supported for

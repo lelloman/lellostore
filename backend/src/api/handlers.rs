@@ -418,6 +418,7 @@ pub async fn upload_app(
     let mut override_name: Option<String> = None;
     let mut override_description: Option<String> = None;
     let mut is_beta = false;
+    let mut replace_latest = false;
 
     // Process multipart fields
     while let Some(mut field) = multipart
@@ -478,6 +479,17 @@ pub async fn upload_app(
                     override_description = Some(text);
                 }
             }
+            Some("replace_latest") => {
+                replace_latest = match read_metadata_text(field).await?.as_str() {
+                    "true" => true,
+                    "false" => false,
+                    _ => {
+                        return Err(AppError::BadRequest(
+                            "replace_latest must be 'true' or 'false'".to_string(),
+                        ))
+                    }
+                };
+            }
             Some("is_beta") => {
                 let text = read_metadata_text(field).await?;
                 is_beta = match text.as_str() {
@@ -506,12 +518,13 @@ pub async fn upload_app(
     // Process the upload using UploadService
     let result = state
         .upload_service
-        .process_upload_file(
+        .process_upload_file_with_replacement(
             &filename,
             &upload_path,
             override_name,
             override_description,
             is_beta,
+            replace_latest,
         )
         .await
         .map_err(|e| match e {
@@ -527,6 +540,10 @@ pub async fn upload_app(
                 "Version {} already exists for {}",
                 version_code, package_name
             )),
+            crate::services::UploadError::ReplacementNotNewer => AppError::Conflict(
+                "Replacement version code must be higher than the latest release in this channel"
+                    .to_string(),
+            ),
             crate::services::UploadError::AabNotSupported(msg) => AppError::BadRequest(msg),
             other => AppError::Internal(other.to_string()),
         })?;

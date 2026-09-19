@@ -27,6 +27,9 @@ pub enum UploadError {
         version_code: i64,
     },
 
+    #[error("Replacement version code must be higher than the latest release in this channel")]
+    ReplacementNotNewer,
+
     #[error("AAB conversion not available: {0}")]
     AabNotSupported(String),
 
@@ -157,6 +160,28 @@ impl UploadService {
         override_description: Option<String>,
         is_beta: bool,
     ) -> Result<UploadResult, UploadError> {
+        self.process_upload_file_with_replacement(
+            file_name,
+            upload_path,
+            override_name,
+            override_description,
+            is_beta,
+            false,
+        )
+        .await
+    }
+
+    /// Replace only the latest release in the selected channel, retaining older history.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_upload_file_with_replacement(
+        &self,
+        file_name: &str,
+        upload_path: &Path,
+        override_name: Option<String>,
+        override_description: Option<String>,
+        is_beta: bool,
+        replace_latest: bool,
+    ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
         let size = tokio::fs::metadata(upload_path).await?.len();
         if size > self.max_size {
@@ -268,6 +293,7 @@ impl UploadService {
                 icon_path.as_deref(),
                 is_new_app,
                 is_beta,
+                replace_latest,
             )
             .await;
 
@@ -280,7 +306,17 @@ impl UploadService {
             self.cleanup_on_failure(&metadata.package_name, metadata.version_code, is_new_app);
         }
 
-        db_result?;
+        if let Some(previous_version) = db_result? {
+            if let Err(error) = self
+                .storage
+                .delete_apk(&metadata.package_name, previous_version)
+            {
+                warn!(
+                    "Failed to delete superseded APK {}/{}: {}",
+                    metadata.package_name, previous_version, error
+                );
+            }
+        }
 
         // 13. Temp directory is automatically cleaned up when dropped
 
@@ -311,7 +347,8 @@ impl UploadService {
         icon_path: Option<&str>,
         is_new_app: bool,
         is_beta: bool,
-    ) -> Result<(), UploadError> {
+        replace_latest: bool,
+    ) -> Result<Option<i64>, UploadError> {
         // Start a transaction
         let mut tx = self.db.begin().await.map_err(AppError::Database)?;
 
@@ -336,6 +373,29 @@ impl UploadService {
             .await?;
         }
 
+        // Acquire SQLite's write lock even when no app metadata changed.
+        sqlx::query("UPDATE apps SET updated_at = datetime('now') WHERE package_name = ?")
+            .bind(package_name)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        let previous_version = if replace_latest {
+            let latest: Option<i64> = sqlx::query_scalar(
+                "SELECT MAX(version_code) FROM app_versions WHERE package_name = ? AND is_beta = ?",
+            )
+            .bind(package_name)
+            .bind(is_beta)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+            if latest.is_some_and(|latest| version_code <= latest) {
+                return Err(UploadError::ReplacementNotNewer);
+            }
+            latest
+        } else {
+            None
+        };
+
         // Insert version
         db::insert_app_version_tx(
             &mut tx,
@@ -350,10 +410,19 @@ impl UploadService {
         )
         .await?;
 
+        if let Some(previous_version) = previous_version {
+            sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ?")
+                .bind(package_name)
+                .bind(previous_version)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+        }
+
         // Commit transaction
         tx.commit().await.map_err(AppError::Database)?;
 
-        Ok(())
+        Ok(previous_version)
     }
 
     /// Clean up files if database operation fails

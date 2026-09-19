@@ -352,6 +352,7 @@ def upload_artifact(
     description: str | None = None,
     is_beta: bool = False,
     json_output: bool = False,
+    replace_latest: bool = False,
 ) -> dict:
     artifact_info = validate_artifact(artifact)
     artifact = Path(artifact_info["artifact"])
@@ -367,6 +368,8 @@ def upload_artifact(
         trailing_parts.append(_multipart_field(boundary, "name", name))
     if description:
         trailing_parts.append(_multipart_field(boundary, "description", description))
+    if replace_latest:
+        trailing_parts.append(_multipart_field(boundary, "replace_latest", "true"))
     if is_beta:
         trailing_parts.append(_multipart_field(boundary, "is_beta", "true"))
     trailing_parts.append(f"\r\n--{boundary}--\r\n".encode())
@@ -462,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("artifact", type=Path)
     upload.add_argument("--name", help="Override the application name")
     upload.add_argument("--description", help="Override the application description")
+    upload.add_argument("--replace-latest", action="store_true", help="Replace the latest release in this channel and delete its APK (requires a higher version code)")
     upload.add_argument("--beta", action="store_true", help="Publish this release to the beta channel")
     upload.add_argument("--dry-run", action="store_true", help="Validate without authenticating or uploading")
     upload.add_argument("--json", action="store_true", help="Print the result as JSON")
@@ -537,6 +541,7 @@ def main(
             name=parsed.name,
             description=parsed.description,
             is_beta=parsed.beta,
+            replace_latest=parsed.replace_latest,
             json_output=json_output,
         )
         return 0

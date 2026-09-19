@@ -392,3 +392,75 @@ async fn test_upload_new_version() {
         vec![2, 1],
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn replacement_retains_history_and_other_channel_and_rejects_rollback() {
+    let (temp_dir, pool, storage) = setup_test_env().await;
+    let path = create_upload_file(&temp_dir, "release.apk");
+    for (code, beta, replace, succeeds) in [
+        (1, false, true, true), // empty channel
+        (2, false, false, true),
+        (8, true, false, true),
+        (3, false, true, true),
+        (3, false, true, false), // duplicate
+        (2, false, true, false), // downgrade to the deleted code
+    ] {
+        let service = UploadService::new(
+            storage.clone(),
+            ApkParser::new(create_fake_aapt2(
+                &temp_dir,
+                "com.example.replace",
+                code,
+                "1.0",
+                "Replace",
+            )),
+            None,
+            pool.clone(),
+            100 * 1024 * 1024,
+        );
+        let result = service
+            .process_upload_file_with_replacement("release.apk", &path, None, None, beta, replace)
+            .await;
+        assert_eq!(result.is_ok(), succeeds, "code {code}: {result:?}");
+    }
+    let versions = lellostore_backend::db::get_app_versions(&pool, "com.example.replace")
+        .await
+        .unwrap();
+    assert_eq!(
+        versions.iter().map(|v| v.version_code).collect::<Vec<_>>(),
+        vec![8, 3, 1]
+    );
+    for code in [1, 3, 8] {
+        assert!(storage.get_apk_path("com.example.replace", code).exists());
+    }
+    assert!(!storage.get_apk_path("com.example.replace", 2).exists());
+
+    // A database failure must roll back both version changes and remove the new APK.
+    sqlx::query("CREATE TRIGGER reject_version BEFORE DELETE ON app_versions WHEN OLD.version_code = 3 BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        .execute(&pool).await.unwrap();
+    let service = UploadService::new(
+        storage.clone(),
+        ApkParser::new(create_fake_aapt2(
+            &temp_dir,
+            "com.example.replace",
+            4,
+            "4.0",
+            "Replace",
+        )),
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+    assert!(service
+        .process_upload_file_with_replacement("release.apk", &path, None, None, false, true)
+        .await
+        .is_err());
+    assert!(
+        lellostore_backend::db::version_exists(&pool, "com.example.replace", 3)
+            .await
+            .unwrap()
+    );
+    assert!(storage.get_apk_path("com.example.replace", 3).exists());
+    assert!(!storage.get_apk_path("com.example.replace", 4).exists());
+}
