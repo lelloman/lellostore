@@ -9,7 +9,6 @@ use simple_server::axum::{
     Router,
 };
 use sqlx::SqlitePool;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -196,50 +195,48 @@ fn normalize_path(path: &str) -> String {
     result.join("/")
 }
 
-pub fn spawn_metrics_updater(db: SqlitePool, storage_path: PathBuf, db_path: PathBuf) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+/// Finish the current sampling cycle, then stop when shutdown is requested.
+pub async fn run_metrics_updater(
+    db: SqlitePool,
+    storage_path: PathBuf,
+    db_path: PathBuf,
+    shutdown: simple_server::lifecycle::Shutdown,
+) -> Result<(), tokio::task::JoinError> {
+    let mut interval = tokio::time::interval(Duration::from_secs(60));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            biased;
+            () = shutdown.requested() => break,
+            _ = interval.tick() => {},
+        }
+        // Directory walks must not block the runtime's shutdown deadline timer.
+        let storage = storage_path.clone();
+        let database = db_path.clone();
+        tokio::task::spawn_blocking(move || update_storage_metrics(&storage, &database)).await?;
 
-        loop {
-            interval.tick().await;
-
-            update_storage_metrics(&storage_path, &db_path);
-
-            match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps")
-                .fetch_one(&db)
-                .await
-            {
-                Ok(apps_count) => {
-                    match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM app_versions")
-                        .fetch_one(&db)
-                        .await
-                    {
-                        Ok(versions_count) => {
-                            update_catalog_metrics(apps_count, versions_count);
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to count app versions: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to count apps: {}", e);
+        match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps")
+            .fetch_one(&db)
+            .await
+        {
+            Ok(apps_count) => {
+                match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM app_versions")
+                    .fetch_one(&db)
+                    .await
+                {
+                    Ok(versions_count) => update_catalog_metrics(apps_count, versions_count),
+                    Err(error) => tracing::warn!(%error, "Failed to count app versions"),
                 }
             }
+            Err(error) => tracing::warn!(%error, "Failed to count apps"),
         }
-    });
+    }
+    tracing::info!("Metrics updater stopped");
+    Ok(())
 }
 
-pub async fn start_metrics_server(
-    addr: SocketAddr,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let app = Router::new().route("/metrics", get(metrics_handler));
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("Metrics server listening on {}", addr);
-    simple_server::axum::serve(listener, app).await?;
-    Ok(())
+pub fn router() -> Router {
+    Router::new().route("/metrics", get(metrics_handler))
 }
 
 #[cfg(test)]

@@ -10,6 +10,9 @@ pub enum ConfigError {
     #[error("Invalid socket address: {0}")]
     InvalidSocketAddr(String),
 
+    #[error("Invalid SHUTDOWN_GRACE_SECS: {0}")]
+    InvalidShutdownGrace(String),
+
     #[error("Invalid database URL: {0}")]
     InvalidDatabaseUrl(String),
 }
@@ -18,6 +21,7 @@ pub enum ConfigError {
 pub struct Config {
     pub listen_addr: SocketAddr,
     pub metrics_addr: SocketAddr,
+    pub shutdown_grace_secs: u64,
     pub database_url: String,
     pub database_path: PathBuf,
     pub storage_path: PathBuf,
@@ -50,6 +54,9 @@ impl Config {
             .parse()
             .map_err(|_| ConfigError::InvalidSocketAddr("METRICS_ADDR".to_string()))?;
 
+        let shutdown_grace_secs =
+            parse_shutdown_grace_secs(std::env::var("SHUTDOWN_GRACE_SECS").ok().as_deref())?;
+
         let database_url = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "sqlite:data/lellostore.db?mode=rwc".to_string());
 
@@ -79,6 +86,7 @@ impl Config {
         Ok(Config {
             listen_addr,
             metrics_addr,
+            shutdown_grace_secs,
             database_url,
             database_path,
             storage_path,
@@ -89,6 +97,20 @@ impl Config {
             max_upload_size,
         })
     }
+}
+
+fn parse_shutdown_grace_secs(value: Option<&str>) -> Result<u64, ConfigError> {
+    let value = value.unwrap_or("30");
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| ConfigError::InvalidShutdownGrace(value.to_owned()))?;
+    if std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(seconds))
+        .is_none()
+    {
+        return Err(ConfigError::InvalidShutdownGrace(value.to_owned()));
+    }
+    Ok(seconds)
 }
 
 fn extract_db_path(url: &str) -> Result<PathBuf, ConfigError> {
@@ -102,6 +124,16 @@ fn extract_db_path(url: &str) -> Result<PathBuf, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_budget_defaults_and_validation() {
+        assert_eq!(parse_shutdown_grace_secs(None).unwrap(), 30);
+        assert_eq!(parse_shutdown_grace_secs(Some("7")).unwrap(), 7);
+        assert_eq!(parse_shutdown_grace_secs(Some("0")).unwrap(), 0);
+        for value in ["", "-1", "abc", "18446744073709551615"] {
+            assert!(parse_shutdown_grace_secs(Some(value)).is_err());
+        }
+    }
 
     #[test]
     fn test_extract_db_path_simple() {

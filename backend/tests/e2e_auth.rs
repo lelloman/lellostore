@@ -17,6 +17,12 @@ use mock_oidc::MockOidc;
 
 /// Create a test context with authentication enabled
 async fn create_auth_test_context() -> (TestContext, MockOidc) {
+    create_auth_test_context_with_events(Default::default()).await
+}
+
+async fn create_auth_test_context_with_events(
+    catalog_events: lellostore_backend::api::events::CatalogEventHub,
+) -> (TestContext, MockOidc) {
     use lellostore_backend::api::{routes::create_router, AppState};
     use lellostore_backend::auth::{AuthState, JwksCache, TokenValidator};
     use lellostore_backend::config::{Config, OidcConfig};
@@ -51,6 +57,7 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
     let config = Config {
         listen_addr: "127.0.0.1:0".parse().unwrap(),
         metrics_addr: "127.0.0.1:0".parse().unwrap(),
+        shutdown_grace_secs: 30,
         database_url,
         database_path: db_path,
         storage_path: storage_path.clone(),
@@ -103,7 +110,7 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
         auth: Some(auth_state),
         upload_service,
         storage,
-        catalog_events: Default::default(),
+        catalog_events,
     };
 
     let router = create_router(state);
@@ -1102,4 +1109,39 @@ async fn authenticated_websocket_receives_catalog_change_after_upload() {
     .expect("catalog event was not delivered");
     assert_eq!(event, serde_json::json!({"type": "catalog_changed"}));
     socket.close().await;
+}
+
+#[tokio::test]
+async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
+    use lellostore_backend::api::events::CatalogEventHub;
+    use simple_server::lifecycle::Shutdown;
+    use std::time::Duration;
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let shutdown = Shutdown::new();
+        let hub = CatalogEventHub::new(shutdown.clone());
+        let (ctx, oidc) = create_auth_test_context_with_events(hub.clone()).await;
+        let server = TestServer::builder()
+            .http_transport()
+            .build(ctx.router.clone())
+            .unwrap();
+        let mut socket = server
+            .get_websocket("/api/events")
+            .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+            .await
+            .into_websocket()
+            .await;
+        shutdown.request();
+        let (result, message) = tokio::join!(hub.drain(), socket.receive_message());
+        result.unwrap();
+        assert!(matches!(message, axum_test::WsMessage::Close(_)));
+        server
+            .get_websocket("/api/events")
+            .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+            .await
+            .assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        ctx.pool.close().await;
+    })
+    .await
+    .expect("catalog WebSocket shutdown timed out");
 }

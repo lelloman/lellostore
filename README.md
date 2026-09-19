@@ -30,6 +30,11 @@ Docker supplies the runtime APK/AAB tools and is the simplest production build.
 
 ## Backend
 
+The lifecycle implementation currently uses the sibling `simple-server` checkout
+at revision `c5359079ff4fad0b4b0359e8c88880dbbbc4eeb5`. Keep that checkout beside
+LelloStore for local builds; CI checks out both sources explicitly. See
+[the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md).
+
 Copy `backend/.env.example` to `backend/.env`, replace the OIDC placeholders,
 and create the database parent directory before starting the service:
 
@@ -50,6 +55,7 @@ Important settings are:
 | --- | --- | --- |
 | `LISTEN_ADDR` | `127.0.0.1:8080` | API and web listener |
 | `METRICS_ADDR` | `127.0.0.1:9091` | Prometheus listener |
+| `SHUTDOWN_GRACE_SECS` | `30` | Total budget for HTTP, metrics, catalog WebSockets, and database cleanup |
 | `DATABASE_URL` | `sqlite:data/lellostore.db?mode=rwc` | SQLite connection |
 | `STORAGE_PATH` | `data/storage` | APK and icon storage |
 | `OIDC_ISSUER_URL` | placeholder | Exact token issuer and discovery base URL |
@@ -60,6 +66,12 @@ Important settings are:
 | `AAPT2_PATH` | auto-detected | Optional explicit `aapt2` executable |
 | `BUNDLETOOL_PATH` | unset | Optional bundletool JAR for AAB uploads |
 | `JAVA_PATH` | unset | Java executable used with bundletool |
+
+SIGINT or SIGTERM starts coordinated shutdown of both listeners, the metrics
+updater, and catalog WebSocket sessions. Once they drain, the database pool
+closes within the same budget. A bind failure on either port prevents serving;
+a shutdown timeout exits unsuccessfully. Use a deployment stop timeout longer
+than the configured grace period.
 
 ### Access groups
 
@@ -114,12 +126,12 @@ The production image builds the frontend, embeds it in the backend, and includes
 Java, bundletool, and `aapt` for APK/AAB processing:
 
 ```sh
-docker build \
+docker build --build-context simple-server=../simple-server \
   --build-arg VITE_OIDC_ISSUER_URL=https://auth.example.com/realms/store \
   --build-arg VITE_OIDC_CLIENT_ID=lellostore-frontend \
   -t lellostore .
 
-docker run --rm -p 8080:8080 -p 9091:9091 \
+docker run --rm --stop-timeout 35 -p 8080:8080 -p 9091:9091 \
   -e OIDC_ISSUER_URL=https://auth.example.com/realms/store \
   -e OIDC_AUDIENCE=lellostore \
   -v lellostore-data:/app/data \
@@ -198,8 +210,9 @@ older wrappers.
 
 ## Verification
 
-See the [shared-server migration notes](docs/SIMPLE_SERVER_MIGRATION.md) for
-Axum dependency ownership and migration validation.
+See the [Axum migration notes](docs/SIMPLE_SERVER_MIGRATION.md) and
+[lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) for dependency ownership,
+shutdown behavior, and migration validation.
 
 Run the same checks enforced by CI:
 

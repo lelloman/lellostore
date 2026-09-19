@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use simple_server::lifecycle::{BoxError, Lifecycle, ShutdownOptions, Signals};
+use std::{sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 use lellostore_backend::api::AppState;
@@ -8,7 +9,15 @@ use lellostore_backend::services::{AabConverter, ApkParser, StorageService, Uplo
 use lellostore_backend::{api, db, metrics};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        tracing::error!(%error, "LelloStore stopped with an error");
+        // A timed-out blocking task must not hold runtime teardown open forever.
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), BoxError> {
     // Load .env file
     dotenvy::dotenv().ok();
 
@@ -19,7 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration
     let config = Config::from_env()?;
-    tracing::info!("Starting lellostore backend on {}", config.listen_addr);
+    let signals = Signals::install()?;
+    let mut lifecycle = Lifecycle::new(ShutdownOptions {
+        grace_period: Duration::from_secs(config.shutdown_grace_secs),
+    });
+    let catalog_events = api::events::CatalogEventHub::new(lifecycle.shutdown());
 
     // Initialize metrics
     metrics::register_metrics();
@@ -34,13 +47,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&config.storage_path)?;
     std::fs::create_dir_all(config.storage_path.join("apks"))?;
     std::fs::create_dir_all(config.storage_path.join("icons"))?;
-
-    // Start background metrics updater
-    metrics::spawn_metrics_updater(
-        db.clone(),
-        config.storage_path.clone(),
-        config.database_path.clone(),
-    );
 
     // Initialize services
     let storage = Arc::new(StorageService::new(config.storage_path.clone()));
@@ -121,53 +127,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build application state
     let state = AppState {
-        db,
+        db: db.clone(),
         config: Arc::new(config.clone()),
         auth: auth_state,
         upload_service,
         storage,
-        catalog_events: Default::default(),
+        catalog_events: catalog_events.clone(),
     };
 
     // Create router
     let app = api::routes::create_router(state);
 
-    // Start metrics server (separate port for Prometheus scraping)
-    let metrics_addr = config.metrics_addr;
-    tokio::spawn(async move {
-        if let Err(e) = metrics::start_metrics_server(metrics_addr).await {
-            tracing::error!("Metrics server failed: {}", e);
-        }
-    });
+    // Bind both ports before any serving or background work begins. A metrics
+    // bind failure is a startup error, rather than a detached task failure.
+    let listener = simple_server::http::bind(config.listen_addr).await?;
+    let metrics_listener = simple_server::http::bind(config.metrics_addr).await?;
+    tracing::info!("Server listening on {}", listener.local_addr()?);
+    tracing::info!(
+        "Metrics server listening on {}",
+        metrics_listener.local_addr()?
+    );
 
-    // Start main server
-    let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
-    tracing::info!("Server listening on {}", config.listen_addr);
-    simple_server::axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+    lifecycle.service(
+        "http",
+        simple_server::http::serve(listener, app, lifecycle.shutdown()),
+    )?;
+    lifecycle.service(
+        "metrics-http",
+        simple_server::http::serve(metrics_listener, metrics::router(), lifecycle.shutdown()),
+    )?;
+    lifecycle.service(
+        "metrics-updater",
+        metrics::run_metrics_updater(
+            db.clone(),
+            config.storage_path.clone(),
+            config.database_path.clone(),
+            lifecycle.shutdown(),
+        ),
+    )?;
+    lifecycle.service(
+        "catalog-events",
+        async move { catalog_events.drain().await },
+    )?;
+
+    let report = lifecycle
+        .run(signals.wait(), async move {
+            // Every registered DB user has drained before this future is polled.
+            db.close().await;
+            tracing::info!("Database pool closed");
+            Ok::<_, std::io::Error>(())
+        })
         .await?;
-
+    tracing::info!(reason = ?report.reason, "LelloStore shutdown complete");
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let interrupt = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("install SIGINT handler");
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("install SIGTERM handler")
-            .recv()
-            .await;
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        _ = interrupt => {},
-        _ = terminate => {},
-    }
-    tracing::info!("Shutdown signal received; draining HTTP requests");
 }

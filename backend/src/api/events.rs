@@ -1,13 +1,24 @@
 use serde::Serialize;
 use simple_server::axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use simple_server::axum::response::Response;
+use simple_server::axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use simple_server::lifecycle::Shutdown;
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
+use tokio_util::task::{task_tracker::TaskTrackerToken, TaskTracker};
 
 use crate::auth::AuthenticatedUser;
 
 #[derive(Clone)]
 pub struct CatalogEventHub {
     sender: broadcast::Sender<CatalogEvent>,
+    shutdown: Shutdown,
+    connections: TaskTracker,
+    // Serialize admission with closing the tracker; TaskTracker::close alone
+    // does not prohibit adding tasks after wait() has already completed.
+    accepting: Arc<Mutex<bool>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -18,12 +29,48 @@ enum CatalogEvent {
 
 impl Default for CatalogEventHub {
     fn default() -> Self {
-        let (sender, _) = broadcast::channel(64);
-        Self { sender }
+        Self::new(Shutdown::new())
     }
 }
 
 impl CatalogEventHub {
+    pub fn new(shutdown: Shutdown) -> Self {
+        let (sender, _) = broadcast::channel(64);
+        Self {
+            sender,
+            shutdown,
+            connections: TaskTracker::new(),
+            accepting: Arc::new(Mutex::new(true)),
+        }
+    }
+
+    fn admit_connection(&self) -> Option<TaskTrackerToken> {
+        let accepting = self
+            .accepting
+            .lock()
+            .expect("catalog admission lock poisoned");
+        if !*accepting || self.shutdown.is_requested() {
+            return None;
+        }
+        Some(self.connections.token())
+    }
+
+    /// Close admission and wait for all accepted upgrades and socket handlers.
+    pub async fn drain(&self) -> std::io::Result<()> {
+        self.shutdown.requested().await;
+        {
+            let mut accepting = self
+                .accepting
+                .lock()
+                .expect("catalog admission lock poisoned");
+            *accepting = false;
+            self.connections.close();
+        }
+        self.connections.wait().await;
+        tracing::info!("Catalog event connections drained");
+        Ok(())
+    }
+
     pub fn notify_catalog_changed(&self) {
         let _ = self.sender.send(CatalogEvent::CatalogChanged);
     }
@@ -40,11 +87,34 @@ pub async fn catalog_events(
         super::AppState,
     >,
 ) -> Response {
+    let Some(guard) = state.catalog_events.admit_connection() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
     let receiver = state.catalog_events.subscribe();
-    ws.on_upgrade(move |socket| serve_events(socket, receiver))
+    let shutdown = state.catalog_events.shutdown.clone();
+    // Acquire the guard before scheduling the upgrade so pending handshakes are
+    // included in draining. Failed upgrades drop the closure and its guard.
+    ws.on_upgrade(move |socket| async move {
+        let _guard = guard;
+        serve_events(socket, receiver, shutdown).await;
+    })
 }
 
-async fn serve_events(mut socket: WebSocket, mut receiver: broadcast::Receiver<CatalogEvent>) {
+async fn serve_events(
+    mut socket: WebSocket,
+    mut receiver: broadcast::Receiver<CatalogEvent>,
+    shutdown: Shutdown,
+) {
+    tokio::select! {
+        biased;
+        () = shutdown.requested() => {},
+        () = forward_events(&mut socket, &mut receiver) => return,
+    }
+    // The coordinator also bounds a close-frame write to an unresponsive peer.
+    let _ = socket.send(Message::Close(None)).await;
+}
+
+async fn forward_events(socket: &mut WebSocket, receiver: &mut broadcast::Receiver<CatalogEvent>) {
     loop {
         tokio::select! {
             event = receiver.recv() => {
@@ -74,6 +144,26 @@ async fn serve_events(mut socket: WebSocket, mut receiver: broadcast::Receiver<C
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn drain_tracks_pending_upgrades_and_closes_admission() {
+        let shutdown = Shutdown::new();
+        let hub = CatalogEventHub::new(shutdown.clone());
+        let guard = hub.admit_connection().unwrap();
+        let draining = hub.clone();
+        let task = tokio::spawn(async move { draining.drain().await });
+        shutdown.request();
+        tokio::task::yield_now().await;
+        assert!(hub.admit_connection().is_none());
+        assert!(!task.is_finished(), "pending upgrade must keep drain open");
+        drop(guard);
+        tokio::time::timeout(std::time::Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(hub.admit_connection().is_none());
+    }
 
     #[tokio::test]
     async fn subscribers_receive_catalog_changes() {

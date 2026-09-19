@@ -63,6 +63,7 @@ async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> Tes
     let config = Config {
         listen_addr: "127.0.0.1:0".parse().unwrap(),
         metrics_addr: "127.0.0.1:0".parse().unwrap(),
+        shutdown_grace_secs: 30,
         database_url,
         database_path: db_path,
         storage_path: storage_path.clone(),

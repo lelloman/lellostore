@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+# Requires --build-context simple-server=../simple-server
 # LelloStore Dockerfile
 # Multi-stage build: Frontend -> Backend -> Runtime
 
@@ -40,6 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=simple-server Cargo.toml /simple-server/Cargo.toml
+COPY --from=simple-server src /simple-server/src
+
 # Cache dependencies by building with empty source first
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
@@ -49,7 +54,7 @@ RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/bin/mock_oidc.rs
 
 # Build dependencies only (this layer is cached)
-RUN cargo build --release --features embed-frontend && rm -rf src
+RUN cargo build --release --features embed-frontend --locked && rm -rf src
 
 # Copy frontend build output (required for rust-embed)
 COPY --from=frontend-builder /app/frontend/dist ../frontend/dist
@@ -63,7 +68,7 @@ COPY backend/tests tests
 RUN touch src/main.rs
 
 # Build the actual application
-RUN cargo build --release --features embed-frontend
+RUN cargo build --release --features embed-frontend --locked
 
 # =============================================================================
 # Runtime Stage

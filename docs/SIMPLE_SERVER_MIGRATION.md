@@ -1,5 +1,8 @@
 # Step 01: Axum centralization
 
+Historical Step 01 record. Current lifecycle and build instructions are in
+[Step 02](STEP_02_LIFECYCLE.md).
+
 LelloStore's backend pins the public `simple-server` Git dependency at revision
 `46a36391ccca522f3ec9aa24206f2b231162dd96`, with `multipart`, `macros`, and `ws`.
 Production code, the mock OIDC binary, and tests use `simple_server::axum`.
