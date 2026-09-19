@@ -143,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start main server
     let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
     tracing::info!("Server listening on {}", config.listen_addr);
-    axum::serve(listener, app)
+    simple_server::axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 

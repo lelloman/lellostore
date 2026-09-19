@@ -198,6 +198,9 @@ older wrappers.
 
 ## Verification
 
+See the [shared-server migration notes](docs/SIMPLE_SERVER_MIGRATION.md) for
+Axum dependency ownership and migration validation.
+
 Run the same checks enforced by CI:
 
 ```sh

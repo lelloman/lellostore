@@ -9,7 +9,7 @@ embed-frontend = ["dep:rust-embed"]
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["multipart", "macros", "ws"] }
+simple-server = { git = "https://github.com/lelloman/simple-server", rev = "46a36391ccca522f3ec9aa24206f2b231162dd96", features = ["multipart", "macros", "ws"] }
 tokio = { version = "1", features = ["full", "process"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tower = "0.4"
@@ -61,7 +61,7 @@ path = "src/bin/mock_oidc.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
-axum-test = "14"
+axum-test = { version = "18", features = ["ws"] }
 tempfile = "3"
 
 [profile.release]

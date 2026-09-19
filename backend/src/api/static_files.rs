@@ -1,10 +1,10 @@
-use axum::{
+#[cfg(feature = "embed-frontend")]
+use rust_embed::Embed;
+use simple_server::axum::{
     body::Body,
     http::{header, HeaderValue, Response, StatusCode, Uri},
     response::IntoResponse,
 };
-#[cfg(feature = "embed-frontend")]
-use rust_embed::Embed;
 use std::borrow::Cow;
 
 #[cfg(feature = "embed-frontend")]

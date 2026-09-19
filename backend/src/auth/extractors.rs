@@ -1,4 +1,4 @@
-use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
+use simple_server::axum::{extract::FromRequestParts, http::request::Parts};
 use tracing::warn;
 
 use super::error::AuthError;
@@ -15,7 +15,6 @@ use super::user::User;
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser(pub User);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
     S: Send + Sync,
@@ -43,7 +42,6 @@ where
 #[derive(Debug, Clone)]
 pub struct AdminUser(pub User);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AdminUser
 where
     S: Send + Sync,
@@ -73,7 +71,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::Request;
+    use simple_server::axum::http::Request;
 
     fn make_user(is_admin: bool) -> User {
         User {

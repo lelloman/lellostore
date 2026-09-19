@@ -4,8 +4,8 @@
 //! Each test is designed to be LONG - testing many operations in sequence rather than
 //! one operation per test.
 
-use axum::http::StatusCode;
 use axum_test::TestServer;
+use simple_server::axum::http::StatusCode;
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -179,10 +179,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/me")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let identity: serde_json::Value = response.json();
@@ -191,10 +188,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/me")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let identity: serde_json::Value = response.json();
@@ -208,10 +202,7 @@ async fn test_complete_app_lifecycle_with_auth() {
     // User can list apps (empty)
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -225,10 +216,7 @@ async fn test_complete_app_lifecycle_with_auth() {
     let apk_data = create_test_apk("com.test.app", 1);
     let response = server
         .post("/api/admin/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .multipart(axum_test::multipart::MultipartForm::new().add_part(
             "file",
             axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
@@ -246,10 +234,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .post("/api/admin/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .multipart(axum_test::multipart::MultipartForm::new().add_part(
             "file",
             axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
@@ -262,10 +247,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let grant = server
         .put("/api/admin/users/test-user/apps/com.test.app")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .json(&serde_json::json!({"access_level": "stable"}))
         .await;
     assert_eq!(grant.status_code(), StatusCode::NO_CONTENT);
@@ -276,10 +258,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -306,10 +285,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            "Bearer invalid.token.here".parse().unwrap(),
-        )
+        .add_header("Authorization", "Bearer invalid.token.here")
         .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
@@ -420,10 +396,7 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -455,10 +428,7 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
@@ -478,10 +448,7 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .json(&serde_json::json!({
             "name": "Updated App One",
             "description": "New description"
@@ -495,10 +462,7 @@ async fn test_multi_app_database_operations() {
     // Verify change persisted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     let body: serde_json::Value = response.json();
     assert_eq!(body["name"], "Updated App One");
@@ -509,10 +473,7 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .json(&serde_json::json!({
             "name": "Hacker Was Here"
         }))
@@ -522,10 +483,7 @@ async fn test_multi_app_database_operations() {
     // Verify name unchanged
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     let body: serde_json::Value = response.json();
     assert_eq!(
@@ -539,20 +497,14 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify version deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     let body: serde_json::Value = response.json();
     let versions = body["versions"].as_array().unwrap();
@@ -564,30 +516,21 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app2")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify app deleted
     let response = server
         .get("/api/apps/com.example.app2")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 
     // Verify list updated
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
@@ -599,29 +542,20 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     // Verify nothing deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -632,30 +566,21 @@ async fn test_multi_app_database_operations() {
     // Delete version 2
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Delete version 3 (last one) - should also delete the app
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/3")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", admin_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", admin_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify app auto-deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     assert_eq!(
         response.status_code(),
@@ -669,10 +594,7 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", user_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", user_token))
         .await;
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
@@ -692,10 +614,7 @@ async fn test_token_expiration_handling() {
     // Test with valid token works
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", valid_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", valid_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -703,10 +622,7 @@ async fn test_token_expiration_handling() {
     let expired_token = mock_oidc.get_expired_token();
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", expired_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", expired_token))
         .await;
     assert_eq!(
         response.status_code(),
@@ -718,10 +634,7 @@ async fn test_token_expiration_handling() {
     let wrong_aud_token = mock_oidc.get_token_with_audience("wrong-app");
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", wrong_aud_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", wrong_aud_token))
         .await;
     assert_eq!(
         response.status_code(),
@@ -732,10 +645,7 @@ async fn test_token_expiration_handling() {
     // Valid token should still work
     let response = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {}", valid_token).parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {}", valid_token))
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
 }
@@ -775,9 +685,9 @@ async fn failed_database_delete_does_not_remove_app_files() {
     let response = server
         .delete("/api/admin/apps/com.example.atomic")
         .add_header(
-            "Authorization".parse().unwrap(),
+            "Authorization",
             format!("Bearer {}", mock_oidc.get_admin_token())
-                .parse()
+                .parse::<simple_server::axum::http::HeaderValue>()
                 .unwrap(),
         )
         .await;
@@ -819,10 +729,7 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     assert_eq!(
         server
             .get("/api/apps")
-            .add_header(
-                "Authorization".parse().unwrap(),
-                format!("Bearer {user_token}").parse().unwrap(),
-            )
+            .add_header("Authorization", format!("Bearer {user_token}"),)
             .await
             .status_code(),
         StatusCode::OK
@@ -830,20 +737,14 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
 
     let denied = server
         .post("/api/admin/app-groups")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .json(&serde_json::json!({"name": "Media apps"}))
         .await;
     assert_eq!(denied.status_code(), StatusCode::FORBIDDEN);
 
     let created = server
         .post("/api/admin/app-groups")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "Media apps"}))
         .await;
     assert_eq!(created.status_code(), StatusCode::CREATED);
@@ -852,10 +753,7 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
 
     let duplicate = server
         .post("/api/admin/app-groups")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "media APPS"}))
         .await;
     assert_eq!(duplicate.status_code(), StatusCode::CONFLICT);
@@ -864,29 +762,20 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
         .put(&format!(
             "/api/admin/app-groups/{group_id}/apps/com.example.media"
         ))
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
         .await;
     assert_eq!(set_group_grant.status_code(), StatusCode::NO_CONTENT);
 
     let add_member = server
         .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .await;
     assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
 
     let stable_access = server
         .get("/api/admin/users/test-user/access")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .await;
     assert_eq!(stable_access.status_code(), StatusCode::OK);
     let access: serde_json::Value = stable_access.json();
@@ -895,30 +784,21 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
 
     let set_direct_beta = server
         .put("/api/admin/users/test-user/apps/com.example.media")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "beta"}))
         .await;
     assert_eq!(set_direct_beta.status_code(), StatusCode::NO_CONTENT);
 
     let beta_access = server
         .get("/api/admin/users/test-user/access")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .await;
     let access: serde_json::Value = beta_access.json();
     assert_eq!(access["effective_access"][0]["access_level"], "beta");
 
     let mark_beta = server
         .put("/api/admin/apps/com.example.media/versions/7")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"is_beta": true}))
         .await;
     assert_eq!(mark_beta.status_code(), StatusCode::NO_CONTENT);
@@ -936,10 +816,7 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     // Promotion changes only model visibility, retaining the same artifact.
     let promote = server
         .put("/api/admin/apps/com.example.media/versions/7")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"is_beta": false}))
         .await;
     assert_eq!(promote.status_code(), StatusCode::NO_CONTENT);
@@ -991,16 +868,13 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
     let server = TestServer::new(ctx.router).unwrap();
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
-    let authorization: axum::http::HeaderName = "Authorization".parse().unwrap();
+    let authorization: simple_server::axum::http::HeaderName = "Authorization".parse().unwrap();
 
     // Register the OIDC user in the server's administration directory.
     assert_eq!(
         server
             .get("/api/apps")
-            .add_header(
-                authorization.clone(),
-                format!("Bearer {user_token}").parse().unwrap(),
-            )
+            .add_header(authorization.clone(), format!("Bearer {user_token}"),)
             .await
             .status_code(),
         StatusCode::OK
@@ -1008,10 +882,7 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
 
     let groups = server
         .get("/api/admin/app-groups")
-        .add_header(
-            authorization.clone(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
         .await;
     assert_eq!(groups.status_code(), StatusCode::OK);
     let groups: serde_json::Value = groups.json();
@@ -1027,19 +898,13 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
 
     let add_member = server
         .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
-        .add_header(
-            authorization.clone(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
         .await;
     assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
 
     let catalogue = server
         .get("/api/apps")
-        .add_header(
-            authorization.clone(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header(authorization.clone(), format!("Bearer {user_token}"))
         .await;
     let catalogue: serde_json::Value = catalogue.json();
     let apps = catalogue["apps"].as_array().unwrap();
@@ -1051,10 +916,7 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
 
     let rename = server
         .put(&format!("/api/admin/app-groups/{group_id}"))
-        .add_header(
-            authorization.clone(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "renamed"}))
         .await;
     assert_eq!(rename.status_code(), StatusCode::BAD_REQUEST);
@@ -1063,20 +925,14 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
         .put(&format!(
             "/api/admin/app-groups/{group_id}/apps/com.example.one"
         ))
-        .add_header(
-            authorization.clone(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
         .await;
     assert_eq!(set_rule.status_code(), StatusCode::BAD_REQUEST);
 
     let delete = server
         .delete(&format!("/api/admin/app-groups/{group_id}"))
-        .add_header(
-            authorization,
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header(authorization, format!("Bearer {admin_token}"))
         .await;
     assert_eq!(delete.status_code(), StatusCode::BAD_REQUEST);
 }
@@ -1116,10 +972,7 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let empty = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert!(empty.json::<serde_json::Value>()["apps"]
         .as_array()
@@ -1128,19 +981,13 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let hidden_detail = server
         .get("/api/apps/com.example.private")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert_eq!(hidden_detail.status_code(), StatusCode::NOT_FOUND);
 
     let admin_catalogue = server
         .get("/api/admin/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .await;
     assert_eq!(
         admin_catalogue.json::<serde_json::Value>()["apps"]
@@ -1152,20 +999,14 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let stable_grant = server
         .put("/api/admin/users/test-user/apps/com.example.private")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
         .await;
     assert_eq!(stable_grant.status_code(), StatusCode::NO_CONTENT);
 
     let stable_catalogue = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     let body: serde_json::Value = stable_catalogue.json();
     assert_eq!(body["apps"][0]["access_level"], "stable");
@@ -1173,10 +1014,7 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let stable_detail = server
         .get("/api/apps/com.example.private")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     let body: serde_json::Value = stable_detail.json();
     assert_eq!(body["versions"].as_array().unwrap().len(), 1);
@@ -1184,58 +1022,84 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let hidden_beta_apk = server
         .get("/api/apps/com.example.private/versions/2/apk")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert_eq!(hidden_beta_apk.status_code(), StatusCode::NOT_FOUND);
 
     let beta_grant = server
         .put("/api/admin/users/test-user/apps/com.example.private")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "beta"}))
         .await;
     assert_eq!(beta_grant.status_code(), StatusCode::NO_CONTENT);
     let beta_apk = server
         .get("/api/apps/com.example.private/versions/2/apk")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert_eq!(beta_apk.status_code(), StatusCode::OK);
 
     let revoke = server
         .delete("/api/admin/users/test-user/apps/com.example.private")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {admin_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {admin_token}"))
         .await;
     assert_eq!(revoke.status_code(), StatusCode::NO_CONTENT);
 
     // A stale APK URL cannot bypass the newly revoked grant.
     let revoked_download = server
         .get("/api/apps/com.example.private/versions/1/apk")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert_eq!(revoked_download.status_code(), StatusCode::NOT_FOUND);
     let revoked_catalogue = server
         .get("/api/apps")
-        .add_header(
-            "Authorization".parse().unwrap(),
-            format!("Bearer {user_token}").parse().unwrap(),
-        )
+        .add_header("Authorization", format!("Bearer {user_token}"))
         .await;
     assert!(revoked_catalogue.json::<serde_json::Value>()["apps"]
         .as_array()
         .unwrap()
         .is_empty());
+}
+
+/// Exercise authentication, upgrade, multipart upload and event serialization
+/// through real sockets after the Axum migration.
+#[tokio::test]
+async fn authenticated_websocket_receives_catalog_change_after_upload() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(ctx.router.clone())
+        .unwrap();
+    server
+        .get_websocket("/api/events")
+        .await
+        .assert_status_unauthorized();
+    let mut socket = server
+        .get_websocket("/api/events")
+        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .await
+        .into_websocket()
+        .await;
+    server
+        .post("/api/admin/apps")
+        .add_header(
+            "Authorization",
+            format!("Bearer {}", oidc.get_admin_token()),
+        )
+        .multipart(
+            axum_test::multipart::MultipartForm::new().add_part(
+                "file",
+                axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
+                    .file_name("test.apk"),
+            ),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+    let event = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        socket.receive_json::<serde_json::Value>(),
+    )
+    .await
+    .expect("catalog event was not delivered");
+    assert_eq!(event, serde_json::json!({"type": "catalog_changed"}));
+    socket.close().await;
 }

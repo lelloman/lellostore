@@ -3,9 +3,9 @@
 //! This module provides an in-process mock OIDC server that can be used
 //! in integration tests without requiring an external server.
 
-use axum::{extract::State, response::Json, routing::get, Router};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
+use simple_server::axum::{extract::State, response::Json, routing::get, Router};
 use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -62,7 +62,7 @@ impl MockOidc {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         tokio::spawn(async move {
-            axum::serve(listener, app)
+            simple_server::axum::serve(listener, app)
                 .with_graceful_shutdown(async {
                     let _ = shutdown_rx.await;
                 })

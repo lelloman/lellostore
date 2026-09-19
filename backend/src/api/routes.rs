@@ -1,4 +1,4 @@
-use axum::{
+use simple_server::axum::{
     extract::DefaultBodyLimit,
     http::Method,
     middleware,
@@ -62,10 +62,10 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
 fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/apps", get(handlers::list_apps))
-        .route("/apps/:package_name", get(handlers::get_app))
-        .route("/apps/:package_name/icon", get(handlers::get_icon))
+        .route("/apps/{package_name}", get(handlers::get_app))
+        .route("/apps/{package_name}/icon", get(handlers::get_icon))
         .route(
-            "/apps/:package_name/versions/:version_code/apk",
+            "/apps/{package_name}/versions/{version_code}/apk",
             get(handlers::download_apk),
         )
 }
@@ -76,13 +76,13 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
         .route("/me", get(handlers::get_current_user))
         .route("/events", get(events::catalog_events))
         .route("/apps", get(handlers::list_authorized_apps))
-        .route("/apps/:package_name", get(handlers::get_authorized_app))
+        .route("/apps/{package_name}", get(handlers::get_authorized_app))
         .route(
-            "/apps/:package_name/icon",
+            "/apps/{package_name}/icon",
             get(handlers::get_authorized_icon),
         )
         .route(
-            "/apps/:package_name/versions/:version_code/apk",
+            "/apps/{package_name}/versions/{version_code}/apk",
             get(handlers::download_authorized_apk),
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
@@ -99,23 +99,23 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             get(handlers::list_admin_apps).post(handlers::upload_app),
         )
         .route(
-            "/apps/:package_name",
+            "/apps/{package_name}",
             get(handlers::get_admin_app)
                 .put(handlers::update_app)
                 .delete(handlers::delete_app),
         )
-        .route("/apps/:package_name/icon", post(handlers::upload_icon))
+        .route("/apps/{package_name}/icon", post(handlers::upload_icon))
         .route(
-            "/apps/:package_name/versions/:version_code",
+            "/apps/{package_name}/versions/{version_code}",
             delete(handlers::delete_version).put(handlers::set_admin_release_channel),
         )
         .route("/users", get(handlers::list_admin_users))
         .route(
-            "/users/:subject/access",
+            "/users/{subject}/access",
             get(handlers::get_admin_user_access),
         )
         .route(
-            "/users/:subject/apps/:package_name",
+            "/users/{subject}/apps/{package_name}",
             put(handlers::set_admin_direct_grant).delete(handlers::remove_admin_direct_grant),
         )
         .route(
@@ -123,15 +123,15 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             get(handlers::list_admin_groups).post(handlers::create_admin_group),
         )
         .route(
-            "/app-groups/:group_id",
+            "/app-groups/{group_id}",
             put(handlers::rename_admin_group).delete(handlers::delete_admin_group),
         )
         .route(
-            "/app-groups/:group_id/apps/:package_name",
+            "/app-groups/{group_id}/apps/{package_name}",
             put(handlers::set_admin_group_grant).delete(handlers::remove_admin_group_grant),
         )
         .route(
-            "/app-groups/:group_id/users/:subject",
+            "/app-groups/{group_id}/users/{subject}",
             put(handlers::add_admin_group_member).delete(handlers::remove_admin_group_member),
         )
         .layer(DefaultBodyLimit::max(multipart_body_limit))

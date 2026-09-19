@@ -1,4 +1,4 @@
-use axum::{
+use simple_server::axum::{
     body::Body,
     extract::State,
     http::{header::AUTHORIZATION, Request},
@@ -84,7 +84,7 @@ pub async fn auth_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::Request;
+    use simple_server::axum::http::Request;
 
     fn make_request_with_auth(auth_value: &str) -> Request<Body> {
         Request::builder()

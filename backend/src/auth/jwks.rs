@@ -225,7 +225,7 @@ impl JwksCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{extract::State, routing::get, Json, Router};
+    use simple_server::axum::{extract::State, routing::get, Json, Router};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -255,7 +255,7 @@ mod tests {
             .with_state(requests.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        tokio::spawn(async move { simple_server::axum::serve(listener, app).await.unwrap() });
 
         let cache = JwksCache::new(format!("http://{address}/jwks"), reqwest::Client::new())
             .await

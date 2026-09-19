@@ -1,9 +1,9 @@
-use axum::{
+use serde_json::json;
+use simple_server::axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

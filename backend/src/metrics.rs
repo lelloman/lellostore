@@ -1,4 +1,6 @@
-use axum::{
+use lazy_static::lazy_static;
+use prometheus::{HistogramOpts, HistogramVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder};
+use simple_server::axum::{
     extract::Request,
     http::StatusCode,
     middleware::Next,
@@ -6,8 +8,6 @@ use axum::{
     routing::get,
     Router,
 };
-use lazy_static::lazy_static;
-use prometheus::{HistogramOpts, HistogramVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder};
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -238,7 +238,7 @@ pub async fn start_metrics_server(
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Metrics server listening on {}", addr);
-    axum::serve(listener, app).await?;
+    simple_server::axum::serve(listener, app).await?;
     Ok(())
 }
 

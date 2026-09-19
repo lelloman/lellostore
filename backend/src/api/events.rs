@@ -1,6 +1,6 @@
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::response::Response;
 use serde::Serialize;
+use simple_server::axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use simple_server::axum::response::Response;
 use tokio::sync::broadcast;
 
 use crate::auth::AuthenticatedUser;
@@ -36,7 +36,9 @@ impl CatalogEventHub {
 pub async fn catalog_events(
     _user: AuthenticatedUser,
     ws: WebSocketUpgrade,
-    axum::extract::State(state): axum::extract::State<super::AppState>,
+    simple_server::axum::extract::State(state): simple_server::axum::extract::State<
+        super::AppState,
+    >,
 ) -> Response {
     let receiver = state.catalog_events.subscribe();
     ws.on_upgrade(move |socket| serve_events(socket, receiver))
@@ -52,7 +54,7 @@ async fn serve_events(mut socket: WebSocket, mut receiver: broadcast::Receiver<C
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
                 let Ok(payload) = serde_json::to_string(&event) else { continue };
-                if socket.send(Message::Text(payload)).await.is_err() {
+                if socket.send(Message::Text(payload.into())).await.is_err() {
                     break;
                 }
             }

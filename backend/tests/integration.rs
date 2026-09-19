@@ -1,5 +1,5 @@
-use axum::http::StatusCode;
 use axum_test::TestServer;
+use simple_server::axum::http::StatusCode;
 
 mod common;
 
@@ -313,7 +313,7 @@ async fn test_download_apk_range_request() {
     // Request first 10 bytes
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range".parse().unwrap(), "bytes=0-9".parse().unwrap())
+        .add_header("Range", "bytes=0-9")
         .await;
 
     assert_eq!(response.status_code(), StatusCode::PARTIAL_CONTENT);
@@ -351,7 +351,7 @@ async fn test_download_apk_range_suffix() {
     // Request last 5 bytes
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range".parse().unwrap(), "bytes=-5".parse().unwrap())
+        .add_header("Range", "bytes=-5")
         .await;
 
     assert_eq!(response.status_code(), StatusCode::PARTIAL_CONTENT);
@@ -389,7 +389,7 @@ async fn test_download_apk_range_invalid() {
     // Request range beyond file size
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range".parse().unwrap(), "bytes=100-200".parse().unwrap())
+        .add_header("Range", "bytes=100-200")
         .await;
 
     assert_eq!(response.status_code(), StatusCode::RANGE_NOT_SATISFIABLE);
