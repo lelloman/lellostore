@@ -132,6 +132,33 @@ class AdbConnectionTest {
         assertThat(transport.closed).isTrue()
     }
 
+    @Test fun `late duplicate closes do not break the next command`() {
+        val transport = FakeTransport(connected(), okay(), response("one"), close(),
+            close(), okay(2), close(), response("two", 2), close(2))
+        val adb = AdbConnection(transport)
+        adb.authenticate(signer)
+        assertThat(adb.execute("shell:one")).isEqualTo("one")
+        assertThat(adb.execute("shell:two")).isEqualTo("two")
+        assertThat(transport.packets().count { it.command == AdbPacket.CLSE }).isEqualTo(2)
+    }
+
+    @Test fun `legacy zero peer close can finish an opened stream`() {
+        val transport = FakeTransport(connected(), okay(), response("one"), close().copy(arg0 = 0))
+        val adb = AdbConnection(transport)
+        adb.authenticate(signer)
+        assertThat(adb.execute("shell:one")).isEqualTo("one")
+    }
+
+    @Test fun `stale data future closes and incorrect active peer are rejected`() {
+        for (packet in listOf(response("stale"), close(3), close(2).copy(arg0 = 99))) {
+            val transport = FakeTransport(connected(), okay(), response("one"), close(), okay(2), packet)
+            val adb = AdbConnection(transport)
+            adb.authenticate(signer)
+            adb.execute("shell:one")
+            assertThrows(IOException::class.java) { adb.execute("shell:two") }
+        }
+    }
+
     private class FakeTransport(wire: ByteArray) : AdbTransport {
         constructor(vararg packets: AdbPacket) : this(packets.fold(byteArrayOf()) { bytes, packet -> bytes + packet.header() + packet.data })
         private val incoming = ByteArrayInputStream(wire)

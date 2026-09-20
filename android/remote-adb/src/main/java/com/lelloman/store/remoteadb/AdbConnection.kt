@@ -68,8 +68,15 @@ class AdbConnection(private val transport: AdbTransport) : Closeable {
         var opened = false
         while (true) {
             val packet = AdbPacket.read(transport, version, timeoutMs)
-            if (packet.arg1 != local) throw IOException("Unexpected ADB stream")
-            if (opened && packet.arg0 != remote) throw IOException("Unexpected ADB peer stream")
+            // adbd can queue a second close while our final WRTE acknowledgement
+            // crosses its first CLSE. The old stream is already gone; do not let
+            // its late close terminate the next command on this connection.
+            if (packet.command == CLSE && packet.arg1 in 1 until local) continue
+            if (packet.arg1 != local) throw IOException("Unexpected ADB stream: command=${packet.command.toString(16)}, expected=$local, received=${packet.arg1}, peer=${packet.arg0}")
+            // Older adbd versions also use CLSE(0, local) for normal closes.
+            if (opened && packet.arg0 != remote && !(packet.command == CLSE && packet.arg0 == 0)) {
+                throw IOException("Unexpected ADB peer stream: expected=$remote, received=${packet.arg0}")
+            }
             when (packet.command) {
                 OKAY -> {
                     remote = packet.arg0
