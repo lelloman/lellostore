@@ -34,6 +34,37 @@ class AdbConnectionTest {
         assertThrows(IOException::class.java) { AdbConnection(transport).authenticate(signer) }
     }
 
+    @Test fun `modern authentication omits checksums before peer CNXN arrives`() {
+        val challenge = AdbPacket(AdbPacket.AUTH, 1, 0, ByteArray(20) { (it + 1).toByte() })
+        fun withoutChecksum(packet: AdbPacket) = packet.header().apply { fill(0, 16, 20) } + packet.data
+        val transport = FakeTransport(withoutChecksum(challenge) + withoutChecksum(challenge) +
+            withoutChecksum(connected().copy(arg0 = AdbPacket.VERSION_SKIP_CHECKSUM)) +
+            withoutChecksum(okay()) + withoutChecksum(response("uid=2000(shell)")) + withoutChecksum(close()))
+        val adb = AdbConnection(transport)
+        var prompted = false
+        adb.authenticate(signer) { prompted = true }
+        assertThat(prompted).isTrue()
+        assertThat(adb.execute("shell:id")).isEqualTo("uid=2000(shell)")
+        assertThat(transport.packets().filter { it.command == AdbPacket.AUTH }.map { it.arg0 })
+            .containsExactly(2, 3).inOrder()
+    }
+
+    @Test fun `legacy authentication still validates nonzero checksums`() {
+        val challenge = AdbPacket(AdbPacket.AUTH, 1, 0, ByteArray(20) { 7 })
+        AdbConnection(FakeTransport(challenge, connected())).authenticate(signer)
+        val corrupt = challenge.header() + challenge.data.copyOf().apply { this[0] = 8 }
+        assertThrows(IOException::class.java) { AdbConnection(FakeTransport(corrupt)).authenticate(signer) }
+    }
+
+    @Test fun `omitted checksum remains invalid after negotiating legacy protocol`() {
+        val packet = response("Success")
+        val wire = connected().let { it.header() + it.data } + okay().header() +
+            packet.header().apply { fill(0, 16, 20) } + packet.data
+        val adb = AdbConnection(FakeTransport(wire))
+        adb.authenticate(signer)
+        assertThrows(IOException::class.java) { adb.execute("shell:id") }
+    }
+
     @Test fun `APK writes respect peer payload limit and tolerate final response before ack`() {
         val transport = FakeTransport(connected(4), okay(), okay(),
             response("Success\n"), close())

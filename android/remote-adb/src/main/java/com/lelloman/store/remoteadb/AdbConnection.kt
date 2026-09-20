@@ -25,7 +25,7 @@ class AdbConnection(private val transport: AdbTransport) : Closeable {
         while (true) {
             val remaining = ((deadline - System.nanoTime()) / 1_000_000L).toInt()
             if (remaining <= 0) throw IOException("ADB authorization timed out")
-            val packet = AdbPacket.read(transport, version, remaining)
+            val packet = AdbPacket.read(transport, version, remaining, authenticating = true)
             when (packet.command) {
                 CNXN -> {
                     if (packet.arg0 < AdbPacket.VERSION || packet.arg1 <= 0) throw IOException("Unsupported ADB protocol")

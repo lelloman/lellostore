@@ -57,7 +57,7 @@ internal data class AdbPacket(val command: Int, val arg0: Int, val arg1: Int, va
         const val VERSION_SKIP_CHECKSUM = 0x01000001
         const val MAX_PAYLOAD = 256 * 1024
 
-        fun read(transport: AdbTransport, version: Int, timeoutMs: Int): AdbPacket {
+        fun read(transport: AdbTransport, version: Int, timeoutMs: Int, authenticating: Boolean = false): AdbPacket {
             val header = ByteBuffer.wrap(transport.read(24, timeoutMs)).order(ByteOrder.LITTLE_ENDIAN)
             val command = header.int
             val arg0 = header.int
@@ -68,7 +68,12 @@ internal data class AdbPacket(val command: Int, val arg0: Int, val arg1: Int, va
                 throw IOException("Invalid ADB packet header")
             }
             val data = if (length == 0) byteArrayOf() else transport.read(length, timeoutMs)
-            val skipChecksum = version >= VERSION_SKIP_CHECKSUM || (command == CNXN && arg0 >= VERSION_SKIP_CHECKSUM)
+            // adbd adopts our advertised version before sending AUTH, but only sends
+            // its CNXN after authorization. A modern AUTH may therefore already omit
+            // the checksum while our negotiated version is still the legacy default.
+            val skipChecksum = version >= VERSION_SKIP_CHECKSUM ||
+                (command == CNXN && arg0 >= VERSION_SKIP_CHECKSUM) ||
+                (authenticating && command == AUTH && checksum == 0)
             if (!skipChecksum && data.sumOf { it.toInt() and 255 } != checksum) {
                 throw IOException("Invalid ADB packet checksum")
             }
