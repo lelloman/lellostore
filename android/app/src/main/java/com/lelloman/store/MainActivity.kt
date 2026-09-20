@@ -2,6 +2,7 @@ package com.lelloman.store
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -57,15 +58,18 @@ class MainActivity : ComponentActivity() {
     // Flow to signal UI that session expired and should navigate to login
     private val _sessionExpiredNavigation = MutableStateFlow(false)
     private val sessionExpiredNavigation = _sessionExpiredNavigation.asStateFlow()
+    private val openPesce = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openPesce.value = intent.getBooleanExtra("open_pesce", false)
         enableEdgeToEdge()
         observeSessionExpiredEvents()
         setContent {
             val domainThemeMode by userPreferencesStore.themeMode.collectAsState()
             val domainAuthState by authStore.authState.collectAsState()
             val shouldNavigateToLogin by sessionExpiredNavigation.collectAsState()
+            val shouldOpenPesce by openPesce.collectAsState()
 
             val themeMode = domainThemeMode.toUiModel()
             val useDarkSystemBars = when (domainThemeMode) {
@@ -108,6 +112,8 @@ class MainActivity : ComponentActivity() {
                 },
                 forceNavigateToLogin = shouldNavigateToLogin,
                 onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
+                openPesce = shouldOpenPesce,
+                onOpenPesceHandled = { openPesce.value = false; intent.removeExtra("open_pesce") },
             )
             LaunchedEffect(isLoggedIn) {
                 if (isLoggedIn) requestNotificationPermissionIfNeeded()
@@ -119,6 +125,12 @@ class MainActivity : ComponentActivity() {
                 recovery.acknowledgePendingHealth()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openPesce.value = intent.getBooleanExtra("open_pesce", false)
     }
 
     private fun requestNotificationPermissionIfNeeded() {

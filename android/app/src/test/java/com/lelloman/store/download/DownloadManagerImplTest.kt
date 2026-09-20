@@ -22,6 +22,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -194,12 +195,17 @@ class DownloadManagerImplTest {
 
     @Test
     fun `foreground download survives cancellation of the screen coroutine`() = runTest {
-        coEvery { appsRepository.refreshApp("com.test.app") } coAnswers { awaitCancellation() }
+        val downloadStarted = CompletableDeferred<Unit>()
+        coEvery { appsRepository.refreshApp("com.test.app") } coAnswers {
+            downloadStarted.complete(Unit)
+            awaitCancellation()
+        }
 
         val screenRequest = launch {
             downloadManager.downloadAndInstall("com.test.app", 1)
         }
-        runCurrent()
+        // The service-owned task runs on Dispatchers.IO, outside the test scheduler.
+        downloadStarted.await()
 
         screenRequest.cancelAndJoin()
 
@@ -281,7 +287,7 @@ class DownloadManagerImplTest {
 
     private fun createAppDetail(
         packageName: String = "com.test.app",
-        sha256: String = "abc123",
+        sha256: String = "0".repeat(64),
         size: Long = 1000,
     ) = AppDetail(
         packageName = packageName,

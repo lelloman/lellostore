@@ -33,8 +33,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.InputStream
-import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,6 +48,7 @@ class DownloadManagerImpl @Inject constructor(
     @ApplicationScope private val scope: CoroutineScope,
 ) : DownloadManager {
 
+    private val apkProvider = VerifiedApkProvider(remoteApiClient)
     private val tag = "DownloadManager"
     private val mutableActiveDownloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     override val activeDownloads: StateFlow<Map<String, DownloadProgress>> = mutableActiveDownloads.asStateFlow()
@@ -121,36 +120,24 @@ class DownloadManagerImpl @Inject constructor(
             val versionInfo = appDetail.versions.find { it.versionCode == versionCode }
                 ?: throw IllegalArgumentException("Version $versionCode not found for $packageName")
 
-            val expectedSha256 = versionInfo.sha256
             val expectedSize = versionInfo.size
-
-            updateProgress(packageName, DownloadState.DOWNLOADING, 0f, 0, expectedSize)
-
             destination = File(apksDir, "$packageName-$versionCode.apk")
-
-            val cachedApkIsValid = destination.isFile &&
-                destination.length() == expectedSize &&
-                calculateSha256(destination).equals(expectedSha256, ignoreCase = true)
-            audit("download.started", mapOf("expected_bytes" to expectedSize, "cache_hit" to cachedApkIsValid))
-            if (!cachedApkIsValid) {
-                destination.delete()
-                val inputStream = remoteApiClient.downloadApk(packageName, versionCode).getOrThrow()
-                downloadToFile(inputStream, destination, packageName, expectedSize) { bytes ->
-                    audit("download.progress", mapOf("bytes" to bytes, "expected_bytes" to expectedSize))
-                }
-            } else {
-                logger.i(tag, "Reusing verified APK for $packageName")
-            }
-
-            audit("download.completed", mapOf("bytes" to destination.length()))
-            // Verify SHA256
-            updateProgress(packageName, DownloadState.VERIFYING, 1f, destination.length(), destination.length())
-            val actualSha256 = calculateSha256(destination)
-            if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                throw SecurityException("SHA256 verification failed: expected $expectedSha256, got $actualSha256")
-            }
-            logger.i(tag, "SHA256 verification passed for $packageName")
-
+            updateProgress(packageName, DownloadState.DOWNLOADING, 0f, 0, expectedSize)
+            audit("download.started", mapOf("expected_bytes" to expectedSize))
+            var lastSample = System.nanoTime()
+            apkProvider.prepare(packageName, versionInfo, destination,
+                onProgress = { bytes ->
+                    updateProgress(packageName, DownloadState.DOWNLOADING, bytes.toFloat() / expectedSize, bytes, expectedSize)
+                    if (System.nanoTime() - lastSample >= 5_000_000_000L) {
+                        audit("download.progress", mapOf("bytes" to bytes, "expected_bytes" to expectedSize))
+                        lastSample = System.nanoTime()
+                    }
+                },
+                onVerifying = {
+                    audit("download.completed", mapOf("bytes" to destination.length()))
+                    updateProgress(packageName, DownloadState.VERIFYING, 1f, destination.length(), destination.length())
+                },
+            )
             audit("verification.completed")
             // Install APK
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
@@ -281,48 +268,6 @@ class DownloadManagerImpl @Inject constructor(
             }
             context.startActivity(intent)
         }
-    }
-
-    private suspend fun downloadToFile(
-        inputStream: InputStream,
-        destination: File,
-        packageName: String,
-        totalSize: Long,
-        onSample: (Long) -> Unit,
-    ) {
-        inputStream.use { input ->
-            destination.outputStream().use { output ->
-                val buffer = ByteArray(8192)
-                var bytesDownloaded = 0L
-                var bytesRead: Int
-                var lastSample = System.nanoTime()
-
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    output.write(buffer, 0, bytesRead)
-                    bytesDownloaded += bytesRead
-                    val now = System.nanoTime()
-                    if (now - lastSample >= 5_000_000_000L) {
-                        onSample(bytesDownloaded)
-                        lastSample = now
-                    }
-
-                    val progress = if (totalSize > 0) bytesDownloaded.toFloat() / totalSize else 0f
-                    updateProgress(packageName, DownloadState.DOWNLOADING, progress, bytesDownloaded, totalSize)
-                }
-            }
-        }
-    }
-
-    private fun calculateSha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            while (input.read(buffer).also { bytesRead = it } != -1) {
-                digest.update(buffer, 0, bytesRead)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun updateProgress(

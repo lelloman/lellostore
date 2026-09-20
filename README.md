@@ -121,6 +121,10 @@ downloads APKs with bearer authentication, verifies SHA-256, and delegates
 installation to Android's package installer. See
 [android/ARCHITECTURE.md](android/ARCHITECTURE.md) for module boundaries.
 
+[Pesce e pesce](docs/PESCE_E_PESCE.md) connects two Android devices over USB to
+copy LelloStore, install catalog apps on the receiver, and manage legacy ADB
+TCP/IP. Its USB tools also work from the login screen without an account.
+
 ## Container deployment
 
 The production image builds the frontend, embeds it in the backend, and includes

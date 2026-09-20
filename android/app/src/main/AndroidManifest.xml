@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="com.lelloman.store.recovery.permission.RECOVERY_CONTROL" />
@@ -24,6 +26,10 @@
         tools:targetApi="31">
         <activity android:name=".diagnostics.AuditActivity" android:exported="false" />
         <activity android:name=".recovery.RecoverySetupActivity" android:exported="false" />
+        <service
+            android:name=".remote.RemoteDeviceService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|dataSync" />
         <service
             android:name=".download.DownloadForegroundService"
             android:exported="false"

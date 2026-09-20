@@ -23,10 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lelloman.store.ui.R
 import androidx.navigation.NavController
@@ -37,6 +40,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lelloman.store.ui.navigation.MainTab
 import com.lelloman.store.ui.components.LelloStoreBrandMark
+import com.lelloman.store.ui.components.PesceIcon
+import com.lelloman.store.ui.screen.pesce.PesceScreen
 import com.lelloman.store.ui.components.lelloStoreNavigationBarItemColors
 import com.lelloman.store.ui.screen.catalog.CatalogScreen
 import com.lelloman.store.ui.screen.settings.SettingsScreen
@@ -49,6 +54,8 @@ fun MainScreen(
     onProfileClick: () -> Unit,
     onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier,
+    onPesceSelected: (Boolean) -> Unit = {},
+    onPesceSignIn: () -> Unit = {},
 ) {
     val tabNavController = rememberNavController()
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
@@ -56,6 +63,7 @@ fun MainScreen(
     val currentItem = BottomNavItem.entries.firstOrNull {
         currentDestination?.hasRoute(it.route::class) == true
     } ?: BottomNavItem.Catalog
+    LaunchedEffect(currentItem) { onPesceSelected(currentItem == BottomNavItem.Pesce) }
 
     Scaffold(
         topBar = {
@@ -79,6 +87,9 @@ fun MainScreen(
             }
             composable<MainTab.Updates> {
                 UpdatesScreen(onAppClick = onAppClick)
+            }
+            composable<MainTab.Pesce> {
+                PesceScreen(onSignIn = onPesceSignIn)
             }
             composable<MainTab.Settings> {
                 SettingsScreen(onNavigateToLogin = onNavigateToLogin)
@@ -145,7 +156,7 @@ internal fun LellostoreBottomNav(navController: NavController) {
             val label = stringResource(item.labelRes)
             NavigationBarItem(
                 icon = { Icon(item.icon, contentDescription = label) },
-                label = { Text(label) },
+                label = { Text(label, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                 selected = currentDestination?.hasRoute(item.route::class) == true,
                 onClick = {
                     navController.navigate(item.route) {
@@ -169,5 +180,6 @@ private enum class BottomNavItem(
 ) {
     Catalog(MainTab.Catalog, Icons.Default.Home, R.string.nav_catalog),
     Updates(MainTab.Updates, Icons.Default.Refresh, R.string.nav_updates),
+    Pesce(MainTab.Pesce, PesceIcon, R.string.pesce_title),
     Settings(MainTab.Settings, Icons.Default.Settings, R.string.nav_settings),
 }

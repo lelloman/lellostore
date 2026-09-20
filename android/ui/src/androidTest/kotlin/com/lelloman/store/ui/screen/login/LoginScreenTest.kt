@@ -19,6 +19,18 @@ class LoginScreenTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun usbToolsEntryWorksWithoutConfiguredServer() {
+        var clicked = false
+        composeRule.setContent {
+            LellostoreTheme {
+                LoginScreenContent(LoginScreenState(serverUrl = ""), {}, {}, onPesceClick = { clicked = true })
+            }
+        }
+        composeRule.onNodeWithText("P2P · USB tools").assertIsEnabled().performClick()
+        composeRule.runOnIdle { assertThat(clicked).isTrue() }
+    }
+
+    @Test
     fun signInActionInvokesCallbackWhenServerIsConfigured() {
         var clicked = false
 

@@ -25,6 +25,27 @@ class MainNavigationTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun pesceItemNavigatesToFourthDestination() {
+        lateinit var navController: NavHostController
+        composeRule.setContent {
+            LellostoreTheme(themeMode = ThemeMode.Light) {
+                navController = rememberNavController()
+                Column {
+                    NavHost(navController, startDestination = MainTab.Catalog, modifier = Modifier.weight(1f)) {
+                        composable<MainTab.Catalog> { Text("Catalog content") }
+                        composable<MainTab.Updates> { Text("Updates content") }
+                        composable<MainTab.Pesce> { Text("USB tools content") }
+                        composable<MainTab.Settings> { Text("Settings content") }
+                    }
+                    LellostoreBottomNav(navController)
+                }
+            }
+        }
+        composeRule.onNodeWithText("P2P").performClick()
+        composeRule.runOnIdle { assertThat(navController.currentDestination?.hasRoute(MainTab.Pesce::class)).isTrue() }
+    }
+
+    @Test
     fun updatesItemNavigatesToUpdatesAndBecomesCurrentDestination() {
         lateinit var navController: NavHostController
 

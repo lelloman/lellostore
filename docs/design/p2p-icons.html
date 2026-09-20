@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Minimal P2P icons · LelloStore</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f1f4ef; --surface: #f9fcf8; --ink: #191c1a;
+      --muted: #58665e; --line: #d9e1d9; --primary: #006c45;
+      --accent: #3ddc84; --selected: #b9ffd2; --selected-ink: #003822;
+      --soft: #e8eee7; --shadow: 0 14px 36px #132d1910;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --page: #101713; --surface: #191f1b; --ink: #e1e3df;
+      --muted: #b2bfb5; --line: #354139; --primary: #43e38b;
+      --selected: #005233; --selected-ink: #b9ffd2; --soft: #232e26;
+      --shadow: 0 14px 36px #0003;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, a:focus-visible { outline: 3px solid var(--primary); outline-offset: 4px; }
+    button, label { -webkit-tap-highlight-color: transparent; }
+    svg { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+    .wrap { max-width: 1200px; margin: auto; padding: 28px 28px 42px; }
+    .masthead { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.3px; }
+    .brand-dot { width: 13px; height: 13px; border-radius: 4px; background: var(--accent); }
+    .brand span:last-child { padding-left: 12px; border-left: 1px solid var(--line); color: var(--muted); font-weight: 450; }
+    .quiet-button { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); padding: 9px 16px; }
+    .intro { margin: 42px 0 28px; }
+    h1 { font-size: clamp(29px, 4vw, 42px); line-height: 1.15; letter-spacing: -1.5px; margin: 0 0 12px; font-weight: 720; }
+    .intro p { margin: 0; color: var(--muted); max-width: 650px; font-size: 16px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 338px; gap: 28px; align-items: start; }
+    fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
+    legend { padding: 0 0 14px; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 650; }
+    .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .choice { position: relative; display: flex; flex-direction: column; cursor: pointer; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); overflow: hidden; }
+    .choice:hover { border-color: var(--primary); }
+    .choice:has(input:checked) { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+    .choice:has(input:focus-visible) { outline: 3px solid var(--primary); outline-offset: 4px; }
+    .choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .choice-top { display: flex; justify-content: space-between; align-items: center; padding: 15px 15px 0; }
+    .letter { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--soft); font-size: 12px; font-weight: 750; }
+    .choice:has(input:checked) .letter { background: var(--selected); color: var(--selected-ink); }
+    .check { width: 17px; height: 17px; border: 1px solid var(--line); border-radius: 50%; }
+    .choice:has(input:checked) .check { border: 5px solid var(--primary); }
+    .hero { display: grid; place-items: center; height: 90px; color: var(--primary); }
+    .hero svg { width: 64px; height: 64px; }
+    .choice-name { text-align: center; font-size: 14px; font-weight: 680; }
+    .choice-detail { text-align: center; font-size: 11px; color: var(--muted); margin: 2px 6px 13px; }
+    .samples { display: flex; align-items: center; justify-content: center; gap: 14px; border-top: 1px solid var(--line); padding: 13px 8px; margin-top: auto; }
+    .samples small { font-size: 10px; color: var(--muted); }
+    .samples svg { width: 24px; height: 24px; }
+    .sample-selected { display: grid; place-items: center; width: 48px; height: 30px; background: var(--selected); color: var(--selected-ink); border-radius: 99px; }
+    .footnote { margin: 16px 2px 0; font-size: 12px; color: var(--muted); }
+    .preview { position: sticky; top: 24px; padding-top: 0; }
+    .preview-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .preview-heading h2 { font-size: 12px; margin: 0; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 650; }
+    .segmented { display: flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+    .segmented button { border: 0; border-radius: 5px; font-size: 11px; background: transparent; color: var(--muted); padding: 3px 8px; }
+    .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); }
+    .phone { border: 1px solid var(--line); border-radius: 28px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+    .status { display: flex; justify-content: space-between; padding: 16px 21px 10px; font-size: 11px; font-weight: 650; }
+    .status span:last-child { letter-spacing: 2px; }
+    .app-header { display: flex; align-items: center; gap: 10px; padding: 10px 20px 18px; }
+    .store-mark { display: grid; place-items: center; color: #003822; background: #3ddc84; width: 34px; height: 34px; border-radius: 11px; font-size: 19px; font-weight: 800; }
+    .app-header small { display: block; color: var(--muted); font-size: 10px; }
+    .app-header strong { font-size: 19px; font-weight: 600; }
+    .profile { margin-left: auto; display: grid; place-items: center; background: var(--selected); color: var(--selected-ink); width: 34px; height: 34px; border-radius: 50%; font-size: 12px; font-weight: 650; }
+    .app-content { padding: 5px 19px 30px; }
+    .app-content > p { margin: 0 0 17px; font-size: 13px; color: var(--muted); }
+    .device-card { padding: 16px; border-radius: 15px; background: var(--soft); }
+    .device-card strong { font-size: 14px; font-weight: 650; }
+    .device-card p { font-size: 12px; color: var(--muted); margin: 7px 0 0; }
+    .mock-button { border: 1px solid var(--line); border-radius: 99px; text-align: center; font-size: 12px; font-weight: 650; padding: 11px 8px; margin-top: 14px; color: var(--muted); }
+    .nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--soft); padding: 12px 4px 10px; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; color: var(--muted); }
+    .nav-icon { display: grid; place-items: center; width: 58px; height: 32px; border-radius: 99px; }
+    .nav svg { width: 24px; height: 24px; }
+    .nav-item.current { color: var(--ink); font-weight: 650; }
+    .current .nav-icon { background: var(--selected); color: var(--selected-ink); }
+    .nav-label { display: block; width: 100%; text-align: center; font-size: 10px; line-height: 15px; overflow-wrap: anywhere; }
+    .gesture { background: var(--soft); padding: 6px 0 11px; }
+    .gesture::before { content: ''; display: block; width: 85px; height: 4px; border-radius: 9px; margin: auto; background: var(--ink); opacity: .65; }
+    .selection { margin: 20px 2px 0; }
+    .selection small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .selection strong { display: block; font-size: 20px; margin: 4px 0 8px; letter-spacing: -.4px; }
+    .selection p { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    .selection button { padding: 7px 12px; font-size: 12px; }
+    footer { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+    @media (max-width: 1050px) { .choices { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 720px) {
+      .wrap { padding: 20px 18px 28px; }
+      .intro { margin-top: 30px; }
+      .layout { grid-template-columns: 1fr; }
+      .preview { position: static; width: min(100%, 370px); margin: 6px auto 0; }
+      .brand span:last-child { display: none; }
+      .hero { height: 90px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+    <defs>
+      <symbol id="fish-a" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-b" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-c" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-d" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 4.5C9.3 10.8 15.4 11.2 21 7C15.4 2.8 9.3 3.2 4.5 9.5"/>
+          <path transform="rotate(180 12 12)" d="M4.5 4.5C9.3 10.8 15.4 11.2 21 7C15.4 2.8 9.3 3.2 4.5 9.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-e" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 2.7C8.7 11.7 15.2 11.7 21 7C15.2 2.3 8.7 2.3 3 11.3"/>
+          <path transform="rotate(180 12 12)" d="M3 2.7C8.7 11.7 15.2 11.7 21 7C15.2 2.3 8.7 2.3 3 11.3"/>
+        </g>
+      </symbol>
+      <symbol id="fish-f" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.5 11.5 15.2 11.6 20.2 7.8Q21.3 7 20.2 6.2C15.2 2.4 8.5 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.5 11.5 15.2 11.6 20.2 7.8Q21.3 7 20.2 6.2C15.2 2.4 8.5 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-g" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 4.2C8.4 10.3 15.3 10.4 21 7C15.3 3.6 8.4 3.7 3 9.8"/>
+          <path transform="rotate(180 12 12)" d="M3 4.2C8.4 10.3 15.3 10.4 21 7C15.3 3.6 8.4 3.7 3 9.8"/>
+        </g>
+      </symbol>
+      <symbol id="fish-h" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.6C8.8 12.6 15.1 12.6 21 7C15.1 1.4 8.8 1.4 3 10.4"/>
+          <path transform="rotate(180 12 12)" d="M3 3.6C8.8 12.6 15.1 12.6 21 7C15.1 1.4 8.8 1.4 3 10.4"/>
+        </g>
+      </symbol>
+      <symbol id="fish-i" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path transform="translate(-1 0)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="translate(1 0) rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-j" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path transform="translate(0 .9)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="translate(0 -.9) rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-k" viewBox="0 0 24 24">
+        <g transform="translate(12 12) rotate(-22) scale(.88) translate(-12 -12)" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="fish-l" viewBox="0 0 24 24">
+        <g transform="rotate(90 12 12)" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+          <path transform="rotate(180 12 12)" d="M3 3.5C8.4 11.5 15.1 12 21 7C15.1 2 8.4 2.5 3 10.5"/>
+        </g>
+      </symbol>
+      <symbol id="home" viewBox="0 0 24 24"><path fill="currentColor" d="M3 10 12 3l9 7v11h-6v-7H9v7H3Z"/></symbol>
+      <symbol id="updates" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"/></symbol>
+      <symbol id="settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/></g></symbol>
+    </defs>
+  </svg>
+  <main class="wrap">
+    <header class="masthead">
+      <div class="brand"><i class="brand-dot" aria-hidden="true"></i>LelloStore <span>Minimal icon review</span></div>
+      <button class="quiet-button" id="theme" type="button" aria-pressed="false">Dark mode</button>
+    </header>
+    <section class="intro">
+      <h1>Minimal, twelve ways.</h1>
+      <p>A is the original. Explore line weight, tails, curves and layout, then compare each at the actual navigation size.</p>
+    </section>
+    <div class="layout">
+      <section>
+        <fieldset>
+          <legend>Choose a direction</legend>
+          <div class="choices" id="choices"></div>
+        </fieldset>
+        <p class="footnote">Each card shows a larger drawing and the actual 24 px icon, idle and selected. All options use a single color.</p>
+      </section>
+      <aside class="preview" aria-label="App preview">
+        <div class="preview-heading">
+          <h2>In the app</h2>
+          <div class="segmented" aria-label="Preview language">
+            <button type="button" data-language="en" aria-pressed="true">EN</button>
+            <button type="button" data-language="it" aria-pressed="false">IT</button>
+          </div>
+        </div>
+        <div class="phone">
+          <div class="status" aria-hidden="true"><span>9:41</span><span>▴ ▰</span></div>
+          <div class="app-header"><div class="store-mark" aria-hidden="true">L</div><div><small>LelloStore</small><strong>P2P</strong></div><span class="profile" aria-hidden="true">LC</span></div>
+          <div class="app-content">
+            <p data-copy="intro">Connect another Android device by USB.</p>
+            <div class="device-card"><strong data-copy="connect">Connect a receiver</strong><p data-copy="help">Connect a data cable and enable USB debugging on the other phone.</p></div>
+            <div class="mock-button" data-copy="install">Install LelloStore</div>
+            <div class="mock-button" data-copy="tcp">Enable ADB TCP/IP</div>
+          </div>
+          <div class="nav" aria-label="Navigation preview">
+            <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#home"/></svg></span><span class="nav-label" data-copy="catalog">Catalog</span></div>
+            <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#updates"/></svg></span><span class="nav-label" data-copy="updates">Updates</span></div>
+            <div class="nav-item current"><span class="nav-icon"><svg aria-hidden="true"><use id="preview-icon" href="#fish-a"/></svg></span><span class="nav-label">P2P</span></div>
+            <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#settings"/></svg></span><span class="nav-label" data-copy="settings">Settings</span></div>
+          </div>
+          <div class="gesture" aria-hidden="true"></div>
+        </div>
+        <div class="selection">
+          <small>Previewing</small>
+          <strong id="selection" aria-live="polite">A · Original</strong>
+          <p>Tell me the letter you prefer. The icon will go into Android after your sign-off.</p>
+          <button type="button" class="quiet-button" id="download">Download this SVG</button>
+        </div>
+      </aside>
+    </div>
+    <footer>P2P is the new app label. Navigation labels are centered. This page is a local design preview.</footer>
+  </main>
+  <script>
+    const options = [
+      ['a', 'Original', 'The Minimal you picked'],
+      ['b', 'Fine', 'A lighter line'],
+      ['c', 'Bold', 'A stronger line'],
+      ['d', 'Short tails', 'Smaller, quieter tails'],
+      ['e', 'Open tails', 'A wider sweep at the ends'],
+      ['f', 'Soft tips', 'Rounded noses'],
+      ['g', 'Slim', 'Flatter, longer bodies'],
+      ['h', 'Full', 'Rounder, fuller bodies'],
+      ['i', 'Staggered', 'A little horizontal offset'],
+      ['j', 'Closer', 'Less space between the fish'],
+      ['k', 'Diagonal', 'A gentle upward tilt'],
+      ['l', 'Upright', 'Swimming up and down'],
+    ];
+    const icon = id => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#fish-${id}"/></svg>`;
+    document.getElementById('choices').innerHTML = options.map(([id, name, detail]) => `
+      <label class="choice">
+        <input type="radio" name="icon" value="${id}" aria-label="${id.toUpperCase()} · ${name}">
+        <span class="choice-top"><span class="letter">${id.toUpperCase()}</span><span class="check" aria-hidden="true"></span></span>
+        <span class="hero">${icon(id)}</span>
+        <span class="choice-name">${name}</span><span class="choice-detail">${detail}</span>
+        <span class="samples"><small>24 px</small>${icon(id)}<span class="sample-selected">${icon(id)}</span></span>
+      </label>`).join('');
+    function readPreference(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } }
+    function savePreference(key, value) { try { localStorage.setItem(key, value); } catch {} }
+    let selected = 'a';
+    function select(id) {
+      const option = options.find(option => option[0] === id) || options[0];
+      selected = option[0];
+      document.querySelector(`input[value="${selected}"]`).checked = true;
+      document.getElementById('preview-icon').setAttribute('href', `#fish-${selected}`);
+      document.getElementById('selection').textContent = `${selected.toUpperCase()} · ${option[1]}`;
+      savePreference('p2p-minimal-choice', selected);
+    }
+    document.getElementById('choices').addEventListener('change', event => select(event.target.value));
+    select(readPreference('p2p-minimal-choice', 'a'));
+    function setTheme(theme) {
+      const dark = theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.getElementById('theme').textContent = dark ? 'Light mode' : 'Dark mode';
+      document.getElementById('theme').setAttribute('aria-pressed', String(dark));
+      savePreference('p2p-icon-theme', dark ? 'dark' : 'light');
+    }
+    setTheme(readPreference('p2p-icon-theme', 'light'));
+    document.getElementById('theme').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'));
+    const copy = {
+      en: {intro: 'Connect another Android device by USB.', connect: 'Connect a receiver', help: 'Connect a data cable and enable USB debugging on the other phone.', install: 'Install LelloStore', tcp: 'Enable ADB TCP/IP', catalog: 'Catalog', updates: 'Updates', settings: 'Settings'},
+      it: {intro: 'Collega un altro dispositivo Android via USB.', connect: 'Collega un destinatario', help: 'Collega un cavo dati e attiva il debug USB sull’altro telefono.', install: 'Installa LelloStore', tcp: 'Attiva ADB TCP/IP', catalog: 'Catalogo', updates: 'Aggiornamenti', settings: 'Impostazioni'},
+    };
+    document.querySelectorAll('[data-language]').forEach(button => button.addEventListener('click', () => {
+      const language = button.dataset.language;
+      document.querySelectorAll('[data-copy]').forEach(element => { element.textContent = copy[language][element.dataset.copy]; });
+      document.querySelector('.phone').lang = language;
+      document.querySelectorAll('[data-language]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    }));
+    document.getElementById('download').addEventListener('click', () => {
+      const content = document.getElementById(`fish-${selected}`).innerHTML;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" color="#000000">${content}</svg>`;
+      const url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+      const link = document.createElement('a');
+      link.href = url; link.download = `p2p-${selected}-${options.find(option => option[0] === selected)[1].toLowerCase().replaceAll(' ', '-')}.svg`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  </script>
+</body>
+</html>

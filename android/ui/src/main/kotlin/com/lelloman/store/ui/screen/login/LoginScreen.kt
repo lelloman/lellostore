@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,6 +58,7 @@ fun LoginScreen(
     onAuthResponse: (AuthorizationResponse?, AuthorizationException?, onResult: (AuthResult) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LoginViewModel = hiltViewModel(),
+    onPesceClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -98,6 +100,7 @@ fun LoginScreen(
         state = state,
         onServerUrlChanged = viewModel::onServerUrlChanged,
         onLoginClick = viewModel::onLoginClick,
+        onPesceClick = onPesceClick,
         modifier = modifier,
     )
 }
@@ -108,6 +111,7 @@ internal fun LoginScreenContent(
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onPesceClick: () -> Unit = {},
 ) {
     BoxWithConstraints(
         modifier = modifier
@@ -133,6 +137,7 @@ internal fun LoginScreenContent(
                     state = state,
                     onServerUrlChanged = onServerUrlChanged,
                     onLoginClick = onLoginClick,
+                    onPesceClick = onPesceClick,
                     modifier = Modifier.weight(1f).widthIn(max = 480.dp),
                 )
             }
@@ -154,6 +159,7 @@ internal fun LoginScreenContent(
                     state = state,
                     onServerUrlChanged = onServerUrlChanged,
                     onLoginClick = onLoginClick,
+                    onPesceClick = onPesceClick,
                     modifier = Modifier.widthIn(max = 480.dp),
                 )
             }
@@ -191,6 +197,7 @@ private fun LoginForm(
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onPesceClick: () -> Unit = {},
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -237,6 +244,9 @@ private fun LoginForm(
                 } else {
                     Text(stringResource(R.string.login_sign_in_oidc))
                 }
+            }
+            TextButton(onClick = onPesceClick, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.pesce_offline_entry))
             }
         }
     }

@@ -10,6 +10,12 @@ sealed interface Screen {
     data object Login : Screen
 
     @Serializable
+    data object Pesce : Screen
+
+    @Serializable
+    data object PesceLogin : Screen
+
+    @Serializable
     data object Main : Screen
 
     @Serializable
@@ -22,6 +28,9 @@ sealed interface MainTab {
 
     @Serializable
     data object Updates : MainTab
+
+    @Serializable
+    data object Pesce : MainTab
 
     @Serializable
     data object Settings : MainTab

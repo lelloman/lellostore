@@ -46,8 +46,8 @@ android {
         applicationId = "com.lelloman.store"
         minSdk = 24
         targetSdk = 36
-        versionCode = providers.gradleProperty("storeVersionCode").orElse("9").get().toInt()
-        versionName = providers.gradleProperty("storeVersionName").orElse("1.8").get()
+        versionCode = providers.gradleProperty("storeVersionCode").orElse("11").get().toInt()
+        versionName = providers.gradleProperty("storeVersionName").orElse("1.10").get()
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
@@ -115,6 +115,7 @@ dependencies {
     implementation(project(":remoteapi"))
     implementation(project(":logger"))
     implementation(project(":recovery-protocol"))
+    implementation(project(":remote-adb"))
 
     // AndroidX Core
     implementation(libs.androidx.core.ktx)
