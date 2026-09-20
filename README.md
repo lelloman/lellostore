@@ -30,10 +30,11 @@ Docker supplies the runtime APK/AAB tools and is the simplest production build.
 
 ## Backend
 
-The lifecycle implementation currently uses the sibling `simple-server` checkout
-at revision `c5359079ff4fad0b4b0359e8c88880dbbbc4eeb5`. Keep that checkout beside
+The lifecycle and logging implementations use the sibling `simple-server` checkout
+at revision `71755b5e15ada9b22484559146ebaf4d82c91255`. Keep that checkout beside
 LelloStore for local builds; CI checks out both sources explicitly. See
-[the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md).
+[the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) and
+[the logging migration notes](docs/STEP_03A_LOGGING.md).
 
 Copy `backend/.env.example` to `backend/.env`, replace the OIDC placeholders,
 and create the database parent directory before starting the service:
