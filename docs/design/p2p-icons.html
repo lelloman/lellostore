@@ -192,7 +192,7 @@
     </header>
     <section class="intro">
       <h1>Minimal, twelve ways.</h1>
-      <p>A is the original. Explore line weight, tails, curves and layout, then compare each at the actual navigation size.</p>
+      <p>I · Staggered is approved for the app. The other variations remain here for comparison at the actual navigation size.</p>
     </section>
     <div class="layout">
       <section>
@@ -222,15 +222,15 @@
           <div class="nav" aria-label="Navigation preview">
             <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#home"/></svg></span><span class="nav-label" data-copy="catalog">Catalog</span></div>
             <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#updates"/></svg></span><span class="nav-label" data-copy="updates">Updates</span></div>
-            <div class="nav-item current"><span class="nav-icon"><svg aria-hidden="true"><use id="preview-icon" href="#fish-a"/></svg></span><span class="nav-label">P2P</span></div>
+            <div class="nav-item current"><span class="nav-icon"><svg aria-hidden="true"><use id="preview-icon" href="#fish-i"/></svg></span><span class="nav-label">P2P</span></div>
             <div class="nav-item"><span class="nav-icon"><svg aria-hidden="true"><use href="#settings"/></svg></span><span class="nav-label" data-copy="settings">Settings</span></div>
           </div>
           <div class="gesture" aria-hidden="true"></div>
         </div>
         <div class="selection">
           <small>Previewing</small>
-          <strong id="selection" aria-live="polite">A · Original</strong>
-          <p>Tell me the letter you prefer. The icon will go into Android after your sign-off.</p>
+          <strong id="selection" aria-live="polite">I · Staggered</strong>
+          <p>Approved: I · Staggered. The Android tab and notification use this design.</p>
           <button type="button" class="quiet-button" id="download">Download this SVG</button>
         </div>
       </aside>
@@ -263,17 +263,17 @@
       </label>`).join('');
     function readPreference(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } }
     function savePreference(key, value) { try { localStorage.setItem(key, value); } catch {} }
-    let selected = 'a';
+    let selected = 'i';
     function select(id) {
       const option = options.find(option => option[0] === id) || options[0];
       selected = option[0];
       document.querySelector(`input[value="${selected}"]`).checked = true;
       document.getElementById('preview-icon').setAttribute('href', `#fish-${selected}`);
       document.getElementById('selection').textContent = `${selected.toUpperCase()} · ${option[1]}`;
-      savePreference('p2p-minimal-choice', selected);
+      savePreference('p2p-approved-icon-choice', selected);
     }
     document.getElementById('choices').addEventListener('change', event => select(event.target.value));
-    select(readPreference('p2p-minimal-choice', 'a'));
+    select(readPreference('p2p-approved-icon-choice', 'i'));
     function setTheme(theme) {
       const dark = theme === 'dark';
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
