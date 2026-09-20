@@ -220,6 +220,35 @@ async fn test_get_icon_success() {
 }
 
 #[tokio::test]
+async fn test_icon_urls_track_content_changes() {
+    let ctx = create_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+    let storage = lellostore_backend::services::StorageService::new(ctx.storage_path.clone());
+    let icon_path = storage.save_icon("com.example.app", b"old icon").unwrap();
+    insert_test_app(&ctx.pool, "com.example.app", "Test App", Some(&icon_path)).await;
+
+    let mut previous_url = String::new();
+    // Same-sized replacements without changing DB timestamps must invalidate
+    // the image cache; repeated reads of identical content must stay cacheable.
+    for data in [b"old icon", b"new icon"] {
+        storage.save_icon("com.example.app", data).unwrap();
+        let detail: serde_json::Value = server.get("/api/apps/com.example.app").await.json();
+        let url = detail["icon_url"].as_str().unwrap();
+        assert!(url.starts_with("/api/apps/com.example.app/icon?v="));
+        assert_ne!(url, previous_url);
+
+        let listing: serde_json::Value = server.get("/api/apps").await.json();
+        assert_eq!(listing["apps"][0]["icon_url"], url);
+        let repeated: serde_json::Value = server.get("/api/apps/com.example.app").await.json();
+        assert_eq!(repeated["icon_url"], url);
+        let icon = server.get(url).await;
+        assert_eq!(icon.status_code(), StatusCode::OK);
+        assert_eq!(icon.as_bytes().as_ref(), data);
+        previous_url = url.to_owned();
+    }
+}
+
+#[tokio::test]
 async fn test_get_icon_not_found_no_app() {
     let ctx = create_test_context().await;
     let server = TestServer::new(ctx.router).unwrap();

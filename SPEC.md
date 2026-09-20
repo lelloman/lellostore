@@ -57,6 +57,11 @@ return `204 No Content`. APK downloads support one byte range and return either
 | `GET` | `/api/apps/{package_name}/icon` | PNG icon |
 | `GET` | `/api/apps/{package_name}/versions/{version_code}/apk` | APK download |
 
+Returned `icon_url` values include a `?v=<sha256>` content fingerprint when the
+icon file is available. Clients should use the full returned URL as the image
+cache key: it stays stable for unchanged bytes and changes when the icon is
+replaced. The icon endpoint also continues to accept unversioned URLs.
+
 `GET /api/apps` response:
 
 ```json

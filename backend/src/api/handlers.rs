@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use simple_server::axum::{
     extract::{multipart::Field, Multipart, Path, State},
     http::{header::RANGE, HeaderMap, StatusCode},
@@ -85,8 +86,20 @@ pub struct AppsListResponse {
 // Helper Functions
 // ============================================================================
 
-fn make_icon_url(package_name: &str) -> String {
-    format!("/api/apps/{}/icon", package_name)
+async fn make_icon_url(state: &AppState, package_name: &str, icon_path: Option<&str>) -> String {
+    let url = format!("/api/apps/{}/icon", package_name);
+    let Some(icon_path) = icon_path else {
+        return url;
+    };
+    // Clients cache icons by URL. Fingerprint the actual bytes so existing icons
+    // and replacements (including multiple uploads in one second) are versioned.
+    match tokio::fs::read(state.config.storage_path.join(icon_path)).await {
+        Ok(data) => format!("{url}?v={}", hex::encode(Sha256::digest(&data))),
+        Err(error) => {
+            tracing::warn!(package_name, %error, "Could not fingerprint app icon");
+            url
+        }
+    }
 }
 
 fn make_apk_url(package_name: &str, version_code: i64) -> String {
@@ -192,7 +205,7 @@ async fn list_apps_with_access(
             package_name: app.package_name.clone(),
             name: app.name,
             description: app.description,
-            icon_url: make_icon_url(&app.package_name),
+            icon_url: make_icon_url(state, &app.package_name, app.icon_path.as_deref()).await,
             total_size,
             latest_version: latest.map(|v| LatestVersionInfo {
                 version_code: v.version_code,
@@ -259,7 +272,7 @@ pub async fn get_app(
         package_name: app.package_name.clone(),
         name: app.name,
         description: app.description,
-        icon_url: make_icon_url(&app.package_name),
+        icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions: version_infos,
         access_level: AppAccessLevel::Beta,
     }))
@@ -287,7 +300,7 @@ pub async fn get_authorized_app(
         package_name: app.package_name.clone(),
         name: app.name,
         description: app.description,
-        icon_url: make_icon_url(&app.package_name),
+        icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions,
         access_level: access,
     }))
@@ -561,8 +574,13 @@ pub async fn upload_app(
     let response = UploadResponse {
         package_name: result.package_name.clone(),
         name: result.app_name,
+        icon_url: make_icon_url(
+            &state,
+            &result.package_name,
+            app.as_ref().and_then(|a| a.icon_path.as_deref()),
+        )
+        .await,
         description: app.and_then(|a| a.description),
-        icon_url: make_icon_url(&result.package_name),
         version: to_version_info(version),
     };
 
@@ -614,7 +632,7 @@ pub async fn update_app(
         package_name: app.package_name.clone(),
         name: app.name,
         description: app.description,
-        icon_url: make_icon_url(&app.package_name),
+        icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions: version_infos,
         access_level: AppAccessLevel::Beta,
     }))
@@ -694,7 +712,7 @@ pub async fn upload_icon(
     state.catalog_events.notify_catalog_changed();
     Ok(Json(json!({
         "message": "Icon uploaded successfully",
-        "icon_url": make_icon_url(&package_name)
+        "icon_url": make_icon_url(&state, &package_name, Some(&icon_path)).await
     })))
 }
 
