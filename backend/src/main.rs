@@ -1,6 +1,6 @@
 use simple_server::lifecycle::{BoxError, Lifecycle, ShutdownOptions, Signals};
 use std::{sync::Arc, time::Duration};
-use tracing_subscriber::EnvFilter;
+mod logging;
 
 use lellostore_backend::api::AppState;
 use lellostore_backend::auth;
@@ -22,9 +22,7 @@ async fn run() -> Result<(), BoxError> {
     dotenvy::dotenv().ok();
 
     // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    logging::init()?;
 
     // Load configuration
     let config = Config::from_env()?;
