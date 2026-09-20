@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -88,24 +90,26 @@ class LegacyAdbInstallationChannel @Inject constructor(
     }
 }
 
-internal fun installApkOverAdb(
+internal suspend fun installApkOverAdb(
     context: Context,
     adb: SelfAdbConnectionManager,
     request: InstallationRequest,
 ): ChannelInstallationResult {
     request.audit("adb.stream_opening", emptyMap())
     val response = try {
-        adb.openStream(adbInstallCommand(request.apk.length())).use { stream ->
-            request.audit("adb.stream_opened", emptyMap())
-            request.apk.inputStream().use { input ->
-                // AdbOutputStream.close() performs another flush. The package service can close
-                // immediately after receiving the declared byte count, making that redundant
-                // flush throw even though installation already succeeded.
-                input.copyTo(stream.openOutputStream())
-            }
-            request.audit("adb.bytes_sent", mapOf("bytes" to request.apk.length()))
-            readAdbText(stream.openInputStream()).trim().also {
-                request.audit("adb.response_received", mapOf("success" to it.startsWith("Success")))
+        withAdbInstallTimeout {
+            adb.openStream(adbInstallCommand(request.apk.length())).use { stream ->
+                request.audit("adb.stream_opened", emptyMap())
+                request.apk.inputStream().use { input ->
+                    // AdbOutputStream.close() performs another flush. The package service can close
+                    // immediately after receiving the declared byte count, making that redundant
+                    // flush throw even though installation already succeeded.
+                    input.copyTo(stream.openOutputStream())
+                }
+                request.audit("adb.bytes_sent", mapOf("bytes" to request.apk.length()))
+                readAdbInstallResponse(stream.openInputStream()).trim().also {
+                    request.audit("adb.response_received", mapOf("success" to it.startsWith("Success")))
+                }
             }
         }
     } catch (error: IOException) {
@@ -123,6 +127,30 @@ internal fun installApkOverAdb(
     }
 
     return parseAdbInstallResponse(response)
+}
+
+// libadb's stream waits are blocking, so a coroutine timeout alone cannot stop them.
+// Interrupt the worker before releasing the connection mutex or reconciling package state.
+internal suspend fun <T : Any> withAdbInstallTimeout(
+    timeoutMillis: Long = 120_000,
+    block: () -> T,
+): T = withTimeoutOrNull(timeoutMillis) {
+    runInterruptible(Dispatchers.IO, block)
+} ?: throw IOException("Timed out waiting for ADB installation")
+
+/** Stop at the terminal result: libadb can wait forever for EOF after a queued remote close. */
+internal fun readAdbInstallResponse(input: InputStream): String {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) return output.toString(Charsets.UTF_8.name())
+        output.write(buffer, 0, count)
+        val text = output.toString(Charsets.UTF_8.name())
+        if (text.substringBeforeLast('\n', "").lineSequence().any {
+                it.trim() == "Success" || it.trim().startsWith("Failure [")
+            }) return text
+    }
 }
 
 internal fun adbInstallCommand(apkSize: Long): String {
