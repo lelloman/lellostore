@@ -147,8 +147,10 @@ async fn read_metadata_text(field: Field<'_>) -> Result<String, AppError> {
 // Public Handlers
 // ============================================================================
 
-pub async fn health_check() -> Json<Value> {
-    Json(json!({ "status": "healthy" }))
+pub fn health_check(
+    _: Result<(), simple_server::health::CheckFailure<std::convert::Infallible>>,
+) -> Response {
+    Json(json!({ "status": "healthy" })).into_response()
 }
 
 pub async fn auth_unavailable() -> (StatusCode, Json<Value>) {

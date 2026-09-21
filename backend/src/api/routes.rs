@@ -1,7 +1,7 @@
 use simple_server::axum::{
     http::Method,
     middleware,
-    routing::{delete, get, post, put},
+    routing::{delete, get, get_service, post, put},
     Router,
 };
 use simple_server::cors::{CorsConfig, CorsLayer};
@@ -25,7 +25,10 @@ pub fn create_test_router(state: AppState) -> Router {
 
 fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -> Router {
     let max_upload_size = state.config.max_upload_size;
-    let mut router = Router::new().route("/health", get(handlers::health_check));
+    let mut router = Router::new().route(
+        "/health",
+        get_service(simple_server::health::Probe::liveness().endpoint(handlers::health_check)),
+    );
 
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {
