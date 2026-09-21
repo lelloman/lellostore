@@ -13,6 +13,33 @@ class PesceScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val receiver = ReceiverInfo("serial:test", "Nord test receiver", "14", 34, 0, emptyList())
 
+    @Test fun transferProgressStaysVisibleWhenControlsScroll() {
+        val actions = mutableListOf<PesceAction>()
+        compose.setContent {
+            LellostoreTheme {
+                PesceScreenContent(RemoteDeviceState(phase = RemoteConnectionPhase.READY, receiver = receiver,
+                    operation = RemoteOperationPhase.TRANSFERRING, activeApp = "LelloStore", bytes = 500, totalBytes = 1000),
+                    PescePickerState(), false, actions::add, {})
+            }
+        }
+        compose.onNodeWithText("Sending APK over USB… 50%", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Install catalog apps").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Sending APK over USB… 50%", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Stop").performClick()
+        assertThat(actions).contains(PesceAction.Cancel)
+    }
+
+    @Test fun networkOperationShowsVisibleActivityWithoutByteProgress() {
+        compose.setContent {
+            LellostoreTheme {
+                PesceScreenContent(RemoteDeviceState(phase = RemoteConnectionPhase.READY, receiver = receiver,
+                    operation = RemoteOperationPhase.TESTING_TCP), PescePickerState(), false, {}, {})
+            }
+        }
+        compose.onNodeWithText("Testing network ADB…").assertIsDisplayed()
+        compose.onNodeWithText("Stop").assertIsDisplayed()
+    }
+
     @Test fun offlineCopyIsAvailableForAuthorizedReceiver() {
         val actions = mutableListOf<PesceAction>()
         compose.setContent {

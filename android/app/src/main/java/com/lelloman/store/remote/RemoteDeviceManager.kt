@@ -51,6 +51,7 @@ class RemoteDeviceManager @Inject constructor(
     private val journal = RemoteInstallJournal(File(context.noBackupFilesDir, "remote-install.json"))
     private val installer = RemotePackageInstaller(journal)
     private val serviceStarts = RemoteServiceStarts()
+    @Volatile private var foregroundReady = CompletableDeferred<Unit>()
     private val permissionAction = "${context.packageName}.REMOTE_USB_PERMISSION"
     private val identity by lazy { AdbIdentity.load(File(context.noBackupFilesDir, "remote-adb-private.key")) }
     @Volatile private var connection: AdbConnection? = null
@@ -117,6 +118,8 @@ class RemoteDeviceManager @Inject constructor(
     private fun beginConnection(id: String) {
         deviceId = id
         val currentGeneration = generation
+        val ready = CompletableDeferred<Unit>()
+        foregroundReady = ready
         mutableState.update { it.copy(phase = RemoteConnectionPhase.CONNECTING, message = null) }
         try {
             serviceStarts.request {
@@ -129,6 +132,7 @@ class RemoteDeviceManager @Inject constructor(
         }
         job = scope.launch {
             try {
+                ready.await()
                 retiringJob?.join()
                 ensureActive()
                 val device = usb.deviceList[id] ?: throw IOException("USB device is no longer attached")
@@ -194,7 +198,10 @@ class RemoteDeviceManager @Inject constructor(
         logger.audit("remote.connection_failed", mapOf("error_type" to error.javaClass.simpleName))
     }
 
-    internal fun serviceStartDelivered() = serviceStarts.delivered()
+    internal fun serviceStartDelivered(expectedGeneration: Int) {
+        serviceStarts.delivered()
+        if (generation == expectedGeneration) foregroundReady.complete(Unit)
+    }
 
     internal fun stopServiceIfIdle(stop: () -> Unit) = serviceStarts.stopIfIdle(
         isActive = { state.value.phase in setOf(RemoteConnectionPhase.CONNECTING,
@@ -211,14 +218,14 @@ class RemoteDeviceManager @Inject constructor(
         }
     }
 
-    private fun operate(block: suspend (AdbConnection, ReceiverInfo) -> Unit) {
+    private fun operate(phase: RemoteOperationPhase = RemoteOperationPhase.CONFIGURING, block: suspend (AdbConnection, ReceiverInfo) -> Unit) {
         synchronized(this) {
             val info = state.value.receiver ?: return
             val adb = connection ?: return
             if (state.value.busy || state.value.phase != RemoteConnectionPhase.READY) return
             val currentGeneration = generation
             val operationId = UUID.randomUUID().toString()
-            mutableState.update { it.copy(operation = RemoteOperationPhase.CONFIGURING, message = null) }
+            mutableState.update { it.copy(operation = phase, message = null, bytes = 0, totalBytes = 0) }
             job = scope.launch {
                 logger.audit("remote.operation_started", mapOf("operation_id" to operationId))
                 try {
@@ -257,7 +264,7 @@ class RemoteDeviceManager @Inject constructor(
         catch (error: Exception) { Result.failure(error) }
     }
 
-    override fun copyStore() = operate { adb, info ->
+    override fun copyStore() = operate(RemoteOperationPhase.PREPARING) { adb, info ->
         val application = context.applicationInfo
         check(application.splitSourceDirs.isNullOrEmpty()) { "Copying a split installation is not supported. Use a universal LelloStore APK." }
         @Suppress("DEPRECATION") val ownPackage = context.packageManager.getPackageInfo(context.packageName, 0)
@@ -272,7 +279,7 @@ class RemoteDeviceManager @Inject constructor(
         } finally { snapshot.delete() }
     }
 
-    override fun launchStore() = operate { adb, info ->
+    override fun launchStore() = operate(RemoteOperationPhase.LAUNCHING) { adb, info ->
         RemotePackageInstaller.checkUser(adb, info.userId)
         val pkg = context.packageName
         RemotePackageInstaller.requirePackageName(pkg)
@@ -342,7 +349,7 @@ class RemoteDeviceManager @Inject constructor(
     override fun enableTcpIp() = changeTransport(true)
     override fun disableTcpIp() = changeTransport(false)
 
-    private fun changeTransport(tcp: Boolean) = operate { adb, info ->
+    private fun changeTransport(tcp: Boolean) = operate(if (tcp) RemoteOperationPhase.ENABLING_TCP else RemoteOperationPhase.DISABLING_TCP) { adb, info ->
         val id = deviceId
         val serial = usb.deviceList[id]?.let { runCatching { it.serialNumber }.getOrNull() }
         mutableState.update { it.copy(phase = RemoteConnectionPhase.RESTARTING) }
@@ -378,7 +385,7 @@ class RemoteDeviceManager @Inject constructor(
             message = if (tcp) "ADB port 5555 is enabled. Network reachability has not been tested." else "Legacy network ADB is disabled. USB mode is active.") }
     }
 
-    override fun testTcpIp() = operate { _, info ->
+    override fun testTcpIp() = operate(RemoteOperationPhase.TESTING_TCP) { _, info ->
         check(info.addresses.isNotEmpty()) { "The receiver has no network address. Connect it to a network and reconnect USB to refresh." }
         var reachable = false
         for (address in info.addresses) {

@@ -13,6 +13,7 @@ import androidx.core.app.ServiceCompat
 import com.lelloman.store.MainActivity
 import com.lelloman.store.domain.remote.RemoteOperationPhase
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.screen.pesce.remoteProgressText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -38,7 +39,12 @@ class RemoteDeviceService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_pesce)
             .setContentTitle(getString(R.string.pesce_title))
-            .setContentText(listOfNotNull(state.receiver?.model, state.activeApp).joinToString(" · ").ifEmpty { getString(R.string.pesce_connecting) })
+            .setContentText(remoteProgressText(this, state))
+            .setSubText(listOfNotNull(state.receiver?.model, state.activeApp).joinToString(" · "))
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .apply {
+                if (state.busy) setProgress(100, ((state.transferProgress ?: 0f) * 100).toInt(), state.transferProgress == null)
+            }
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
             .addAction(0, getString(R.string.pesce_stop), stop).build()
         val types = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
@@ -53,7 +59,7 @@ class RemoteDeviceService : Service() {
         if (intent?.action == STOP) manager.disconnect()
         else {
             sessionGeneration = intent?.getIntExtra(SESSION_GENERATION, -1) ?: -1
-            manager.serviceStartDelivered()
+            manager.serviceStartDelivered(sessionGeneration)
         }
         if (!observing) {
             observing = true

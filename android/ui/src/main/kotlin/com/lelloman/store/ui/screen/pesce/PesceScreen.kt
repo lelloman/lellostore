@@ -45,89 +45,80 @@ internal fun PesceScreenContent(
 ) {
     var confirmTcp by rememberSaveable { mutableStateOf(false) }
     val ready = state.phase == RemoteConnectionPhase.READY && !state.busy
-    LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Text(stringResource(R.string.pesce_intro), style = MaterialTheme.typography.bodyLarge)
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(connectionLabel(state.phase)), style = MaterialTheme.typography.titleMedium)
-                    state.receiver?.let { receiver ->
-                        Text(receiver.model, style = MaterialTheme.typography.headlineSmall)
-                        Text(stringResource(R.string.pesce_device_details, receiver.androidVersion, receiver.userId))
-                        if (receiver.addresses.isNotEmpty()) Text(receiver.addresses.joinToString(" · "))
-                    }
-                    if (state.phase != RemoteConnectionPhase.READY) Text(stringResource(R.string.pesce_setup))
-                    state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-                    if (state.phase == RemoteConnectionPhase.AUTHORIZING) Text(stringResource(R.string.pesce_authorize_help))
-                    if (state.busy && state.operation == RemoteOperationPhase.IDLE) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (state.phase != RemoteConnectionPhase.UNSUPPORTED) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { onAction(PesceAction.Refresh) }, enabled = !state.busy) { Text(stringResource(R.string.pesce_refresh)) }
-                            if (state.receiver != null || state.busy) TextButton(onClick = { onAction(PesceAction.Disconnect) }) { Text(stringResource(R.string.pesce_disconnect)) }
+    Column(modifier.fillMaxSize()) {
+        if (state.busy) PesceProgress(state, { onAction(PesceAction.Cancel) }, Modifier.padding(16.dp))
+        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Text(stringResource(R.string.pesce_intro), style = MaterialTheme.typography.bodyLarge)
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(connectionLabel(state.phase)), style = MaterialTheme.typography.titleMedium)
+                        state.receiver?.let { receiver ->
+                            Text(receiver.model, style = MaterialTheme.typography.headlineSmall)
+                            Text(stringResource(R.string.pesce_device_details, receiver.androidVersion, receiver.userId))
+                            if (receiver.addresses.isNotEmpty()) Text(receiver.addresses.joinToString(" · "))
+                        }
+                        if (state.phase != RemoteConnectionPhase.READY) Text(stringResource(R.string.pesce_setup))
+                        state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                        if (state.phase == RemoteConnectionPhase.AUTHORIZING) Text(stringResource(R.string.pesce_authorize_help))
+                        if (state.phase != RemoteConnectionPhase.UNSUPPORTED) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = { onAction(PesceAction.Refresh) }, enabled = !state.busy) { Text(stringResource(R.string.pesce_refresh)) }
+                                if (state.receiver != null || state.busy) TextButton(onClick = { onAction(PesceAction.Disconnect) }) { Text(stringResource(R.string.pesce_disconnect)) }
+                            }
                         }
                     }
                 }
             }
-        }
-        if (state.phase != RemoteConnectionPhase.READY && !state.busy) {
-            items(state.devices, key = { it.id }) { device ->
-                OutlinedButton(onClick = { onAction(PesceAction.Connect(device.id)) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.pesce_connect_device, device.name))
-                }
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onAction(PesceAction.Copy) }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_copy)) }
-                Text(stringResource(R.string.pesce_copy_help), style = MaterialTheme.typography.bodySmall)
-                if (state.canLaunchStore) OutlinedButton(onClick = { onAction(PesceAction.Launch) }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_launch)) }
-                OutlinedButton(onClick = { confirmTcp = true }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_enable_tcp)) }
-                state.tcpPort?.let { port ->
-                    Text(stringResource(R.string.pesce_tcp_port, port))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { onAction(PesceAction.TestTcp) }, enabled = ready) { Text(stringResource(R.string.pesce_test_tcp)) }
-                        TextButton(onClick = { onAction(PesceAction.DisableTcp) }, enabled = ready) { Text(stringResource(R.string.pesce_disable_tcp)) }
+            if (state.phase != RemoteConnectionPhase.READY && !state.busy) {
+                items(state.devices, key = { it.id }) { device ->
+                    OutlinedButton(onClick = { onAction(PesceAction.Connect(device.id)) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.pesce_connect_device, device.name))
                     }
                 }
-                OutlinedButton(onClick = { onAction(PesceAction.PickApps) }, enabled = ready && state.pendingCount == 0, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_install_apps)) }
-                if (!signedIn) Text(stringResource(R.string.pesce_login_help), style = MaterialTheme.typography.bodySmall)
             }
-        }
-        if (state.operation != RemoteOperationPhase.IDLE) item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.activeApp?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-                    Text(stringResource(operationLabel(state.operation)))
-                    if (state.totalBytes > 0 && state.operation in setOf(RemoteOperationPhase.DOWNLOADING, RemoteOperationPhase.TRANSFERRING)) {
-                        LinearProgressIndicator(progress = { (state.bytes.toFloat() / state.totalBytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                    } else LinearProgressIndicator(Modifier.fillMaxWidth())
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onAction(PesceAction.Copy) }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_copy)) }
+                    Text(stringResource(R.string.pesce_copy_help), style = MaterialTheme.typography.bodySmall)
+                    if (state.canLaunchStore) OutlinedButton(onClick = { onAction(PesceAction.Launch) }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_launch)) }
+                    OutlinedButton(onClick = { confirmTcp = true }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_enable_tcp)) }
+                    state.tcpPort?.let { port ->
+                        Text(stringResource(R.string.pesce_tcp_port, port))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onAction(PesceAction.TestTcp) }, enabled = ready) { Text(stringResource(R.string.pesce_test_tcp)) }
+                            TextButton(onClick = { onAction(PesceAction.DisableTcp) }, enabled = ready) { Text(stringResource(R.string.pesce_disable_tcp)) }
+                        }
+                    }
+                    OutlinedButton(onClick = { onAction(PesceAction.PickApps) }, enabled = ready && state.pendingCount == 0, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pesce_install_apps)) }
+                    if (!signedIn) Text(stringResource(R.string.pesce_login_help), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (state.pendingCount > 0 && !state.busy) item {
+                Text(pluralStringResource(R.plurals.pesce_pending, state.pendingCount, state.pendingCount))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { if (signedIn) onAction(PesceAction.Resume) else onSignIn() }, enabled = ready) {
+                        Text(stringResource(if (signedIn) R.string.pesce_resume else R.string.pesce_sign_in))
+                    }
                     TextButton(onClick = { onAction(PesceAction.Cancel) }) { Text(stringResource(R.string.pesce_stop)) }
                 }
             }
-        }
-        if (state.pendingCount > 0 && !state.busy) item {
-            Text(pluralStringResource(R.plurals.pesce_pending, state.pendingCount, state.pendingCount))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { if (signedIn) onAction(PesceAction.Resume) else onSignIn() }, enabled = ready) {
-                    Text(stringResource(if (signedIn) R.string.pesce_resume else R.string.pesce_sign_in))
-                }
-                TextButton(onClick = { onAction(PesceAction.Cancel) }) { Text(stringResource(R.string.pesce_stop)) }
-            }
-        }
-        items(state.results) { result ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(result.name, style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(outcomeLabel(result.outcome)))
-                    if (result.detail.isNotBlank()) Text(result.detail, style = MaterialTheme.typography.bodySmall)
+            items(state.results) { result ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(result.name, style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(outcomeLabel(result.outcome)))
+                        if (result.detail.isNotBlank()) Text(result.detail, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
+            if (state.results.isNotEmpty()) item {
+                TextButton(onClick = { onAction(PesceAction.Clear) }, enabled = !state.busy) { Text(stringResource(R.string.pesce_clear)) }
+            }
         }
-        if (state.results.isNotEmpty()) item {
-            TextButton(onClick = { onAction(PesceAction.Clear) }, enabled = !state.busy) { Text(stringResource(R.string.pesce_clear)) }
-        }
+
     }
 
     if (confirmTcp) AlertDialog(
@@ -177,7 +168,7 @@ internal fun PesceScreenContent(
     )
 }
 
-private fun connectionLabel(phase: RemoteConnectionPhase): Int = when (phase) {
+internal fun connectionLabel(phase: RemoteConnectionPhase): Int = when (phase) {
     RemoteConnectionPhase.UNSUPPORTED -> R.string.pesce_unsupported
     RemoteConnectionPhase.DISCONNECTED -> R.string.pesce_disconnected
     RemoteConnectionPhase.PERMISSION -> R.string.pesce_permission
@@ -187,7 +178,12 @@ private fun connectionLabel(phase: RemoteConnectionPhase): Int = when (phase) {
     RemoteConnectionPhase.RESTARTING -> R.string.pesce_restarting
     RemoteConnectionPhase.ERROR -> R.string.pesce_error
 }
-private fun operationLabel(phase: RemoteOperationPhase): Int = when (phase) {
+internal fun operationLabel(phase: RemoteOperationPhase): Int = when (phase) {
+    RemoteOperationPhase.PREPARING -> R.string.pesce_preparing
+    RemoteOperationPhase.LAUNCHING -> R.string.pesce_launching
+    RemoteOperationPhase.ENABLING_TCP -> R.string.pesce_enabling_tcp
+    RemoteOperationPhase.DISABLING_TCP -> R.string.pesce_disabling_tcp
+    RemoteOperationPhase.TESTING_TCP -> R.string.pesce_testing_tcp
     RemoteOperationPhase.DOWNLOADING -> R.string.pesce_downloading
     RemoteOperationPhase.VERIFYING -> R.string.pesce_verifying
     RemoteOperationPhase.TRANSFERRING -> R.string.pesce_transferring

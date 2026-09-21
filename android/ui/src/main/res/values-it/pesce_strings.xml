@@ -53,4 +53,10 @@
     <string name="pesce_failed">Installazione non riuscita</string>
     <string name="pesce_uncertain">Esito sconosciuto — riconnetti il destinatario per verificare</string>
     <string name="pesce_cancelled">Installazione interrotta</string>
+    <string name="pesce_preparing">Preparazione di LelloStore…</string>
+    <string name="pesce_launching">Apertura di LelloStore sul destinatario…</string>
+    <string name="pesce_enabling_tcp">Attivazione di ADB di rete…</string>
+    <string name="pesce_disabling_tcp">Ritorno del destinatario alla modalità USB…</string>
+    <string name="pesce_testing_tcp">Verifica di ADB di rete…</string>
+    <string name="pesce_transfer_progress">%1$d%% · %2$s / %3$s</string>
 </resources>

@@ -53,4 +53,10 @@
     <string name="pesce_failed">Installation failed</string>
     <string name="pesce_uncertain">Result unknown — reconnect the receiver to check</string>
     <string name="pesce_cancelled">Installation interrupted</string>
+    <string name="pesce_preparing">Preparing LelloStore…</string>
+    <string name="pesce_launching">Opening LelloStore on receiver…</string>
+    <string name="pesce_enabling_tcp">Enabling network ADB…</string>
+    <string name="pesce_disabling_tcp">Returning receiver to USB mode…</string>
+    <string name="pesce_testing_tcp">Testing network ADB…</string>
+    <string name="pesce_transfer_progress">%1$d%% · %2$s / %3$s</string>
 </resources>

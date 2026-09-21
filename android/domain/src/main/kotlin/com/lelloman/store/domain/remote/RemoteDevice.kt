@@ -16,7 +16,7 @@ data class ReceiverInfo(
 enum class RemoteConnectionPhase {
     UNSUPPORTED, DISCONNECTED, PERMISSION, CONNECTING, AUTHORIZING, READY, RESTARTING, ERROR,
 }
-enum class RemoteOperationPhase { IDLE, DOWNLOADING, VERIFYING, TRANSFERRING, INSTALLING, CONFIGURING }
+enum class RemoteOperationPhase { IDLE, DOWNLOADING, VERIFYING, TRANSFERRING, INSTALLING, CONFIGURING, PREPARING, LAUNCHING, ENABLING_TCP, DISABLING_TCP, TESTING_TCP }
 enum class RemoteInstallOutcome { INSTALLED, ALREADY_INSTALLED, FAILED, UNCERTAIN, CANCELLED }
 data class RemoteInstallResult(val packageName: String, val name: String, val outcome: RemoteInstallOutcome, val detail: String = "")
 data class RemoteAppChoice(val packageName: String, val name: String, val version: AppVersion)
@@ -35,6 +35,10 @@ data class RemoteDeviceState(
     val canLaunchStore: Boolean = false,
     val tcpPort: Int? = null,
 ) {
+    val transferProgress: Float? get() = if (totalBytes > 0 && operation in setOf(
+        RemoteOperationPhase.DOWNLOADING, RemoteOperationPhase.TRANSFERRING,
+    )) (bytes.toFloat() / totalBytes).coerceIn(0f, 1f) else null
+
     val busy: Boolean get() = operation != RemoteOperationPhase.IDLE || phase in setOf(
         RemoteConnectionPhase.PERMISSION, RemoteConnectionPhase.CONNECTING,
         RemoteConnectionPhase.AUTHORIZING, RemoteConnectionPhase.RESTARTING,
