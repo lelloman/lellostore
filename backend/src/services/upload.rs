@@ -85,13 +85,13 @@ impl UploadService {
 
     /// Re-extract icons for catalog entries created by an older or less capable
     /// parser. Individual APK failures are logged and do not prevent startup.
-    pub async fn repair_missing_icons(&self) -> Result<usize, UploadError> {
-        let missing_apps = sqlx::query_as::<_, (String, i64)>(
+    pub async fn repair_outdated_icons(&self) -> Result<usize, UploadError> {
+        let outdated_apps = sqlx::query_as::<_, (String, i64)>(
             r#"
             SELECT apps.package_name, MAX(app_versions.version_code)
             FROM apps
             JOIN app_versions ON app_versions.package_name = apps.package_name
-            WHERE apps.icon_path IS NULL
+            WHERE apps.icon_path IS NULL OR apps.icon_revision < 1
             GROUP BY apps.package_name
             "#,
         )
@@ -100,13 +100,13 @@ impl UploadService {
         .map_err(AppError::Database)?;
 
         let mut repaired = 0;
-        for (package_name, version_code) in missing_apps {
+        for (package_name, version_code) in outdated_apps {
             let apk_path = self.storage.get_apk_path(&package_name, version_code);
             let metadata = match self.apk_parser.parse(&apk_path).await {
                 Ok(metadata) => metadata,
                 Err(error) => {
                     warn!(
-                        "Could not repair missing icon for {} from {}: {}",
+                        "Could not repair icon for {} from {}: {}",
                         package_name,
                         apk_path.display(),
                         error
@@ -129,19 +129,16 @@ impl UploadService {
                 }
             };
 
-            if let Err(error) =
-                db::update_app(&self.db, &package_name, None, None, Some(&icon_path)).await
+            if let Err(error) = sqlx::query(
+                "UPDATE apps SET icon_path = ?, icon_revision = 1, updated_at = datetime('now') WHERE package_name = ?",
+            )
+            .bind(&icon_path)
+            .bind(&package_name)
+            .execute(&self.db)
+            .await
             {
-                warn!(
-                    "Could not record repaired icon for {}: {}",
-                    package_name, error
-                );
-                if let Err(cleanup_error) = self.storage.delete_icon(&package_name) {
-                    warn!(
-                        "Could not clean up repaired icon for {}: {}",
-                        package_name, cleanup_error
-                    );
-                }
+                // Preserve the saved icon and retry the metadata update next startup.
+                warn!("Could not record repaired icon for {}: {}", package_name, error);
                 continue;
             }
 
@@ -371,6 +368,14 @@ impl UploadService {
                 icon_path,
             )
             .await?;
+        }
+
+        if icon_path.is_some() {
+            sqlx::query("UPDATE apps SET icon_revision = 1 WHERE package_name = ?")
+                .bind(package_name)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
         }
 
         // Acquire SQLite's write lock even when no app metadata changed.

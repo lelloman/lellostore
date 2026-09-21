@@ -259,7 +259,7 @@ async fn test_upload_apk_persists_app_version_and_file() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn repair_missing_icons_updates_existing_catalog_entries() {
+async fn repair_outdated_icons_updates_existing_catalog_entries() {
     let (temp_dir, pool, storage) = setup_test_env().await;
     lellostore_backend::db::insert_app(&pool, "com.example.repair", "Repair", None, None)
         .await
@@ -288,7 +288,7 @@ async fn repair_missing_icons_updates_existing_catalog_entries() {
         100 * 1024 * 1024,
     );
 
-    assert_eq!(service.repair_missing_icons().await.unwrap(), 1);
+    assert_eq!(service.repair_outdated_icons().await.unwrap(), 1);
     let app = lellostore_backend::db::get_app(&pool, "com.example.repair")
         .await
         .unwrap()
@@ -301,7 +301,21 @@ async fn repair_missing_icons_updates_existing_catalog_entries() {
         .path()
         .join("storage/icons/com.example.repair.png")
         .is_file());
-    assert_eq!(service.repair_missing_icons().await.unwrap(), 0);
+    // Previously extracted placeholders must be refreshed even with an icon_path.
+    std::fs::write(
+        temp_dir.path().join("storage/icons/com.example.repair.png"),
+        b"old placeholder",
+    )
+    .unwrap();
+    sqlx::query("UPDATE apps SET icon_revision = 0 WHERE package_name = 'com.example.repair'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(service.repair_outdated_icons().await.unwrap(), 1);
+    let refreshed =
+        std::fs::read(temp_dir.path().join("storage/icons/com.example.repair.png")).unwrap();
+    assert!(image::load_from_memory(&refreshed).is_ok());
+    assert_eq!(service.repair_outdated_icons().await.unwrap(), 0);
 }
 
 /// Test duplicate version rejection

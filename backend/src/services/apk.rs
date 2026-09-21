@@ -182,7 +182,21 @@ impl ApkParser {
     ) -> Result<Vec<u8>, ApkError> {
         let mut last_error = None;
 
-        // Prefer a directly decodable badging entry when one is available.
+        // Modern launcher artwork may differ from stale legacy raster variants.
+        // Try XML first, but retain raster fallbacks for unsupported drawables.
+        let resources = self.dump_resources(apk_path).await;
+        if let Ok(resource_output) = &resources {
+            for icon_path in icon_paths.iter().filter(|path| path.ends_with(".xml")) {
+                match self
+                    .render_xml_launcher_icon(apk_path, icon_path, resource_output)
+                    .await
+                {
+                    Ok(icon) => return Ok(icon),
+                    Err(error) => last_error = Some(error),
+                }
+            }
+        }
+
         for icon_path in icon_paths {
             match self.extract_icon(apk_path, icon_path).await {
                 Ok(icon) => return Ok(icon),
@@ -190,26 +204,14 @@ impl ApkParser {
             }
         }
 
-        // Adaptive icons are XML. Resolve their resource-table entry to legacy
-        // PNG/WebP variants. This also works when resource shrinking has renamed
-        // files, where matching by filename would be unreliable.
-        let resource_output = self.dump_resources(apk_path).await?;
+        // Resolve resource-table variants even when shrinking renamed the files.
+        let resource_output = resources?;
         for icon_path in icon_paths {
             for fallback_path in parse_resource_file_variants(&resource_output, icon_path) {
                 match self.extract_icon(apk_path, &fallback_path).await {
                     Ok(icon) => return Ok(icon),
                     Err(error) => last_error = Some(error),
                 }
-            }
-        }
-
-        for icon_path in icon_paths.iter().filter(|path| path.ends_with(".xml")) {
-            match self
-                .render_xml_launcher_icon(apk_path, icon_path, &resource_output)
-                .await
-            {
-                Ok(icon) => return Ok(icon),
-                Err(error) => last_error = Some(error),
             }
         }
 
@@ -399,7 +401,7 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
         }
     }
 
-    // Prefer directly decodable raster entries and then the highest density.
+    // Order raster fallbacks by density; extraction tries XML artwork first.
     // Density 65534 is aapt's anydpi sentinel and commonly points to XML.
     icon_paths.sort_by_key(|(density, path)| (is_raster_path(path), *density));
     icon_paths.reverse();
@@ -1117,6 +1119,88 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
         let decoded = image::load_from_memory(&icon).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (192, 192));
         assert_eq!(decoded.get_pixel(0, 0), Rgba([1, 2, 3, 255]));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn adaptive_artwork_is_preferred_to_legacy_placeholder() {
+        use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use zip::write::SimpleFileOptions;
+
+        let temp = tempdir().unwrap();
+        let apk = temp.path().join("adaptive.apk");
+        let file = std::fs::File::create(&apk).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        archive.start_file("res/icon.xml", options).unwrap();
+        archive.write_all(b"not a raster image").unwrap();
+
+        let mut raster = Vec::new();
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255])))
+            .write_to(&mut Cursor::new(&mut raster), ImageFormat::Png)
+            .unwrap();
+        archive.start_file("res/icon-640.png", options).unwrap();
+        archive.write_all(&raster).unwrap();
+        archive.finish().unwrap();
+
+        let fake_aapt2 = temp.path().join("aapt2");
+        std::fs::write(
+            &fake_aapt2,
+            r##"#!/bin/sh
+case "$2" in
+badging)
+cat <<'EOF'
+package: name='com.test' versionCode='1'
+application-icon-640:'res/icon-640.png'
+application-icon-65534:'res/icon.xml'
+EOF
+;;
+resources)
+cat <<'EOF'
+resource 0x7f010000 mipmap/icon
+  (xxxhdpi) (file) res/icon-640.png
+  (anydpi-v26) (file) res/icon.xml type=XML
+resource 0x7f020000 drawable/background
+  () (file) res/background.xml type=XML
+resource 0x7f020001 drawable/foreground
+  () (file) res/foreground.xml type=XML
+EOF
+;;
+xmltree)
+if [ "$5" = res/icon.xml ]; then
+cat <<'EOF'
+  E: adaptive-icon
+    E: background
+      A: android:drawable(0x01010199)=@0x7f020000
+    E: foreground
+      A: android:drawable(0x01010199)=@0x7f020001
+EOF
+else
+cat <<'EOF'
+  E: vector
+    A: android:viewportWidth(0x01010402)=48
+    A: android:viewportHeight(0x01010403)=48
+    E: path
+      A: android:fillColor(0x01010404)=#ff006a67
+      A: android:pathData(0x01010405)="M0,0h48v48h-48z"
+EOF
+fi
+;;
+esac
+"##,
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake_aapt2, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let metadata = ApkParser::new(fake_aapt2).parse(&apk).await.unwrap();
+        let icon = metadata
+            .icon_data
+            .expect("adaptive artwork should be rendered");
+        let decoded = image::load_from_memory(&icon).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (192, 192));
+        assert_eq!(decoded.get_pixel(0, 0), Rgba([0, 106, 103, 255]));
     }
 
     #[cfg(unix)]

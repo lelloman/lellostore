@@ -85,10 +85,10 @@ async fn run() -> Result<(), BoxError> {
         config.max_upload_size,
     ));
 
-    match upload_service.repair_missing_icons().await {
+    match upload_service.repair_outdated_icons().await {
         Ok(0) => {}
         Ok(count) => tracing::info!("Repaired icons for {} existing app(s)", count),
-        Err(error) => tracing::warn!("Failed to scan for missing app icons: {}", error),
+        Err(error) => tracing::warn!("Failed to scan for outdated app icons: {}", error),
     }
 
     tracing::info!("Services initialized");
