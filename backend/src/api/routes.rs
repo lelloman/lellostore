@@ -4,7 +4,7 @@ use simple_server::axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::cors::CorsLayer;
+use simple_server::cors::{CorsConfig, CorsLayer};
 
 use super::{events, handlers, static_files, AppState};
 use crate::auth::{auth_middleware, AuthState};
@@ -140,10 +140,12 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
 }
 
 fn cors_layer() -> CorsLayer {
-    CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
+    CorsConfig::default()
+        .allow_any_origin()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(tower_http::cors::Any)
+        .allow_any_header()
+        .build()
+        .expect("the static CORS policy must be valid")
 }
 
 async fn http_trace(

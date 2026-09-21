@@ -2949,8 +2949,11 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures-util",
+ "http",
  "http-body",
+ "pin-project-lite",
  "tokio",
+ "tower-http 0.6.11",
  "tower-layer",
  "tower-service",
  "tracing",

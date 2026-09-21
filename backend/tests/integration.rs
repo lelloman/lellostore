@@ -1,5 +1,5 @@
 use axum_test::TestServer;
-use simple_server::axum::http::StatusCode;
+use simple_server::axum::http::{header, Method, StatusCode};
 
 mod common;
 
@@ -66,6 +66,77 @@ async fn test_health_endpoint() {
 
     let body: serde_json::Value = response.json();
     assert_eq!(body["status"], "healthy");
+}
+
+#[tokio::test]
+async fn production_cors_policy_allows_origins_methods_and_request_headers() {
+    let (_temp_dir, app) = create_test_app().await;
+    let server = TestServer::new(app).unwrap();
+
+    let ordinary = server
+        .get("/health")
+        .add_header(header::ORIGIN, "https://catalog.example")
+        .await;
+    assert_eq!(ordinary.status_code(), StatusCode::OK);
+    assert_eq!(
+        ordinary.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"*".parse().unwrap())
+    );
+    assert!(ordinary
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS)
+        .is_none());
+    assert!(ordinary
+        .headers()
+        .get(header::ACCESS_CONTROL_EXPOSE_HEADERS)
+        .is_none());
+
+    let preflight = server
+        .method(Method::OPTIONS, "/route-that-does-not-exist")
+        .add_header(header::ORIGIN, "https://catalog.example")
+        .add_header(header::ACCESS_CONTROL_REQUEST_METHOD, "DELETE")
+        .add_header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization")
+        .await;
+    assert_eq!(preflight.status_code(), StatusCode::OK);
+    assert_eq!(
+        preflight.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"*".parse().unwrap())
+    );
+    let methods = preflight
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_METHODS)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let methods: std::collections::BTreeSet<_> = methods.split(',').map(str::trim).collect();
+    assert_eq!(
+        methods,
+        ["DELETE", "GET", "POST", "PUT"].into_iter().collect()
+    );
+    assert_eq!(
+        preflight
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_HEADERS),
+        Some(&"*".parse().unwrap())
+    );
+    assert!(preflight
+        .headers()
+        .get(header::ACCESS_CONTROL_MAX_AGE)
+        .is_none());
+
+    let (_temp_dir, fail_closed_app) = create_fail_closed_test_app().await;
+    let fail_closed_server = TestServer::new(fail_closed_app).unwrap();
+    let unavailable = fail_closed_server
+        .get("/api/apps")
+        .add_header(header::ORIGIN, "https://catalog.example")
+        .await;
+    assert_eq!(unavailable.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        unavailable
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"*".parse().unwrap())
+    );
 }
 
 #[tokio::test]
