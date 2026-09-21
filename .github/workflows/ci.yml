@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: lelloman/simple-server
-          ref: adc1640bde4ac8f934ed454c8d6c5e264a6a2790
+          ref: 0b945750b6b97a9e18c531d1cf1137d4ed4b69c9
           path: simple-server
           persist-credentials: false
       - uses: actions/setup-node@v7

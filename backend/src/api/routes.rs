@@ -1,5 +1,4 @@
 use simple_server::axum::{
-    extract::DefaultBodyLimit,
     http::Method,
     middleware,
     routing::{delete, get, post, put},
@@ -134,7 +133,9 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/app-groups/{group_id}/users/{subject}",
             put(handlers::add_admin_group_member).delete(handlers::remove_admin_group_member),
         )
-        .layer(DefaultBodyLimit::max(multipart_body_limit))
+        .layer(simple_server::body_limit::BodyLimit::max(
+            multipart_body_limit,
+        ))
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
 
