@@ -5,7 +5,7 @@ use simple_server::axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::cors::CorsLayer;
 
 use super::{events, handlers, static_files, AppState};
 use crate::auth::{auth_middleware, AuthState};
@@ -53,7 +53,7 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
 
     router
         .layer(middleware::from_fn(track_metrics))
-        .layer(TraceLayer::new_for_http())
+        .layer(simple_server::axum::middleware::from_fn(http_trace))
         .layer(cors_layer())
         .with_state(state)
 }
@@ -143,4 +143,11 @@ fn cors_layer() -> CorsLayer {
         .allow_origin(tower_http::cors::Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(tower_http::cors::Any)
+}
+
+async fn http_trace(
+    request: simple_server::axum::extract::Request,
+    next: simple_server::axum::middleware::Next,
+) -> simple_server::axum::response::Response {
+    simple_server::http_tracing::trace(request, |request| next.run(request)).await
 }

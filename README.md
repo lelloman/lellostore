@@ -31,7 +31,7 @@ Docker supplies the runtime APK/AAB tools and is the simplest production build.
 ## Backend
 
 The lifecycle and logging implementations use the sibling `simple-server` checkout
-at revision `71755b5e15ada9b22484559146ebaf4d82c91255`. Keep that checkout beside
+at revision `adc1640bde4ac8f934ed454c8d6c5e264a6a2790`. Keep that checkout beside
 LelloStore for local builds; CI checks out both sources explicitly. See
 [the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) and
 [the logging migration notes](docs/STEP_03A_LOGGING.md).
