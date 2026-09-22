@@ -14,3 +14,5 @@ pub mod vpks;
 pub mod personalization;
 
 pub mod retention;
+
+pub mod apk_signatures;

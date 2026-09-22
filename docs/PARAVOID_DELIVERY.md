@@ -67,6 +67,24 @@ python3 scripts/publish-to-lellostore.py withdraw-vpk PACKAGE VPK_ID --expected-
 A queued upload is not a published release. Keep its returned job ID if the client
 stops waiting. Validation reports and original inputs remain available for diagnosis.
 
+## Distribution migration reviews
+
+A stable draft in a different distribution mode requires a separate review before
+publication. The API verifies source/target stored hashes and apksigner evidence,
+requires an unchanged single v2/v3 signer and a newer APK version, and records the
+administrator's migration test evidence. The UI asks for confirmation that the tested
+upgrade preserved database/settings, authentication and files. This is recorded
+human test evidence, not automated proof of application data compatibility.
+
+The review is tied to the exact draft hash and optimistic app revision. Publication
+cannot use an old review after the app changes. The publication history UI retains
+the review, signer fingerprint and evidence. Signing certificate rotation is not
+supported by this conservative continuity check. Existing streams are unchanged;
+retire them explicitly when that is the intended rollout.
+
+Paravoid activation still requires upstream verified shell registration and initial
+bootstrap VPK integration. A review does not bypass those gates.
+
 ## Persistence and recovery limits
 
 Back up SQLite, artifact storage and online signing keys consistently. Never restore
@@ -79,7 +97,9 @@ Hourly cleanup removes personalized transfer directories one hour after their
 24-hour acquisition expiry, and successful upload inputs after seven days. It retains
 job/acquisition identities, grant authorization and all published artifacts. Failed
 upload inputs remain available for retry. Multi-instance leases and orphan-file cleanup
-are not implemented. Monitor disk usage. VPK copies are synced before an atomic link
+are not implemented. Monitor disk usage. Existing Prometheus HTTP metrics normalize package/release/grant
+identifiers; storage gauges now include VPKs, personalized acquisitions and upload
+inputs, so these files contribute to total storage usage. VPK copies are synced before an atomic link
 creates their immutable content address, so interrupted copying cannot expose a partial
 canonical artifact. Personalized jobs
 recover completed output by checking grant identity, developer signing entries and
@@ -101,3 +121,14 @@ ANDROID_HOME=/path/to/sdk cargo test --manifest-path backend/Cargo.toml \
 This requires build-tools 36.0.0, platform 36, keytool and OpenSSL. It passed locally.
 It does not replace installation/device, runtime activation, normal/shell migration,
 API 30/36.1 or physical ARM64 acceptance.
+
+Cross-language readback also passed against committed Paravoid `baec6b1`:
+
+```
+ANDROID_HOME=/path/to/sdk scripts/check-paravoid-interop.sh ../paravoid-android
+```
+
+The script compiles committed upstream contract/delivery Java sources in a temporary
+directory, then checks Store-generated grants (read from the personalized signed APK)
+and signed heads with the upstream Java verifiers. It does not consume uncommitted
+packaging work and does not claim full VPK/runtime interoperability.

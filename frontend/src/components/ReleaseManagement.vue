@@ -53,6 +53,13 @@
             <v-list-item v-for="event in history" :key="event.id" :title="`${event.action === 'publish' ? 'Published' : 'Withdrew'} APK ${event.version_code}`" :subtitle="`${event.actor_subject} · ${event.created_at} · revision ${event.revision}`" />
           </v-list>
           <p v-else class="mt-4 text-medium-emphasis">No publication actions recorded yet. Existing releases were preserved during migration.</p>
+          <details v-for="review in migrationHistory" :key="review.id" class="mt-4">
+            <summary>Migration review: {{ review.from_mode }} → {{ review.to_mode }} · APK {{ review.from_version }} → {{ review.target_version }}</summary>
+            <p>{{ review.actor_subject }} · {{ review.created_at }} · revision {{ review.review_revision }}</p>
+            <p class="hash">Target SHA-256: {{ review.target_sha256 }}</p>
+            <p class="hash">Signer SHA-256: {{ review.signer_sha256 }}</p>
+            <pre class="hash" style="white-space: pre-wrap">{{ review.migration_evidence }}</pre>
+          </details>
         </div>
       </v-window-item>
       <v-window-item value="access">
@@ -76,6 +83,17 @@
           <v-select v-model="isBeta" label="Release channel" :items="[{ title: 'Stable', value: false }, { title: 'Beta', value: true }]" :disabled="busy" />
           <v-textarea v-model="notes" label="Release notes" rows="4" :disabled="busy" counter="65536" />
           <v-alert type="info" variant="tonal" class="mb-3">The APK was parsed and checksummed. Publication rechecks its stored bytes and version ordering. App behavior must be tested before publishing.</v-alert>
+          <section v-if="changesMode" class="my-4">
+            <v-alert type="warning">This stable installer changes distribution from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }}. Test an in-place upgrade with real app data before publishing.</v-alert>
+            <v-checkbox v-model="migration.tested_upgrade" label="I tested the in-place upgrade from the previous published installer" :disabled="busy" hide-details />
+            <v-checkbox v-model="migration.database_preserved" label="Database and saved settings are preserved" :disabled="busy" hide-details />
+            <v-checkbox v-model="migration.authentication_preserved" label="Existing authentication is preserved" :disabled="busy" hide-details />
+            <v-checkbox v-model="migration.files_preserved" label="App files are preserved" :disabled="busy" hide-details />
+            <v-textarea v-model="migration.evidence" label="Migration test evidence" hint="Record builds, devices and test results or a report link" :disabled="busy" counter="8192" />
+            <v-btn :disabled="busy || dirty || isBeta || !migrationReady" @click="verifyTransition">Verify transition</v-btn>
+            <p v-if="transitionReview" class="hash mt-2">Signing continuity verified: {{ transitionSigner }}</p>
+            <p class="text-caption mt-2">Existing shell streams keep their current status. Retire them explicitly from Paravoid → Shells and streams when appropriate.</p>
+          </section>
           <v-checkbox v-model="replaceLatest" label="Withdraw the previous latest release in this channel" :disabled="busy" hide-details />
           <p class="text-caption mb-3">Its artifact and published identity remain retained.</p>
           <details><summary>Artifact verification details</summary><p class="hash mt-2">SHA-256: {{ selected.sha256 }}</p></details>
@@ -88,7 +106,7 @@
         <v-spacer />
         <template v-if="state(selected) === 'draft'">
           <v-btn :disabled="busy || !dirty" @click="save">Save draft</v-btn>
-          <v-btn color="primary" :loading="busy" :disabled="dirty || busy" @click="publish">Publish release</v-btn>
+          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview)" @click="publish">Publish release</v-btn>
         </template>
         <v-btn v-else color="warning" :loading="busy" :disabled="busy" @click="withdraw">Withdraw release</v-btn>
       </v-card-actions>
@@ -99,13 +117,21 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ParavoidManagement from './ParavoidManagement.vue'
-import { api, type App, type AppVersion, type PublicationEvent } from '@/services/api'
+import { api, type App, type AppVersion, type PublicationEvent, type DistributionReview } from '@/services/api'
 
 const props = defineProps<{ app: App }>()
 const emit = defineEmits<{ changed: []; upload: [] }>()
 const tab = ref('releases')
 const selected = ref<AppVersion | null>(null)
 const revision = ref(0)
+const reviewedMode = ref('normal')
+const transitionReview = ref<string | undefined>()
+const transitionSigner = ref('')
+const emptyMigration = () => ({ tested_upgrade: false, database_preserved: false, authentication_preserved: false, files_preserved: false, evidence: '' })
+const migration = ref(emptyMigration())
+const migrationReady = computed(() => migration.value.tested_upgrade && migration.value.database_preserved && migration.value.authentication_preserved && migration.value.files_preserved && migration.value.evidence.trim().length > 0)
+const changesMode = computed(() => !!selected.value && (selected.value.distribution_mode ?? 'normal') !== reviewedMode.value)
+watch(migration, () => { transitionReview.value = undefined }, { deep: true })
 const notes = ref('')
 const isBeta = ref(false)
 const replaceLatest = ref(false)
@@ -114,6 +140,7 @@ const error = ref('')
 const dialogError = ref('')
 const history = ref<PublicationEvent[]>([])
 const historyLoading = ref(false)
+const migrationHistory = ref<DistributionReview[]>([])
 const versions = computed(() => [...props.app.versions].sort((a, b) => b.version_code - a.version_code))
 const dirty = computed(() => selected.value && (notes.value !== (selected.value.release_notes ?? '') || isBeta.value !== !!selected.value.is_beta))
 const headers = [{ title: 'Release', key: 'version_name' }, { title: 'Status', key: 'publication_state' }, { title: 'Actions', key: 'actions', sortable: false }]
@@ -129,6 +156,9 @@ async function review(version: AppVersion) {
     const release = fresh.versions.find(v => v.version_code === version.version_code)
     if (!release || state(release) !== state(version)) throw new Error('This release changed. Refresh the app before reviewing it.')
     selected.value = release
+    reviewedMode.value = fresh.distribution_mode ?? 'normal'
+    migration.value = emptyMigration()
+    transitionReview.value = undefined
     revision.value = fresh.publication_revision ?? 0
     notes.value = release.release_notes ?? ''
     isBeta.value = !!release.is_beta
@@ -143,6 +173,7 @@ async function save() {
   busy.value = true
   dialogError.value = ''
   try {
+    transitionReview.value = undefined
     await api.saveDraft(props.app.package_name, selected.value.version_code, notes.value, isBeta.value)
     const fresh = await api.getAdminApp(props.app.package_name)
     selected.value = fresh.versions.find(v => v.version_code === selected.value?.version_code) ?? null
@@ -152,9 +183,26 @@ async function save() {
   finally { busy.value = false }
 }
 
+async function verifyTransition() {
+  if (!selected.value || !migrationReady.value || dirty.value || isBeta.value || busy.value) return
+  busy.value = true
+  dialogError.value = ''
+  try {
+    const result = await api.reviewDistributionTransition(props.app.package_name, selected.value.version_code, revision.value, migration.value)
+    transitionReview.value = result.id
+    transitionSigner.value = result.signer_sha256
+    revision.value = result.publication_revision
+    emit('changed')
+  } catch (cause) { dialogError.value = message(cause) }
+  finally { busy.value = false }
+}
+
 async function publish() {
   if (!selected.value || dirty.value || busy.value) return
-  await mutate(() => api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value))
+  if (changesMode.value && !transitionReview.value) return
+  await mutate(() => changesMode.value
+    ? api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, transitionReview.value)
+    : api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value))
 }
 async function withdraw() {
   if (!selected.value || busy.value) return
@@ -174,7 +222,7 @@ async function mutate(action: () => Promise<unknown>) {
 async function loadHistory() {
   historyLoading.value = true
   error.value = ''
-  try { history.value = await api.getPublicationHistory(props.app.package_name) }
+  try { [history.value, migrationHistory.value] = await Promise.all([api.getPublicationHistory(props.app.package_name), api.getDistributionReviews(props.app.package_name)]) }
   catch (cause) { error.value = message(cause) }
   finally { historyLoading.value = false }
 }

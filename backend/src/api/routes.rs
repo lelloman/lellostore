@@ -113,6 +113,10 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .min(usize::MAX as u64) as usize;
     Router::new()
         .route(
+            "/apps/{package_name}/distribution-reviews",
+            post(super::transitions::review).get(super::transitions::history),
+        )
+        .route(
             "/apps/{package_name}/publications",
             post(super::publications::publish).get(super::publications::history),
         )

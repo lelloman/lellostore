@@ -22,6 +22,7 @@ fn request(code: i64, revision: i64) -> PublishRequest {
         version_code: code,
         expected_revision: revision,
         replace_latest: false,
+        transition_review: None,
     }
 }
 
@@ -209,4 +210,50 @@ async fn older_devices_keep_a_compatible_historical_installer_after_shell_adopti
     assert_eq!(detail["versions"].as_array().unwrap().len(), 1);
     let unsupported: serde_json::Value = server.get("/api/apps?sdk=23").await.json();
     assert!(unsupported["apps"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mode_switch_requires_review_bound_to_exact_draft_and_revision() {
+    let ctx = create_test_context().await;
+    draft(&ctx.pool, 2, false).await;
+    sqlx::query("UPDATE apps SET distribution_mode = 'paravoid'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    let mut publish = request(2, 0);
+    assert!(
+        publications::publish(&ctx.pool, "test.app", "admin", &publish)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        db::get_app(&ctx.pool, "test.app")
+            .await
+            .unwrap()
+            .unwrap()
+            .publication_revision,
+        0
+    );
+    sqlx::query("INSERT INTO distribution_reviews(id,package_name,from_mode,to_mode,from_version,target_version,target_sha256,signer_sha256,review_revision,migration_evidence,actor_subject) VALUES ('review','test.app','paravoid','normal',1,2,'other-hash','cert',0,'{}','admin')").execute(&ctx.pool).await.unwrap();
+    publish.transition_review = Some("review".into());
+    assert!(
+        publications::publish(&ctx.pool, "test.app", "admin", &publish)
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE distribution_reviews SET target_sha256 = 'hash'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    publications::publish(&ctx.pool, "test.app", "admin", &publish)
+        .await
+        .unwrap();
+    assert_eq!(
+        db::get_app(&ctx.pool, "test.app")
+            .await
+            .unwrap()
+            .unwrap()
+            .distribution_mode,
+        "normal"
+    );
 }

@@ -98,6 +98,15 @@ pub fn update_storage_metrics(storage_path: &Path, db_path: &Path) {
         total += icons;
     }
 
+    for directory in ["vpks", "acquisitions", "uploads"] {
+        if let Ok(bytes) = calculate_dir_size(&storage_path.join(directory)) {
+            STORAGE_BYTES
+                .with_label_values(&["lellostore", &format!("/{directory}")])
+                .set(bytes as i64);
+            total += bytes;
+        }
+    }
+
     // Database storage
     if let Ok(metadata) = std::fs::metadata(db_path) {
         let db_size = metadata.len();
@@ -165,6 +174,18 @@ fn normalize_path(path: &str) -> String {
 
     while i < segments.len() {
         let segment = segments[i];
+
+        // Opaque identifiers must not create unbounded labels or expose grant IDs.
+        if matches!(
+            segment,
+            "acquisitions" | "uploads" | "contracts" | "streams" | "grants" | "vpks" | "releases"
+        ) && segments.get(i + 1).is_some_and(|part| !part.is_empty())
+        {
+            result.push(segment);
+            result.push(":id");
+            i += 2;
+            continue;
+        }
 
         // After "apps" segment, the next non-empty segment is a package name
         if segment == "apps" && i + 1 < segments.len() {
@@ -245,6 +266,14 @@ mod tests {
 
     #[test]
     fn test_normalize_path() {
+        assert_eq!(
+            normalize_path("/api/paravoid/v1/apps/example.app/releases/release-1/payload.vpk"),
+            "/api/paravoid/v1/apps/:package_name/releases/:id/payload.vpk"
+        );
+        assert_eq!(
+            normalize_path("/api/admin/apps/example.app/grants/secret-id/revoke"),
+            "/api/admin/apps/:package_name/grants/:id/revoke"
+        );
         assert_eq!(normalize_path("/health"), "/health");
         assert_eq!(normalize_path("/api/apps"), "/api/apps");
         assert_eq!(

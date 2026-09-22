@@ -13,6 +13,8 @@ pub struct PublishRequest {
     pub expected_revision: i64,
     #[serde(default)]
     pub replace_latest: bool,
+    #[serde(default)]
+    pub transition_review: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +74,23 @@ pub async fn publish(
             "Only a draft release can be published".into(),
         ));
     }
+    let current_mode: String =
+        sqlx::query_scalar("SELECT distribution_mode FROM apps WHERE package_name = ?")
+            .bind(package)
+            .fetch_one(&mut *tx)
+            .await?;
+    if current_mode != version.distribution_mode {
+        if version.is_beta {
+            return Err(AppError::Conflict(
+                "Distribution mode changes require a stable installer".into(),
+            ));
+        }
+        let approved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM distribution_reviews WHERE id = ? AND package_name = ? AND from_mode = ? AND to_mode = ? AND target_version = ? AND target_sha256 = ? AND review_revision = ?)")
+            .bind(&request.transition_review).bind(package).bind(&current_mode).bind(&version.distribution_mode).bind(version.version_code).bind(&version.sha256).bind(request.expected_revision).fetch_one(&mut *tx).await?;
+        if !approved {
+            return Err(AppError::Conflict("Verify signing continuity and review the data migration before changing distribution mode".into()));
+        }
+    }
     // Paravoid publication is enabled only once the complete verifier and acquisition path exist.
     if version.distribution_mode != "normal" {
         return Err(AppError::BadRequest(
@@ -108,6 +127,11 @@ pub async fn publish(
         .bind(package).bind(request.version_code).execute(&mut *tx).await?;
     sqlx::query("UPDATE apps SET name = COALESCE(?, name), description = COALESCE(?, description), updated_at = datetime('now') WHERE package_name = ?")
         .bind(&version.proposed_name).bind(&version.proposed_description).bind(package).execute(&mut *tx).await?;
+    sqlx::query("UPDATE apps SET distribution_mode = ? WHERE package_name = ?")
+        .bind(&version.distribution_mode)
+        .bind(package)
+        .execute(&mut *tx)
+        .await?;
     let revision = request.expected_revision + 1;
     sqlx::query("INSERT INTO publication_events(package_name, version_code, revision, actor_subject, action) VALUES (?, ?, ?, ?, 'publish')")
         .bind(package).bind(request.version_code).bind(revision).bind(actor).execute(&mut *tx).await?;

@@ -78,6 +78,11 @@ rollback, credential display, verification bypass or automatic data deletion.
   size/hash, and same-version repair. Grant credentials stay out of API lists,
   database rows and logs; private working files carry the signed envelope.
 - Admin issued-grant list/revocation and stream/publication audit history.
+- Distribution migration review UI/API: retained-source and target APK signature
+  verification, unchanged single-signer continuity, stable/newer version checks,
+  explicit data-preservation test evidence, revision/hash-bound approval and audit.
+  Returning to normal distribution uses that review; enabling Paravoid still waits
+  for verified shell registration and bootstrap publication integration.
 - Hourly bounded cleanup of expired personalized transfer copies and old successful
   upload inputs, retaining grant/job identities and immutable published artifacts.
 - Device SDK filtering keeps compatible historical installers available when
@@ -94,13 +99,14 @@ rollback, credential display, verification bypass or automatic data deletion.
 1. Shell parsing/registration, complete VPK verification and build interoperability
    against upstream's final APK-pinned policy carrier and executable fixtures.
    There is intentionally no admin API to mark an unverified contract as verified.
-2. Distribution transition wizard and atomic publication with signing continuity,
-   migration evidence, initial embedded/empty payload prerequisites and explicit
-   old stream retirement choices. Shell upload/publication remains gated.
+2. Connect the verified transition review to initial Paravoid publication, including
+   embedded/empty bootstrap prerequisites and initial VPK publication. Shell
+   upload/publication remains gated; existing streams are retired explicitly.
 3. Shell-controls deep link once
    upstream defines its installed management Activity contract.
-4. Cleanup of orphaned files and abandoned failed inputs, operational
-   metrics, device acceptance and tested backup/restore procedures. Keep one backend
+4. Cleanup of orphaned files and abandoned failed inputs, device acceptance and
+   tested backup/restore procedures. HTTP/storage metrics cover delivery traffic,
+   VPKs, personalized copies and queued inputs. Keep one backend
    instance: durable jobs currently use a single worker and personalization mutex.
 
 ### Upstream integration boundary

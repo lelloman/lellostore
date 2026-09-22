@@ -883,6 +883,13 @@ pub async fn delete_version(
     .bind(&package_name)
     .execute(&mut *tx)
     .await?;
+    let retained: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ?)")
+        .bind(&package_name).bind(version_code).fetch_one(&mut *tx).await?;
+    if retained {
+        return Err(AppError::Conflict(
+            "This installer anchors a retained shell contract and cannot be deleted".into(),
+        ));
+    }
     let removed = sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ? AND publication_state = 'draft'")
         .bind(&package_name).bind(version_code).execute(&mut *tx).await?;
     if removed.rows_affected() != 1 {

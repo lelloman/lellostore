@@ -5,7 +5,7 @@ import { api, type App } from '@/services/api'
 
 vi.mock('@/services/api', () => ({ api: {
   getAdminApp: vi.fn(), publishRelease: vi.fn(), withdrawRelease: vi.fn(),
-  saveDraft: vi.fn(), getPublicationHistory: vi.fn(),
+  saveDraft: vi.fn(), getPublicationHistory: vi.fn(), getDistributionReviews: vi.fn(), reviewDistributionTransition: vi.fn(),
 } }))
 
 const draft: App = {
@@ -32,6 +32,20 @@ describe('release review', () => {
     vi.clearAllMocks()
     vi.mocked(api.getAdminApp).mockResolvedValue(structuredClone(draft))
     vi.mocked(api.getPublicationHistory).mockResolvedValue([])
+    vi.mocked(api.getDistributionReviews).mockResolvedValue([])
+  })
+
+  it('requires migration review before switching an installed distribution', async () => {
+    const changed = structuredClone(draft)
+    changed.distribution_mode = 'paravoid'
+    vi.mocked(api.getAdminApp).mockResolvedValue(changed)
+    const wrapper = mountView()
+    await wrapper.findAll('button').find(b => b.text() === 'Review draft')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('changes distribution from paravoid to normal')
+    const publish = wrapper.findAll('button').find(b => b.text() === 'Publish release')!
+    expect(publish.attributes('disabled')).toBeDefined()
+    expect(api.publishRelease).not.toHaveBeenCalled()
   })
 
   it('does not publish until the administrator reviews and explicitly publishes', async () => {

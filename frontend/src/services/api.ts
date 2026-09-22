@@ -245,6 +245,11 @@ export interface ParavoidGrant {
   id: string; key_id: string; contract_id: string; installer_version: number; user_subject: string
   issued_at: number; expires_at: number; revoked_at: number | null; last_used_at: number | null; request_count: number
 }
+export interface DistributionReview {
+  id: string; from_mode: string; to_mode: string; from_version: number; target_version: number
+  target_sha256: string; signer_sha256: string; review_revision: number; migration_evidence: string
+  actor_subject: string; created_at: string
+}
 export interface AppDistribution {
   distribution_mode: string; publication_revision: number; contracts: ShellContract[]; releases: VpkRelease[]
   streams: { contract_id: string; revision: number; status: string }[]
@@ -511,9 +516,19 @@ export const api = {
     return request(`/api/admin/uploads/${encodeURIComponent(id)}/retry`, { method: 'POST' })
   },
 
-  async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false): Promise<PublicationResult> {
+  getDistributionReviews(packageName: string): Promise<DistributionReview[]> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/distribution-reviews`)
+  },
+
+  async reviewDistributionTransition(packageName: string, versionCode: number, expectedRevision: number, migration: { tested_upgrade: boolean; database_preserved: boolean; authentication_preserved: boolean; files_preserved: boolean; evidence: string }): Promise<{ id: string; publication_revision: number; signer_sha256: string }> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/distribution-reviews`, {
+      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, migration }),
+    })
+  },
+
+  async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false, transitionReview?: string): Promise<PublicationResult> {
     return request(`/api/admin/apps/${encodeURIComponent(packageName)}/publications`, {
-      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, replace_latest: replaceLatest }),
+      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, replace_latest: replaceLatest, transition_review: transitionReview }),
     })
   },
 

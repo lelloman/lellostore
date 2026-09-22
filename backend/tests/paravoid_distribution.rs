@@ -335,6 +335,13 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
             String::from_utf8_lossy(&result.stderr)
         );
     }
+    let certificate = lellostore_backend::services::apk_signatures::verified_signer_with_tool(
+        &tools.join("apksigner"),
+        &source,
+    )
+    .await
+    .unwrap();
+    assert_eq!(certificate.len(), 64);
     let original = std::fs::read(&source).unwrap();
     sqlx::query("UPDATE app_versions SET sha256 = ?, size = ? WHERE package_name = 'test.app'")
         .bind(hex::encode(Sha256::digest(&original)))
@@ -396,6 +403,59 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
             .unwrap()
             .signatures
     );
+    if let Ok(classes) = std::env::var("PARAVOID_JAVA_CLASSES") {
+        let trust = ctx
+            .storage_path
+            .join("acquisitions")
+            .join(&first.id)
+            .join("trust.json");
+        let checked = Command::new("java")
+            .args([
+                "-cp",
+                &classes,
+                "com.lelloman.paravoidandroid.delivery.tools.GrantCheck",
+            ])
+            .arg(&trust)
+            .arg("a".repeat(64))
+            .args(["https://store.test/api/paravoid/", "stable", "apk"])
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(
+            checked.status.success(),
+            "Upstream Java rejected Store-personalized grant"
+        );
+        paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
+            .await
+            .unwrap();
+        let server = TestServer::new(ctx.router.clone()).unwrap();
+        let envelope = apk_grant::read(&mut std::fs::File::open(&output).unwrap()).unwrap();
+        let policy = paravoid::contract(&ctx.pool, "test.app", &"a".repeat(64))
+            .await
+            .unwrap()
+            .policy()
+            .unwrap();
+        let grant = policy.verify_grant(&envelope).unwrap();
+        let response = server
+            .get(&head_url())
+            .add_header("Authorization", format!("Bearer {}", grant.credential()))
+            .await;
+        response.assert_status_ok();
+        let head = dir.path().join("store-head.json");
+        std::fs::write(&head, response.as_bytes()).unwrap();
+        let checked = Command::new("java")
+            .args(["-cp", &classes, "StoreHeadCheck"])
+            .arg(&trust)
+            .arg("a".repeat(64))
+            .arg("https://store.test/api/paravoid/")
+            .arg(&head)
+            .output()
+            .unwrap();
+        assert!(
+            checked.status.success(),
+            "Upstream Java rejected Store signed head"
+        );
+    }
     request.idempotency_key = "repair".into();
     request.purpose = AcquisitionPurpose::Repair;
     let repair = personalizer
