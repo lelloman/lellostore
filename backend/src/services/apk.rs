@@ -372,7 +372,7 @@ fn parse_aapt2_output(output: &str) -> Result<ParsedAapt2Output, ApkError> {
         }
 
         // sdkVersion:'26'
-        if line.starts_with("sdkVersion:") {
+        if line.starts_with("sdkVersion:") || line.starts_with("minSdkVersion:") {
             if let Some(sdk) = extract_quoted_value_colon(line) {
                 min_sdk = sdk.parse().ok();
             }
@@ -892,6 +892,12 @@ mod tests {
     use image::GenericImageView;
     use std::time::{Duration, Instant};
     use tempfile::tempdir;
+
+    #[test]
+    fn parses_modern_aapt2_min_sdk_spelling() {
+        let parsed = parse_aapt2_output("package: name='example.app' versionCode='1' versionName='1'\nminSdkVersion:'30'\ntargetSdkVersion:'36'\n").unwrap();
+        assert_eq!(parsed.min_sdk, 30);
+    }
 
     #[test]
     fn test_extract_quoted_value() {
