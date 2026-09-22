@@ -206,4 +206,6 @@
     <string name="paravoid_repair_access">Ripristina accesso agli aggiornamenti</string>
     <string name="paravoid_repair_explanation">Reinstalla questa versione con un nuovo accesso agli aggiornamenti. I dati dell’app restano al loro posto. Android chiederà di confermare l’installazione.</string>
     <string name="paravoid_repair_confirm">Reinstalla</string>
+    <string name="paravoid_manage_updates">Gestisci aggiornamenti app</string>
+    <string name="paravoid_controls_unavailable">I controlli degli aggiornamenti non sono disponibili. Apri l’app per gestire gli aggiornamenti.</string>
 </resources>

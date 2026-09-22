@@ -48,11 +48,11 @@ export const useAppsStore = defineStore('apps', () => {
     }
   }
 
-  async function uploadApp(file: File, name?: string, description?: string) {
+  async function uploadApp(file: File, name?: string, description?: string, distributionMode: 'normal' | 'paravoid' = 'normal') {
     isUploading.value = true
     error.value = null
     try {
-      const response = await api.uploadApp(file, name, description)
+      const response = await api.uploadApp(file, name, description, false, distributionMode)
       // Refresh apps list to include new app
       await fetchApps()
       return response

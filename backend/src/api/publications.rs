@@ -31,6 +31,56 @@ pub async fn publish(
                 .into(),
         ));
     }
+    if version.distribution_mode == "paravoid" {
+        let contract: db::paravoid::Contract = sqlx::query_as("SELECT c.* FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND verification_state = 'verified'")
+            .bind(&package).bind(version.version_code).fetch_optional(&state.db).await?
+            .ok_or_else(|| AppError::Conflict("Verified shell registration is required".into()))?;
+        let previous: Option<(i64,String)> = sqlx::query_as("SELECT version_code,sha256 FROM published_apk_identities WHERE package_name = ? ORDER BY version_code DESC LIMIT 1")
+            .bind(&package).fetch_optional(&state.db).await?;
+        if let Some((code, hash)) = previous {
+            let previous_path: Option<String> = sqlx::query_scalar("SELECT apk_path FROM app_versions WHERE package_name = ? AND version_code = ? AND sha256 = ?")
+                .bind(&package).bind(code).bind(&hash).fetch_optional(&state.db).await?;
+            let previous_path = state.config.storage_path.join(previous_path.ok_or_else(|| {
+                AppError::Conflict(
+                    "Retain the latest published installer for signer continuity verification"
+                        .into(),
+                )
+            })?);
+            if crate::services::upload::calculate_sha256_file(&previous_path).await? != hash {
+                return Err(AppError::Conflict(
+                    "Previous installer failed integrity verification".into(),
+                ));
+            }
+            let signer = crate::services::apk_signatures::verified_signer(&previous_path).await?;
+            if contract.shell_policy()?.descriptor.installed.apk_signers != [signer] {
+                return Err(AppError::Conflict(
+                    "Shell updates must preserve the published APK signing identity".into(),
+                ));
+            }
+        }
+        let signing = state.paravoid_signing.as_ref().ok_or_else(|| {
+            AppError::Conflict("Configure online Paravoid signing before publication".into())
+        })?;
+        signing.supports_policy(&contract.policy()?, contract.authentication == "apkKey")
+            .map_err(|_| AppError::Conflict("Configured endpoint and online signing keys must match the APK's pinned policy".into()))?;
+        if contract.authentication == "apkKey" && state.personalizer.is_none() {
+            return Err(AppError::Conflict(
+                "Configure APK personalization before publishing a keyed shell".into(),
+            ));
+        }
+        if let Some(id) = &request.bootstrap_vpk {
+            let release = db::paravoid::release(&state.db, &package, id).await?;
+            let file = state.config.storage_path.join(&release.archive_path);
+            if crate::services::upload::calculate_sha256_file(&file).await?
+                != release.archive_sha256
+                || tokio::fs::metadata(file).await?.len() != release.archive_size as u64
+            {
+                return Err(AppError::Conflict(
+                    "Bootstrap payload failed stored integrity verification".into(),
+                ));
+            }
+        }
+    }
     let result = db::publications::publish(&state.db, &package, &admin.0.subject, &request).await?;
     state.catalog_events.notify_catalog_changed();
     Ok(Json(result))
@@ -85,6 +135,14 @@ pub async fn edit_draft(
     .bind(&package)
     .execute(&mut *tx)
     .await?;
+    let pinned: Option<String> = sqlx::query_scalar("SELECT c.channel FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ?")
+        .bind(&package).bind(code).fetch_optional(&mut *tx).await?;
+    if pinned.is_some_and(|channel| channel != if request.is_beta { "beta" } else { "stable" }) {
+        return Err(AppError::Conflict(
+            "The shell channel is pinned in the signed APK; upload a new installer to change it"
+                .into(),
+        ));
+    }
     let changed = sqlx::query("UPDATE app_versions SET release_notes = ?, is_beta = ? WHERE package_name = ? AND version_code = ? AND publication_state = 'draft'")
         .bind(request.release_notes).bind(request.is_beta).bind(&package).bind(code).execute(&mut *tx).await?;
     if changed.rows_affected() != 1 {

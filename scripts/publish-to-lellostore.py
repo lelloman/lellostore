@@ -354,7 +354,12 @@ def upload_artifact(
     json_output: bool = False,
     replace_latest: bool = False,
     publish: bool = False,
+    distribution_mode: str = "normal",
 ) -> dict:
+    if distribution_mode not in ("normal", "paravoid"):
+        raise PublisherError("Distribution mode must be normal or paravoid")
+    if distribution_mode == "paravoid" and publish:
+        raise PublisherError("Upload the shell draft first, then its VPK; publish the installer with --bootstrap-vpk after review")
     artifact_info = validate_artifact(artifact)
     artifact = Path(artifact_info["artifact"])
     boundary = f"LelloStore-{secrets.token_hex(16)}"
@@ -366,7 +371,7 @@ def upload_artifact(
     ).encode()
     trailing_parts = [
         _multipart_field(boundary, "publication", "draft"),
-        _multipart_field(boundary, "distribution_mode", "normal"),
+        _multipart_field(boundary, "distribution_mode", distribution_mode),
     ]
     if name:
         trailing_parts.append(_multipart_field(boundary, "name", name))
@@ -560,6 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     upload = commands.add_parser("upload", help="Upload an APK or AAB")
     upload.add_argument("artifact", type=Path)
+    upload.add_argument("--distribution-mode", choices=("normal", "paravoid"), default="normal")
     upload.add_argument("--name", help="Override the application name")
     upload.add_argument("--description", help="Override the application description")
     upload.add_argument("--replace-latest", action="store_true", help="Publish and withdraw the previous latest release in this channel; retain its artifact")
@@ -577,6 +583,9 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("version_code", type=int)
             command.add_argument("--expected-revision", type=int, required=True)
             command.add_argument("--yes", action="store_true")
+        if command_name == "publish":
+            command.add_argument("--bootstrap-vpk", help="Verified bootstrap VPK ID for an empty shell")
+            command.add_argument("--transition-review", help="Reviewed signing/data migration approval ID")
         command.add_argument("--json", action="store_true")
         _add_configuration_arguments(command)
 
@@ -656,7 +665,7 @@ def main(
             data = None
             if parsed.command == "publish":
                 path += "/publications"
-                data = {"version_code": parsed.version_code, "expected_revision": parsed.expected_revision}
+                data = {"version_code": parsed.version_code, "expected_revision": parsed.expected_revision, "bootstrap_vpk": parsed.bootstrap_vpk, "transition_review": parsed.transition_review}
             elif parsed.command == "withdraw":
                 path += f"/versions/{parsed.version_code}/withdraw"
                 data = {"expected_revision": parsed.expected_revision}
@@ -708,6 +717,7 @@ def main(
             is_beta=parsed.beta,
             replace_latest=parsed.replace_latest,
             publish=parsed.publish,
+            distribution_mode=parsed.distribution_mode,
             json_output=json_output,
         )
         return 0

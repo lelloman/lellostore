@@ -80,9 +80,13 @@
         <h3>{{ selected.version_name }} · APK {{ selected.version_code }}</h3>
         <p class="text-body-2 mb-4">{{ app.package_name }} · {{ formatSize(selected.size) }} · Android API {{ selected.min_sdk }}+</p>
         <template v-if="state(selected) === 'draft'">
-          <v-select v-model="isBeta" label="Release channel" :items="[{ title: 'Stable', value: false }, { title: 'Beta', value: true }]" :disabled="busy" />
+          <v-select v-model="isBeta" label="Release channel" :items="[{ title: 'Stable', value: false }, { title: 'Beta', value: true }]" :disabled="busy || selected.distribution_mode === 'paravoid'" />
           <v-textarea v-model="notes" label="Release notes" rows="4" :disabled="busy" counter="65536" />
           <v-alert type="info" variant="tonal" class="mb-3">The APK was parsed and checksummed. Publication rechecks its stored bytes and version ordering. App behavior must be tested before publishing.</v-alert>
+          <template v-if="selected.distribution_mode === 'paravoid'">
+            <v-alert v-if="bootstrapMode !== 'empty'" type="warning" class="mb-3">Embedded-shell publication is waiting for the complete VPK carrier in Paravoid packaging.</v-alert>
+            <v-select v-else v-model="bootstrapVpk" label="Bootstrap payload" :items="bootstrapChoices" :disabled="busy" hint="The selected payload and installer publish together. Upload and validate a compatible VPK in the Paravoid tab first." persistent-hint class="mb-4" />
+          </template>
           <section v-if="changesMode" class="my-4">
             <v-alert type="warning">This stable installer changes distribution from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }}. Test an in-place upgrade with real app data before publishing.</v-alert>
             <v-checkbox v-model="migration.tested_upgrade" label="I tested the in-place upgrade from the previous published installer" :disabled="busy" hide-details />
@@ -106,7 +110,7 @@
         <v-spacer />
         <template v-if="state(selected) === 'draft'">
           <v-btn :disabled="busy || !dirty" @click="save">Save draft</v-btn>
-          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview)" @click="publish">Publish release</v-btn>
+          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview) || (selected.distribution_mode === 'paravoid' && (bootstrapMode !== 'empty' || !bootstrapVpk))" @click="publish">Publish release</v-btn>
         </template>
         <v-btn v-else color="warning" :loading="busy" :disabled="busy" @click="withdraw">Withdraw release</v-btn>
       </v-card-actions>
@@ -125,12 +129,16 @@ const tab = ref('releases')
 const selected = ref<AppVersion | null>(null)
 const revision = ref(0)
 const reviewedMode = ref('normal')
+const hasPublished = ref(false)
+const bootstrapMode = ref('')
+const bootstrapVpk = ref<string>()
+const bootstrapChoices = ref<{ title: string; value: string }[]>([])
 const transitionReview = ref<string | undefined>()
 const transitionSigner = ref('')
 const emptyMigration = () => ({ tested_upgrade: false, database_preserved: false, authentication_preserved: false, files_preserved: false, evidence: '' })
 const migration = ref(emptyMigration())
 const migrationReady = computed(() => migration.value.tested_upgrade && migration.value.database_preserved && migration.value.authentication_preserved && migration.value.files_preserved && migration.value.evidence.trim().length > 0)
-const changesMode = computed(() => !!selected.value && (selected.value.distribution_mode ?? 'normal') !== reviewedMode.value)
+const changesMode = computed(() => (hasPublished.value || reviewedMode.value === 'paravoid') && !!selected.value && (selected.value.distribution_mode ?? 'normal') !== reviewedMode.value)
 watch(migration, () => { transitionReview.value = undefined }, { deep: true })
 const notes = ref('')
 const isBeta = ref(false)
@@ -155,6 +163,19 @@ async function review(version: AppVersion) {
     const fresh = await api.getAdminApp(props.app.package_name)
     const release = fresh.versions.find(v => v.version_code === version.version_code)
     if (!release || state(release) !== state(version)) throw new Error('This release changed. Refresh the app before reviewing it.')
+    bootstrapVpk.value = undefined
+    bootstrapChoices.value = []
+    bootstrapMode.value = ''
+    if (release.distribution_mode === 'paravoid') {
+      const distribution = await api.getAppDistribution(props.app.package_name)
+      if (distribution.publication_revision !== (fresh.publication_revision ?? 0)) throw new Error('Distribution changed. Review the installer again.')
+      const contractId = distribution.installers?.find(i => i.installer_version === release.version_code)?.contract_id
+      const contract = distribution.contracts.find(c => c.contract_id === contractId)
+      bootstrapMode.value = contract?.bootstrap ?? ''
+      bootstrapChoices.value = distribution.releases.filter(v => v.contract_id === contractId && v.validation_state === 'verified' && ['draft', 'published'].includes(v.publication_state))
+        .map(v => ({ title: `Payload ${v.payload_version} · ${v.release_id} · ${v.publication_state}`, value: v.id }))
+    }
+    hasPublished.value = fresh.versions.some(v => state(v) !== 'draft')
     selected.value = release
     reviewedMode.value = fresh.distribution_mode ?? 'normal'
     migration.value = emptyMigration()
@@ -201,8 +222,8 @@ async function publish() {
   if (!selected.value || dirty.value || busy.value) return
   if (changesMode.value && !transitionReview.value) return
   await mutate(() => changesMode.value
-    ? api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, transitionReview.value)
-    : api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value))
+    ? api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, transitionReview.value, bootstrapVpk.value)
+    : api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, undefined, bootstrapVpk.value))
 }
 async function withdraw() {
   if (!selected.value || busy.value) return

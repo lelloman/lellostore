@@ -20,8 +20,8 @@ cargo run --manifest-path backend/Cargo.toml --bin vpk_verify -- \
 
 The `complete-apk-v1` decoder validates the canonical contract hash, installed
 boundary, trust roles, distribution settings and resource reservations. It is
-being compared with upstream's developing `InstalledPolicyCodec`; it is not yet
-connected to production shell registration. Store production policy rejects debug
+compared with upstream's committed `InstalledPolicyCodec` (`b9e56c9`) and used during signed
+shell registration. Final upstream packaging/runtime acceptance remains outstanding. Store production policy rejects debug
 HTTP. The preflight command cannot establish that a supplied policy belongs to a
 signed APK or a registered Store app. It never contacts a server or changes a
 database. Its report always includes `apk_policy_verified: false` and
@@ -56,10 +56,10 @@ component content, 128 MiB per DEX and 256 MiB per native library.
 
 ## Upload and publication
 
-Durable VPK uploads use the same component-format checks. Until verified APK
-registration supplies installed reservations, their saved report explicitly marks
-shell compatibility and resource reservations pending. They remain `inspected`
-drafts and cannot publish. The management UI shows this limitation. Immutable
+Durable VPK uploads use the same component-format checks. Verified APK registration
+supplies installed reservations and allows `verified` drafts. Pending contracts
+continue to produce `inspected` drafts with an explicit incomplete report and cannot
+publish. The management UI shows this limitation. Immutable
 identities, monotonic versions, revisions and authorization remain separate
 publication requirements.
 
@@ -92,5 +92,5 @@ cargo test --manifest-path backend/Cargo.toml --test paravoid_archive \
 
 OpenSSL and Java are required for cross-language checks. The real Android
 component test is intentionally ignored outside the SDK-aware script. Physical
-Android acceptance, final APK policy packaging and shell registration remain
-required before production publication can be enabled.
+Android acceptance and final APK policy packaging/runtime integration remain
+required before declaring production readiness.

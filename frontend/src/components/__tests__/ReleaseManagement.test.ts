@@ -4,7 +4,7 @@ import ReleaseManagement from '../ReleaseManagement.vue'
 import { api, type App } from '@/services/api'
 
 vi.mock('@/services/api', () => ({ api: {
-  getAdminApp: vi.fn(), publishRelease: vi.fn(), withdrawRelease: vi.fn(),
+  getAppDistribution: vi.fn(), getAdminApp: vi.fn(), publishRelease: vi.fn(), withdrawRelease: vi.fn(),
   saveDraft: vi.fn(), getPublicationHistory: vi.fn(), getDistributionReviews: vi.fn(), reviewDistributionTransition: vi.fn(),
 } }))
 
@@ -19,6 +19,7 @@ function mountView() {
   return shallowMount(ReleaseManagement, { props: { app: structuredClone(draft) }, global: { stubs: {
     VCard: { template: '<section><slot /></section>' },
     VWindow: { template: '<div><slot /></div>' }, VWindowItem: { template: '<div><slot /></div>' },
+    VSelect: { props: ['modelValue', 'label', 'items', 'disabled'], emits: ['update:modelValue'], template: '<select :aria-label="label" :disabled="disabled" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value=""></option><option v-for="item in items" :key="item.value" :value="item.value">{{ item.title }}</option></select>' },
     VBtn: { props: ['disabled', 'loading'], template: '<button :disabled="disabled"><slot /></button>' },
     VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
     VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<footer><slot /></footer>' },
@@ -58,8 +59,34 @@ describe('release review', () => {
     expect(api.publishRelease).not.toHaveBeenCalled()
     await wrapper.findAll('button').find(b => b.text() === 'Publish release')!.trigger('click')
     await flushPromises()
-    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false)
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, undefined)
     expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+
+  it('requires an explicit bootstrap payload and publishes it with the reviewed installer', async () => {
+    const shell = structuredClone(draft)
+    shell.versions[0]!.distribution_mode = 'paravoid'
+    vi.mocked(api.getAdminApp).mockResolvedValue(shell)
+    vi.mocked(api.getAppDistribution).mockResolvedValue({
+      distribution_mode: 'normal', publication_revision: 7,
+      installers: [{ installer_version: 2, contract_id: 'contract' }],
+      contracts: [{ package_name: 'example.app', contract_id: 'contract', installer_version: 2,
+        channel: 'stable', authentication: 'public', bootstrap: 'empty', base_url: 'https://example.test/', verification_state: 'verified', validation_report: '{}' }],
+      releases: [{ id: 'bootstrap', package_name: 'example.app', contract_id: 'contract', release_id: 'r1', payload_version: 1,
+        archive_size: 1, archive_sha256: 'hash', manifest_sha256: 'manifest', manifest_json: '{}', min_sdk: 30, max_sdk: 0,
+        abis_json: '[]', signing_key_id: 'release', validation_state: 'verified', validation_report: '{}', publication_state: 'draft', release_notes: '' }],
+      streams: [], grants: [], events: [],
+    })
+    const wrapper = mountView()
+    await wrapper.findAll('button').find(b => b.text() === 'Review draft')!.trigger('click')
+    await flushPromises()
+    const publish = wrapper.findAll('button').find(b => b.text() === 'Publish release')!
+    expect(publish.attributes('disabled')).toBeDefined()
+    await wrapper.find('select[aria-label="Bootstrap payload"]').setValue('bootstrap')
+    expect(publish.attributes('disabled')).toBeUndefined()
+    await publish.trigger('click')
+    await flushPromises()
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, 'bootstrap')
   })
 
   it('keeps the review and reports a stale publication failure', async () => {

@@ -9,7 +9,7 @@
       <section v-if="section === 'payloads'" class="mt-4">
         <v-alert v-if="!data.contracts.length" type="info">A shell APK must register its pinned contract before you can upload payloads.</v-alert>
         <div v-else>
-          <v-select v-model="contractId" label="Target shell contract" :items="data.contracts.map(c => ({ title: `APK ${c.installer_version} · ${c.channel} · ${c.contract_id.slice(0, 12)}`, value: c.contract_id }))" />
+          <v-select v-model="contractId" label="Target shell contract" :items="data.contracts.map(c => ({ title: `APKs ${installerVersions(c.contract_id, c.installer_version)} · ${c.channel} · ${c.contract_id.slice(0, 12)}`, value: c.contract_id }))" />
           <v-file-input v-model="file" accept=".vpk" label="VPK file" :disabled="busy" />
           <v-btn :disabled="busy || !file || !contractId" @click="upload">Upload payload draft</v-btn>
           <p class="text-caption mt-2 mb-4">Validation continues on the server. Check Uploads for progress and failures.</p>
@@ -21,7 +21,7 @@
       </section>
       <section v-if="section === 'contracts'" class="mt-4">
         <p class="mb-4">Each shell pins its endpoint, channel, trust keys and exact contract. Retiring a stream tells installed shells that an APK update is required; it does not uninstall or disable accepted offline payloads.</p>
-        <v-card v-for="contract in data.contracts" :key="contract.contract_id" class="mb-3" :title="`APK ${contract.installer_version} · ${contract.channel}`" :subtitle="`${contract.bootstrap} · ${contract.authentication} · ${contract.verification_state}`">
+        <v-card v-for="contract in data.contracts" :key="contract.contract_id" class="mb-3" :title="`APKs ${installerVersions(contract.contract_id, contract.installer_version)} · ${contract.channel}`" :subtitle="`${contract.bootstrap} · ${contract.authentication} · ${contract.verification_state}`">
           <v-card-text><p class="hash">{{ contract.contract_id }}</p><p>{{ contract.base_url }}</p><p>Stream: {{ streamFor(contract.contract_id)?.status ?? 'not published' }} · revision {{ streamFor(contract.contract_id)?.revision ?? 0 }}</p></v-card-text>
           <v-card-actions><v-btn :disabled="busy || contract.verification_state !== 'verified'" @click="pendingStream = contract.contract_id">{{ streamFor(contract.contract_id)?.status === 'retired' ? 'Reactivate stream' : 'Retire stream' }}</v-btn></v-card-actions>
         </v-card>
@@ -44,11 +44,12 @@
           <p>Android API {{ selected.min_sdk }}{{ selected.max_sdk ? `–${selected.max_sdk}` : '+' }} · {{ selected.abis_json }}</p>
           <v-textarea v-model="notes" label="Release notes" :disabled="busy || selected.publication_state !== 'draft'" />
           <v-alert v-if="selected.validation_state !== 'verified'" type="warning">Payload inspection passed, but verification against the installed shell is pending. This payload cannot be published yet.</v-alert>
+          <v-alert v-if="selected.publication_state === 'draft' && data?.distribution_mode !== 'paravoid'" type="info" class="mt-3">Publish the first payload together with its installer: choose it as the bootstrap payload in installer review.</v-alert>
           <details class="mt-3"><summary>Validation and signed identity</summary><pre class="hash">{{ selected.validation_report }}</pre><p class="hash">Contract: {{ selected.contract_id }}</p><p class="hash">Archive: {{ selected.archive_sha256 }}</p><p class="hash">Manifest: {{ selected.manifest_sha256 }}</p><p>Signing key: {{ selected.signing_key_id }}</p></details>
         </v-card-text>
         <v-card-actions><v-btn :disabled="busy" @click="selected = null">Close</v-btn><v-spacer />
           <v-btn v-if="selected.publication_state === 'draft'" :disabled="busy || notes === selected.release_notes" @click="save">Save notes</v-btn>
-          <v-btn v-if="selected.publication_state === 'draft'" color="primary" :disabled="busy || selected.validation_state !== 'verified' || notes !== selected.release_notes" @click="publish(false)">Publish payload</v-btn>
+          <v-btn v-if="selected.publication_state === 'draft'" color="primary" :disabled="busy || data?.distribution_mode !== 'paravoid' || selected.validation_state !== 'verified' || notes !== selected.release_notes" @click="publish(false)">Publish payload</v-btn>
           <v-btn v-if="selected.publication_state === 'published'" color="warning" :disabled="busy" @click="publish(true)">Withdraw payload</v-btn>
         </v-card-actions>
       </v-card>
@@ -72,6 +73,10 @@ const busy = ref(false), error = ref(''), notice = ref(''), section = ref('paylo
 const file = ref<File | File[] | null>(null), pendingStream = ref<string | null>(null), pendingGrant = ref<string | null>(null)
 const size = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MiB`
 const streamFor = (id: string) => data.value?.streams.find(s => s.contract_id === id)
+function installerVersions(contract: string, fallback: number) {
+  const versions = data.value?.installers?.filter(i => i.contract_id === contract).map(i => i.installer_version)
+  return versions?.length ? versions.join(', ') : String(fallback)
+}
 async function refresh() { data.value = await api.getAppDistribution(props.packageName) }
 async function perform(action: () => Promise<void>) { busy.value = true; error.value = ''; try { await action() } catch (e) { error.value = e instanceof Error ? e.message : 'Operation failed' } finally { busy.value = false } }
 async function review(release: VpkRelease) { await perform(async () => { await refresh(); const current = data.value?.releases.find(r => r.id === release.id); if (!current) throw new Error('Payload changed. Refresh the list.'); reviewRevision.value = data.value!.publication_revision; selected.value = current; notes.value = current.release_notes }) }

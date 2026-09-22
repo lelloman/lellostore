@@ -16,3 +16,4 @@ pub mod personalization;
 pub mod retention;
 
 pub mod apk_signatures;
+pub mod shells;

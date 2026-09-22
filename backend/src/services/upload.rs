@@ -23,7 +23,7 @@ pub enum UploadError {
     #[error("Invalid file type: expected APK or AAB")]
     InvalidFileType,
 
-    #[error("This is a Paravoid shell. Use the Paravoid distribution workflow once complete shell verification is enabled.")]
+    #[error("This is a Paravoid shell. Select Paravoid distribution when uploading.")]
     UnsupportedShell,
 
     #[error("Version {version_code} already exists for {package_name}")]
@@ -196,6 +196,7 @@ impl UploadService {
             replace_latest,
             false,
             None,
+            "normal",
         )
         .await
     }
@@ -217,6 +218,31 @@ impl UploadService {
             false,
             true,
             None,
+            "normal",
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_distribution_draft_upload(
+        &self,
+        file_name: &str,
+        path: &Path,
+        name: Option<String>,
+        description: Option<String>,
+        is_beta: bool,
+        mode: &str,
+    ) -> Result<UploadResult, UploadError> {
+        self.process_upload(
+            file_name,
+            path,
+            name,
+            description,
+            is_beta,
+            false,
+            true,
+            None,
+            mode,
         )
         .await
     }
@@ -234,6 +260,7 @@ impl UploadService {
             false,
             true,
             Some(&job.id),
+            &job.distribution_mode,
         )
         .await
     }
@@ -249,6 +276,7 @@ impl UploadService {
         replace_latest: bool,
         draft: bool,
         job_id: Option<&str>,
+        distribution_mode: &str,
     ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
         let size = tokio::fs::metadata(upload_path).await?.len();
@@ -259,9 +287,19 @@ impl UploadService {
             });
         }
 
+        if !["normal", "paravoid"].contains(&distribution_mode) {
+            return Err(UploadError::InvalidPayload(
+                "Invalid distribution mode".into(),
+            ));
+        }
         // 2. Detect file type
         let file_type = detect_file_type(upload_path, file_name);
 
+        if distribution_mode == "paravoid" && file_type != FileType::Apk {
+            return Err(UploadError::InvalidPayload(
+                "Paravoid installers must be developer-signed APKs".into(),
+            ));
+        }
         // 3. Create temp directory for processing
         let temp_dir = self.storage.create_temp_dir()?;
 
@@ -294,7 +332,7 @@ impl UploadService {
         }
 
         // 6. Parse APK metadata
-        if draft {
+        if distribution_mode == "normal" {
             let file = std::fs::File::open(&apk_path)?;
             let archive = ZipArchive::new(file).map_err(|_| UploadError::InvalidFileType)?;
             if archive
@@ -305,6 +343,15 @@ impl UploadService {
             }
         }
         let metadata = self.apk_parser.parse(&apk_path).await?;
+        let shell = if distribution_mode == "paravoid" {
+            Some(
+                super::shells::verify(&apk_path, &metadata, is_beta)
+                    .await
+                    .map_err(|e| UploadError::InvalidPayload(e.to_string()))?,
+            )
+        } else {
+            None
+        };
 
         // 7. Check for existing version
         if db::version_exists(&self.db, &metadata.package_name, metadata.version_code).await? {
@@ -401,6 +448,7 @@ impl UploadService {
                 replace_latest,
                 draft,
                 job_id,
+                shell.as_ref(),
             )
             .await;
 
@@ -457,6 +505,7 @@ impl UploadService {
         replace_latest: bool,
         draft: bool,
         job_id: Option<&str>,
+        shell: Option<&super::shells::VerifiedShell>,
     ) -> Result<Option<i64>, UploadError> {
         // Start a transaction
         let mut tx = self.db.begin().await.map_err(AppError::Database)?;
@@ -534,6 +583,10 @@ impl UploadService {
         } else {
             sqlx::query("INSERT OR IGNORE INTO published_apk_identities(package_name, version_code, sha256) VALUES (?, ?, ?)")
                 .bind(package_name).bind(version_code).bind(sha256).execute(&mut *tx).await.map_err(AppError::Database)?;
+        }
+
+        if let Some(shell) = shell {
+            super::shells::register(&mut tx, package_name, version_code, shell).await?;
         }
 
         if let Some(previous_version) = previous_version {

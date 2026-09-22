@@ -121,7 +121,7 @@ impl Personalizer {
             return Ok(existing);
         }
         let version:AppVersion=sqlx::query_as("SELECT * FROM app_versions WHERE package_name = ? AND version_code = ? AND publication_state = 'published' AND distribution_mode = 'paravoid'").bind(package).bind(request.version_code).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::NotFound("Published shell installer not found".into()))?;
-        let contract:Contract=sqlx::query_as("SELECT * FROM paravoid_contracts WHERE package_name = ? AND installer_version = ? AND verification_state = 'verified' AND authentication = 'apkKey'").bind(package).bind(request.version_code).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::Conflict("Verified keyed shell required".into()))?;
+        let contract:Contract=sqlx::query_as("SELECT c.* FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND verification_state = 'verified' AND authentication = 'apkKey'").bind(package).bind(request.version_code).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::Conflict("Verified keyed shell required".into()))?;
         let existing: Option<Job> = sqlx::query_as(
             "SELECT * FROM personalization_jobs WHERE user_subject = ? AND idempotency_key = ?",
         )

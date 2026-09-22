@@ -99,6 +99,13 @@ def verify_grant(classes, trust, contract, audience, channel, mode, path):
         raise ValueError("Shared grant signature/scope verification failed")
 
 
+def verify_pinned_grant(classes, source, mode, path):
+    result = subprocess.run(["java", "-cp", str(classes), "com.lelloman.paravoidandroid.delivery.tools.GrantCheck",
+                             "pinned", str(source), mode, str(path)], capture_output=True, timeout=60)
+    if result.returncode:
+        raise ValueError("APK-pinned grant signature/scope verification failed")
+
+
 def personalize(source, output, grant, apksigner, verifier):
     """verifier(mode, path) is bound to A's shared verifier by the CLI; test seams are private."""
     source, output, grant = Path(source), Path(output), Path(grant)
@@ -140,10 +147,6 @@ if __name__ == "__main__":
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--grant", type=Path, required=True)
-    parser.add_argument("--trust", type=Path, required=True)
-    parser.add_argument("--contract", required=True)
-    parser.add_argument("--audience", required=True)
-    parser.add_argument("--channel", default="stable")
     parser.add_argument("--apksigner", type=Path, required=True)
     args = parser.parse_args()
     classes = os.environ.get("PARAVOID_GRANT_TOOL_CLASSES")
@@ -151,7 +154,7 @@ if __name__ == "__main__":
         parser.error("Use delivery/tools/personalize.sh to compile the shared verifier")
     try:
         personalize(args.input, args.output, args.grant, args.apksigner,
-                    lambda mode, path: verify_grant(classes, args.trust, args.contract, args.audience, args.channel, mode, path))
+                    lambda mode, path: verify_pinned_grant(classes, args.input, mode, path))
     except (ValueError, OSError, subprocess.SubprocessError):
         raise SystemExit("Personalization failed; input APK unchanged. Check policy, grant, signing layout and output paths.")
     print("Personalized APK and fresh SHA-256 written; developer signatures and inserted grant verified.")

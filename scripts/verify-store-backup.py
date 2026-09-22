@@ -95,7 +95,7 @@ def verify(database, storage):
         required = {'apps', 'app_versions', 'published_apk_identities', 'published_vpk_identities',
                     'paravoid_contracts', 'paravoid_grants', 'paravoid_streams', 'paravoid_heads',
                     'vpk_releases', 'acquisitions', 'upload_jobs', 'personalization_jobs',
-                    'distribution_reviews'}
+                    'distribution_reviews', 'paravoid_installers'}
         if not required.issubset(counts):
             raise InvalidBackup('Database lacks the current distribution schema')
         checked = 0

@@ -426,6 +426,13 @@ pub async fn download_apk(
             ))
         })?;
 
+    if version.distribution_mode == "paravoid" {
+        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND c.authentication = 'public' AND c.verification_state = 'verified')")
+            .bind(&package_name).bind(version_code).fetch_one(&state.db).await?;
+        if !public {
+            return Err(AppError::Conflict("acquisition_required: use an APK acquisition to receive this shell with update access".into()));
+        }
+    }
     // Build full path
     let full_path = state.config.storage_path.join(&version.apk_path);
 
@@ -618,16 +625,19 @@ pub async fn upload_app(
     if publication.as_deref() != Some("draft") {
         return Err(AppError::BadRequest("client_upgrade_required: uploads now create drafts; send publication=draft, then publish through /publications".into()));
     }
-    if distribution_mode.as_deref() != Some("normal") {
-        return Err(AppError::BadRequest("distribution_mode must currently be normal; Paravoid artifacts require the complete verifier before publication".into()));
-    }
+    let mode = distribution_mode
+        .as_deref()
+        .filter(|m| ["normal", "paravoid"].contains(m))
+        .ok_or_else(|| {
+            AppError::BadRequest("distribution_mode must be normal or paravoid".into())
+        })?;
     if replace_latest {
         return Err(AppError::BadRequest(
             "replace_latest belongs to publication, not upload".into(),
         ));
     }
     if options.asynchronous {
-        let job = crate::services::upload_jobs::enqueue(
+        let job = crate::services::upload_jobs::enqueue_with_mode(
             &state.db,
             &state.config.storage_path,
             &admin.0.subject,
@@ -636,6 +646,7 @@ pub async fn upload_app(
             override_name,
             override_description,
             is_beta,
+            mode,
         )
         .await?;
         return Ok((StatusCode::ACCEPTED, Json(job)).into_response());
@@ -643,12 +654,13 @@ pub async fn upload_app(
     // Process the upload using UploadService
     let result = state
         .upload_service
-        .process_draft_upload(
+        .process_distribution_draft_upload(
             &filename,
             &upload_path,
             override_name,
             override_description,
             is_beta,
+            mode,
         )
         .await
         .map_err(|e| match e {
@@ -657,6 +669,7 @@ pub async fn upload_app(
                 ..
             }) => AppError::PayloadTooLarge,
             crate::services::UploadError::InvalidFileType => AppError::InvalidFileType,
+            crate::services::UploadError::InvalidPayload(message) => AppError::BadRequest(message),
             crate::services::UploadError::UnsupportedShell => AppError::BadRequest(e.to_string()),
             crate::services::UploadError::VersionExists {
                 package_name,
@@ -883,7 +896,7 @@ pub async fn delete_version(
     .bind(&package_name)
     .execute(&mut *tx)
     .await?;
-    let retained: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ?)")
+    let retained: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ?)")
         .bind(&package_name).bind(version_code).fetch_one(&mut *tx).await?;
     if retained {
         return Err(AppError::Conflict(

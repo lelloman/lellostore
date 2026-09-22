@@ -386,5 +386,15 @@ class CommandLineTest(unittest.TestCase):
         self.assertNotIn("script_path.write_text", source)
 
 
+class ParavoidCommandTest(unittest.TestCase):
+    def test_shell_upload_mode_and_atomic_bootstrap_arguments(self):
+        parser = publisher.build_parser()
+        upload = parser.parse_args(["upload", "shell.apk", "--distribution-mode", "paravoid"])
+        self.assertEqual(upload.distribution_mode, "paravoid")
+        publish = parser.parse_args(["publish", "example.app", "2", "--expected-revision", "5", "--bootstrap-vpk", "payload", "--transition-review", "review"])
+        self.assertEqual(publish.bootstrap_vpk, "payload")
+        self.assertEqual(publish.transition_review, "review")
+
+
 if __name__ == "__main__":
     unittest.main()

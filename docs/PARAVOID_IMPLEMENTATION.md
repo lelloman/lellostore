@@ -42,8 +42,9 @@ rollback, credential display, verification bypass or automatic data deletion.
 ### Implemented foundation
 
 - Additive publication migrations; existing releases remain published.
-- New HTTP uploads require `publication=draft` and `distribution_mode=normal`.
-  Shell uploads are rejected while complete verification/personalization is absent.
+- New HTTP uploads require `publication=draft` and an explicit `distribution_mode`
+  (`normal` or `paravoid`). Browser and publisher expose that author choice; durable
+  jobs preserve it. Shell uploads require a developer-signed APK, not an AAB.
 - Catalog/download endpoints exclude drafts and withdrawn releases.
 - Explicit publish/withdraw with optimistic revisions and persistent audit history.
 - Global published APK identity retention, including after catalog deletion.
@@ -65,15 +66,18 @@ rollback, credential display, verification bypass or automatic data deletion.
   format interoperability, not Android execution acceptance or publication approval.
 - Strict `complete-apk-v1` shell-policy decoding with canonical contract binding,
   trust-role and installed-boundary validation. Comparisons against upstream's
-  developing policy codec are separate from production APK registration.
+  policy codec at upstream `b9e56c9` are tracked explicitly. Bounded APK policy extraction and
+  apksigner verification bind the policy to the actual APK package, SDK, signer and
+  channel. Canonical uploads cannot contain an issued grant.
 - Operator-configured online head/grant authorities, pinned-policy-checked signing,
   and admin Distribution UI/public key export. See [signing setup](PARAVOID_SIGNING.md).
 
-### Implemented delivery and management (integration gated)
+### Implemented delivery and management
 
 - Durable VPK upload jobs targeting a registered contract; immutable files,
-  signed inventory/component-format verification and explicit reports of pending
-  APK-pinned resource reservations and shell compatibility.
+  signed inventory/component-format verification and resource-reservation checks
+  against registered APK policy. Pending contracts yield inspected drafts only;
+  verified contracts yield verified VPK drafts.
 - VPK review/notes/publish/withdraw/original-download UI and APIs. Publication
   requires complete verification; inspection alone never passes this gate.
 - Signed public/keyed heads, exact per-revision/scope snapshots, expiry refresh,
@@ -84,11 +88,16 @@ rollback, credential display, verification bypass or automatic data deletion.
   size/hash, and same-version repair. Grant credentials stay out of API lists,
   database rows and logs; private working files carry the signed envelope.
 - Admin issued-grant list/revocation and stream/publication audit history.
+- Multiple APK versions may share one exact contract. Installer mappings preserve
+  acquisitions and signing identity without duplicating streams. The pinned channel
+  cannot be changed through either release editor. Online endpoint/key availability
+  and APK signer continuity are rechecked before shell publication.
 - Distribution migration review UI/API: retained-source and target APK signature
   verification, unchanged single-signer continuity, stable/newer version checks,
   explicit data-preservation test evidence, revision/hash-bound approval and audit.
-  Returning to normal distribution uses that review; enabling Paravoid still waits
-  for verified shell registration and bootstrap publication integration.
+  Empty-shell activation publishes its selected verified bootstrap VPK in the same
+  transaction. SDK/ABI coverage, monotonic identities and stream status are checked.
+  Initial stable Paravoid publication needs no migration from a nonexistent app.
 - Hourly bounded cleanup of expired personalized transfer copies and old successful
   upload inputs, retaining grant/job identities and immutable published artifacts.
 - Read-only restore verification of logical database state and retained artifacts,
@@ -96,7 +105,8 @@ rollback, credential display, verification bypass or automatic data deletion.
   and corrupted APK bytes. See [backup and restore procedure](PARAVOID_RECOVERY.md).
 - Device SDK filtering keeps compatible historical installers available when
   the current distribution requires a newer Android release.
-- Android and browser explicit repair actions; Android retains distribution
+- Android conditional Manage app updates action checks the installed, exported
+  shell Activity; Android and browser expose explicit repair actions. Android retains distribution
   metadata through its Room cache and repairs the installed published shell.
 - Publisher commands: distribution, upload-vpk, upload-status, publish-vpk and
   withdraw-vpk. VPK upload queues a draft and returns its durable job identity.
@@ -105,16 +115,16 @@ rollback, credential display, verification bypass or automatic data deletion.
 
 ### Remaining Store work
 
-1. Signed APK policy extraction/registration and production packaging interoperability
-   against upstream's final APK-pinned policy carrier. The stateless decoder and
-   component checks are implemented; registration must supply the actual installed
-   resource reservations before a VPK can become verified.
-   There is intentionally no admin API to mark an unverified contract as verified.
-2. Connect the verified transition review to initial Paravoid publication, including
-   embedded/empty bootstrap prerequisites and initial VPK publication. Shell
-   upload/publication remains gated; existing streams are retired explicitly.
-3. Shell-controls deep link once
-   upstream defines its installed management Activity contract.
+1. Production packaging/runtime integration against upstream's finalized policy
+   carrier. Store signature/policy registration, verified VPK admission and empty
+   bootstrap publication are implemented and tested with real signed APKs. The
+   upstream complete-policy packaging/runtime work remains in progress.
+2. Embedded complete-VPK bootstrap ingestion/publication once upstream defines and
+   wires its APK carrier. Legacy module.zip/resource carriers must not be relabeled
+   complete VPKs. Embedded policies can register, but publication fails explicitly.
+3. Finish upstream exported management Activity/recovery-process wiring. The Store
+   conditionally opens the concrete shell-owned Activity only when the installed
+   APK exposes it, and handles removal/permission changes without crashing.
 4. Device acceptance and deployment-specific restore drills. The isolated backup
    recovery test and operator procedure are implemented. Failed inputs are
    intentionally retained for inspection/retry; unreferenced generated transfer
@@ -128,8 +138,9 @@ Paravoid is concurrently developing packaging/verification, delivery/controls an
 runtime lifecycle under `PARALLEL-IMPLEMENTATION.md`. Its shared foundation first
 appeared at `7ace172`; signed metadata and conformance vectors followed at
 `d58457f`. The Store consumes those metadata vectors independently in Rust. Do not replace those interfaces or use experimental fixture
-formats as production VPKs. Production publication remains disabled until the
-verifier, packaging metadata, personalization tool and executable vectors agree.
+formats as production VPKs. Empty-shell publication is implemented in the Store;
+production readiness still requires finalized packaging/runtime integration and
+device acceptance. Embedded-shell publication remains gated.
 
 Paravoid additionally needs the planned APK-pinned distributor acquisition URL
 and management Activity/shortcut contract, agreed with its owning track.

@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct UploadJob {
     pub kind: String,
+    pub distribution_mode: String,
     pub package_name: Option<String>,
     pub contract_id: Option<String>,
     pub id: String,
@@ -119,7 +120,11 @@ async fn enqueue_inner(
     description: Option<String>,
     is_beta: bool,
     target: Option<(&str, &str)>,
+    mode: &str,
 ) -> Result<UploadJob, AppError> {
+    if !["normal", "paravoid"].contains(&mode) {
+        return Err(AppError::BadRequest("Invalid distribution mode".into()));
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let directory = storage.join("uploads");
     tokio::fs::create_dir_all(&directory).await?;
@@ -127,8 +132,8 @@ async fn enqueue_inner(
     tokio::fs::copy(source, &input).await?;
     tokio::fs::File::open(&input).await?.sync_all().await?;
     tokio::fs::File::open(&directory).await?.sync_all().await?;
-    let result = sqlx::query("INSERT INTO upload_jobs(id, actor_subject, file_name, input_path, override_name, override_description, is_beta, kind, package_name, contract_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(&id).bind(actor).bind(file_name).bind(input.to_string_lossy().as_ref()).bind(name).bind(description).bind(is_beta).bind(if target.is_some() {"vpk"} else {"apk"}).bind(target.map(|v| v.0)).bind(target.map(|v| v.1)).execute(pool).await;
+    let result = sqlx::query("INSERT INTO upload_jobs(id, actor_subject, file_name, input_path, override_name, override_description, is_beta, kind, package_name, contract_id, distribution_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id).bind(actor).bind(file_name).bind(input.to_string_lossy().as_ref()).bind(name).bind(description).bind(is_beta).bind(if target.is_some() {"vpk"} else {"apk"}).bind(target.map(|v| v.0)).bind(target.map(|v| v.1)).bind(mode).execute(pool).await;
     if let Err(error) = result {
         let _ = tokio::fs::remove_file(input).await;
         return Err(error.into());
@@ -157,6 +162,7 @@ pub async fn enqueue(
         description,
         is_beta,
         None,
+        "normal",
     )
     .await
 }
@@ -180,6 +186,34 @@ pub async fn enqueue_vpk(
         None,
         false,
         Some((package, contract)),
+        "paravoid",
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn enqueue_with_mode(
+    pool: &SqlitePool,
+    storage: &std::path::Path,
+    actor: &str,
+    file_name: &str,
+    source: &std::path::Path,
+    name: Option<String>,
+    description: Option<String>,
+    is_beta: bool,
+    mode: &str,
+) -> Result<UploadJob, AppError> {
+    enqueue_inner(
+        pool,
+        storage,
+        actor,
+        file_name,
+        source,
+        name,
+        description,
+        is_beta,
+        None,
+        mode,
     )
     .await
 }

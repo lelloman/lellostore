@@ -17,7 +17,7 @@ pub async fn configuration(
 ) -> Json<ConfigurationResponse> {
     Json(ConfigurationResponse {
         configured: state.paravoid_signing.is_some(),
-        distribution_enabled: false,
+        distribution_enabled: state.paravoid_signing.is_some(),
         signing: state
             .paravoid_signing
             .as_ref()

@@ -21,7 +21,7 @@ def main():
 
     def verify(mode, path):
         result = subprocess.run([args.verifier, args.trust, args.contract, args.audience,
-                                 args.channel, mode, str(path)], capture_output=True, timeout=60)
+                                 args.channel, mode, str(path), '--source-apk', str(args.input)], capture_output=True, timeout=60)
         if result.returncode:
             raise ValueError('Grant verification failed')
 

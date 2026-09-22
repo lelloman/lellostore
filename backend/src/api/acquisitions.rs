@@ -33,7 +33,7 @@ pub async fn create(
     Path(package): Path<String>,
     Json(request): Json<AcquisitionRequest>,
 ) -> Result<Json<AcquisitionResponse>, AppError> {
-    let keyed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ? AND authentication = 'apkKey' AND verification_state = 'verified')")
+    let keyed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND authentication = 'apkKey' AND verification_state = 'verified')")
         .bind(&package).bind(request.version_code).fetch_one(&state.db).await?;
     if keyed {
         let personalizer = state

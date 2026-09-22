@@ -21,6 +21,16 @@ pub async fn process_job(
         .as_deref()
         .ok_or_else(|| AppError::BadRequest("VPK job has no shell contract".into()))?;
     let contract = paravoid::contract(pool, package, contract_id).await?;
+    let verified = contract.verification_state == "verified";
+    let reservations = if verified {
+        contract
+            .shell_policy()?
+            .descriptor
+            .installed
+            .ledger_reservations
+    } else {
+        std::collections::BTreeMap::new()
+    };
     let input = job.input_path.clone();
     let pinned = contract.trust_json.clone();
     let contract_hash = contract.contract_id.clone();
@@ -31,14 +41,13 @@ pub async fn process_job(
             &mut std::fs::File::open(input)?,
             &trust,
             &contract_hash,
-            &std::collections::BTreeMap::new(),
+            &reservations,
         )
         .map_err(|e| AppError::BadRequest(e.to_string()))
     })
     .await
     .map_err(|_| AppError::Internal("VPK validation task failed".into()))??;
-    // Until APK policy export is integrated, format checks must not imply that
-    // the payload preserved the installed shell's resource reservations.
+    // Only signature-verified APK registration supplies authoritative reservations.
     let inspection = checked.archive;
     if inspection.release.application_id != package {
         return Err(AppError::BadRequest(
@@ -90,9 +99,9 @@ pub async fn process_job(
     let id = uuid::Uuid::new_v4().to_string();
     let manifest = serde_json::to_string(&inspection.release)
         .map_err(|_| AppError::Internal("VPK manifest serialization failed".into()))?;
-    let report = serde_json::json!({"container":"passed","signature":"passed","inventory":"passed","components":"passed","dex_files":checked.dex_files,"native_libraries":checked.native_libraries,"resource_reservations":"pending","compatibility":"pending","publication_ready":false,"remaining":["APK-pinned resource reservations and shell compatibility","installed shell policy verification"]});
-    sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'inspected',?)")
-        .bind(&id).bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(relative).bind(inspection.archive_size as i64).bind(&inspection.archive_sha256).bind(&inspection.manifest_sha256).bind(manifest).bind(inspection.release.min_sdk as i64).bind(inspection.release.max_sdk as i64).bind(serde_json::to_string(&inspection.release.abis).unwrap()).bind(&inspection.signing_key_id).bind(report.to_string()).execute(&mut *tx).await?;
+    let report = serde_json::json!({"container":"passed","signature":"passed","inventory":"passed","components":"passed","dex_files":checked.dex_files,"native_libraries":checked.native_libraries,"resource_reservations":if verified {"passed"} else {"pending"},"compatibility":if verified {"passed"} else {"pending"},"publication_ready":verified,"remaining":if verified {vec![]} else {vec!["installed shell policy verification"]}});
+    sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(&id).bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(relative).bind(inspection.archive_size as i64).bind(&inspection.archive_sha256).bind(&inspection.manifest_sha256).bind(manifest).bind(inspection.release.min_sdk as i64).bind(inspection.release.max_sdk as i64).bind(serde_json::to_string(&inspection.release.abis).unwrap()).bind(&inspection.signing_key_id).bind(if verified {"verified"} else {"inspected"}).bind(report.to_string()).execute(&mut *tx).await?;
     let result = serde_json::json!({"package_name":package,"vpk_id":id,"release_id":inspection.release.release_id,"payload_version":inspection.release.payload_version});
     sqlx::query("UPDATE upload_jobs SET status = 'ready', result_json = ?, updated_at = datetime('now') WHERE id = ? AND status = 'validating'")
         .bind(result.to_string()).bind(&job.id).execute(&mut *tx).await?;

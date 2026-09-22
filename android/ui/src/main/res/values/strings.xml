@@ -205,4 +205,6 @@
     <string name="paravoid_repair_access">Repair update access</string>
     <string name="paravoid_repair_explanation">Reinstall this app version with new update access. Your app data stays in place. Android will ask you to confirm installation.</string>
     <string name="paravoid_repair_confirm">Reinstall</string>
+    <string name="paravoid_manage_updates">Manage app updates</string>
+    <string name="paravoid_controls_unavailable">Update controls are unavailable. Open the app to manage its updates.</string>
 </resources>

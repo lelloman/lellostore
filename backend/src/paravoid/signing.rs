@@ -203,6 +203,20 @@ impl OnlineSigning {
     /// Called only after the delivery service chooses and authorizes its snapshot.
     /// Verification enforces the installed schema/scope and that the signing key
     /// was pinned by that shell, including during key rotation.
+    pub fn supports_policy(
+        &self,
+        policy: &InstalledPolicy,
+        keyed: bool,
+    ) -> Result<(), SigningError> {
+        if policy.endpoint() != self.base_url {
+            return Err(SigningError::Configuration);
+        }
+        select_signer(&self.head_keys, &self.active_head_key, "head", policy)?;
+        if keyed {
+            select_signer(&self.grant_keys, &self.active_grant_key, "grant", policy)?;
+        }
+        Ok(())
+    }
     pub fn sign_head(
         &self,
         body: &Value,

@@ -120,7 +120,7 @@ pub async fn create(
         .bind(package).bind(request.version_code).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::NotFound("Published installer not found".into()))?;
     if version.distribution_mode == "paravoid" {
-        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ? AND verification_state = 'verified' AND authentication = 'public')")
+        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND verification_state = 'verified' AND authentication = 'public')")
             .bind(package).bind(request.version_code).fetch_one(&mut *tx).await?;
         if !public {
             return Err(AppError::Conflict(

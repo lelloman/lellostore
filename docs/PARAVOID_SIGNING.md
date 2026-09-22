@@ -1,9 +1,10 @@
 # Paravoid online signing configuration
 
 The Store can now load online head/grant authorities, export their public keys
-and produce metadata matching Paravoid's selected v1 profile. **This does not yet
-enable shell/VPK publication or personalized APK delivery.** Complete archive
-verification, grants, streams and runtime acceptance remain integration work.
+and produce metadata matching Paravoid's selected v1 profile. Empty-shell publication
+requires these keys and endpoint to match the APK-pinned policy; keyed shells also
+require configured personalization tools. See [delivery operations](PARAVOID_DELIVERY.md)
+for upload and bootstrap publication. Final runtime/device acceptance remains outstanding.
 
 The admin **Distribution** page shows the configured endpoint, public-key
 fingerprints and active key IDs. Its export contains only `headKeys` and
@@ -45,7 +46,8 @@ Create an operator-owned JSON configuration alongside the DER files:
 Set `PARAVOID_SIGNING_CONFIG` to this file's path and restart the Store. Relative
 key paths resolve against the configuration directory. The URL must be canonical
 HTTPS, end in `/`, and have no credentials, query or fragment. It describes the
-future delivery endpoint; the delivery routes are not enabled by this setting.
+delivery endpoint used by registered shells. Configuration alone does not register
+or publish an installer or payload.
 
 When the environment variable is absent, signing remains unconfigured. An
 explicit invalid configuration fails startup. The server never generates or
@@ -67,10 +69,10 @@ Removing an online key does not remove that root from already installed shells.
 Removing compromised trust requires a new shell APK. Release-signing private keys
 stay in the author's release infrastructure and never enter this configuration.
 
-Back up private keys and their IDs with the eventual stream/grant/revision state.
+Back up private keys and their IDs with the stream/grant/revision state.
 Never restore an older revision database and silently issue lower revisions, or
 regenerate keys while keeping the same key ID. Disaster recovery and production
-rollout acceptance remain disabled-feature gates documented in
+rollout acceptance remain required operational gates documented in
 [the implementation tracker](PARAVOID_IMPLEMENTATION.md).
 
 ## Verification

@@ -38,6 +38,9 @@
           </template>
         </div>
 
+        <v-select v-model="distributionMode" label="Distribution" :disabled="isUploading"
+          :items="[{ title: 'Normal APK', value: 'normal' }, { title: 'Paravoid shell APK', value: 'paravoid' }]" />
+        <p v-if="distributionMode === 'paravoid'" class="text-body-2 mb-4">Upload the developer-signed shell APK. Its pinned policy determines the update endpoint, trust keys and payload compatibility. Upload VPKs from the app’s Paravoid tab.</p>
         <!-- Optional fields -->
         <v-text-field
           v-model="appName"
@@ -98,6 +101,7 @@ const appsStore = useAppsStore()
 const fileInput = ref<HTMLInputElement>()
 
 const selectedFile = ref<File | null>(null)
+const distributionMode = ref<'normal' | 'paravoid'>('normal')
 const appName = ref('')
 const description = ref('')
 const isDragOver = ref(false)
@@ -157,7 +161,8 @@ async function upload() {
     await appsStore.uploadApp(
       selectedFile.value,
       appName.value || undefined,
-      description.value || undefined
+      description.value || undefined,
+      distributionMode.value
     )
     emit('uploaded')
     close()
@@ -173,6 +178,7 @@ function close() {
 }
 
 function reset() {
+  distributionMode.value = 'normal'
   selectedFile.value = null
   appName.value = ''
   description.value = ''

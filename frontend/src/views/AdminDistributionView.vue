@@ -5,7 +5,7 @@
       <v-spacer />
       <v-btn :loading="loading" @click="refresh">Refresh</v-btn>
     </div>
-    <v-alert type="info" class="mb-4">Paravoid distribution is under development. Shell and VPK publication remain disabled. This page prepares the public keys that app authors will pin in their shell APKs.</v-alert>
+    <v-alert type="info" class="mb-4">App authors pin these public keys in their signed shell APKs. Empty shells require a verified bootstrap VPK before publication. Embedded-shell publication is waiting for Paravoid packaging integration.</v-alert>
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <v-card v-if="configuration && !configuration.configured" title="Signing keys not configured">
       <v-card-text>An operator must configure separate head and grant signing keys using PARAVOID_SIGNING_CONFIG, then restart the server. Release signing keys stay with the app author.</v-card-text>

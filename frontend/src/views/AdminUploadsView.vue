@@ -12,6 +12,7 @@
       <v-card-text>
         <p>Upload {{ job.id }}</p>
         <p>Submitted by {{ job.actor_subject }}</p>
+        <p>{{ job.kind === 'vpk' ? 'VPK payload' : job.distribution_mode === 'paravoid' ? 'Paravoid shell APK' : 'Normal APK' }}</p>
         <v-alert v-if="job.error" type="error" class="mt-3">{{ job.error }}</v-alert>
       </v-card-text>
       <v-card-actions>

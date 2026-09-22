@@ -23,6 +23,37 @@ pub struct Contract {
     pub created_at: String,
 }
 impl Contract {
+    pub fn shell_policy(
+        &self,
+    ) -> Result<crate::paravoid::shell_policy::ShellPolicyDocument, AppError> {
+        let descriptor = crate::paravoid::parse_json(
+            self.descriptor_json.as_bytes(),
+            crate::paravoid::MAX_RELEASE_BYTES,
+        )
+        .map_err(|e| AppError::Conflict(e.to_string()))?;
+        let envelope =
+            serde_json::json!({"version":1,"contractId":self.contract_id,"descriptor":descriptor});
+        let policy = crate::paravoid::shell_policy::ShellPolicyDocument::parse(
+            &serde_json::to_vec(&envelope).unwrap(),
+        )
+        .map_err(|e| AppError::Conflict(e.to_string()))?;
+        let d = &policy.descriptor.distribution;
+        if policy.trust.application_id() != self.package_name
+            || d.channel != self.channel
+            || d.authentication != self.authentication
+            || d.bootstrap != self.bootstrap
+            || d.base_url != self.base_url
+            || !d.enabled
+            || policy.descriptor.trust_policy
+                != serde_json::from_str::<serde_json::Value>(&self.trust_json)
+                    .map_err(|_| AppError::Conflict("Invalid registered trust".into()))?
+        {
+            return Err(AppError::Conflict(
+                "Registered shell fields differ from pinned policy".into(),
+            ));
+        }
+        Ok(policy)
+    }
     pub fn policy(&self) -> Result<InstalledPolicy, AppError> {
         let trust = TrustPolicy::parse(self.trust_json.as_bytes())
             .map_err(|_| AppError::Conflict("Invalid pinned trust policy".into()))?;
@@ -194,28 +225,39 @@ pub async fn publish(
 ) -> Result<(), AppError> {
     let mut tx = pool.begin().await?;
     lock_app(&mut tx, package, revision).await?;
+    publish_tx(&mut tx, package, id, actor, revision).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub(crate) async fn publish_tx(
+    conn: &mut SqliteConnection,
+    package: &str,
+    id: &str,
+    actor: &str,
+    revision: i64,
+) -> Result<(), AppError> {
     let release: VpkRelease =
         sqlx::query_as("SELECT * FROM vpk_releases WHERE package_name = ? AND id = ?")
             .bind(package)
             .bind(id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut *conn)
             .await?
             .ok_or_else(|| AppError::NotFound("Payload draft not found".into()))?;
     let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN apps a ON a.package_name = c.package_name WHERE c.package_name = ? AND c.contract_id = ? AND c.verification_state = 'verified' AND a.distribution_mode = 'paravoid')")
-        .bind(package).bind(&release.contract_id).fetch_one(&mut *tx).await?;
+        .bind(package).bind(&release.contract_id).fetch_one(&mut *conn).await?;
     if !eligible || release.validation_state != "verified" || release.publication_state != "draft" {
         return Err(AppError::Conflict("Publication requires a fully verified VPK, verified shell contract and active Paravoid distribution".into()));
     }
-    let high: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(payload_version),0) FROM published_vpk_identities WHERE package_name = ?").bind(package).fetch_one(&mut *tx).await?;
+    let high: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(payload_version),0) FROM published_vpk_identities WHERE package_name = ?").bind(package).fetch_one(&mut *conn).await?;
     if release.payload_version <= high {
         return Err(AppError::Conflict("Payload version must exceed every previously published version across all contracts and channels".into()));
     }
     sqlx::query("INSERT INTO published_vpk_identities(package_name,payload_version,release_id,archive_sha256,manifest_sha256) VALUES (?,?,?,?,?)")
-        .bind(package).bind(release.payload_version).bind(&release.release_id).bind(&release.archive_sha256).bind(&release.manifest_sha256).execute(&mut *tx).await?;
-    sqlx::query("UPDATE vpk_releases SET publication_state = 'published', published_at = datetime('now') WHERE id = ?").bind(id).execute(&mut *tx).await?;
-    invalidate_stream(&mut tx, package, &release.contract_id).await?;
+        .bind(package).bind(release.payload_version).bind(&release.release_id).bind(&release.archive_sha256).bind(&release.manifest_sha256).execute(&mut *conn).await?;
+    sqlx::query("UPDATE vpk_releases SET publication_state = 'published', published_at = datetime('now') WHERE id = ?").bind(id).execute(&mut *conn).await?;
+    invalidate_stream(&mut *conn, package, &release.contract_id).await?;
     event(
-        &mut tx,
+        &mut *conn,
         package,
         &release.contract_id,
         Some(&release.release_id),
@@ -224,7 +266,6 @@ pub async fn publish(
         revision + 1,
     )
     .await?;
-    tx.commit().await?;
     Ok(())
 }
 pub async fn withdraw(

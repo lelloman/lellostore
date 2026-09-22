@@ -708,3 +708,76 @@ async fn durable_vpk_jobs_check_components_without_claiming_installed_policy_ver
     assert_eq!(report["resource_reservations"], "pending");
     assert!(!report["publication_ready"].as_bool().unwrap());
 }
+
+#[tokio::test]
+async fn registered_policy_promotes_only_payloads_preserving_installed_reservations() {
+    use lellostore_backend::services::{upload_jobs, ApkParser, StorageService, UploadService};
+    let ctx = common::create_test_context().await;
+    let f = Fixture::new();
+    let mut trust: Value =
+        serde_json::from_slice(&std::fs::read(f.directory.path().join("trust.json")).unwrap())
+            .unwrap();
+    let online: Value =
+        serde_json::from_str(include_str!("fixtures/paravoid-metadata/trust.json")).unwrap();
+    trust["headKeys"] = online["headKeys"].clone();
+    let descriptor = json!({"profile":"complete-apk-v1","runtimeAbi":1,"trustPolicy":trust,
+        "installed":{"applicationId":"example.app","minSdk":30,"manifestSha256":"b".repeat(64),"declarations":{},"pinnedResources":{},"runtimeClasses":{},"nativeAbis":{},"ledgerReservations":{"string/title":"0x7f010001"},"apkSigners":["c".repeat(64)],"toolchain":{}},
+        "distribution":{"bootstrap":"empty","enabled":true,"baseUrl":"https://example.test/","channel":"stable","authentication":"public","debugHttpAllowed":false}});
+    let contract = hash(&canonical_json(&descriptor).unwrap());
+    sqlx::query("INSERT INTO apps(package_name,name) VALUES ('example.app','Fixture')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk) VALUES ('example.app',1,'1','shell.apk',1,'hash',30)").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('example.app',?,1,'stable','public','empty','https://example.test/',?,?,'verified')")
+        .bind(&contract).bind(trust.to_string()).bind(descriptor.to_string()).execute(&ctx.pool).await.unwrap();
+    let service = UploadService::new(
+        StorageService::new(ctx.storage_path.clone()),
+        ApkParser::new("unused".into()),
+        None,
+        ctx.pool.clone(),
+        1024 * 1024,
+    );
+    for valid in [false, true] {
+        let mut files = format_valid_files(&f);
+        if !valid {
+            files.insert(
+                "resource-ledger.json".into(),
+                br#"{"version":1,"applicationId":"example.app","entries":[]}"#.to_vec(),
+            );
+        }
+        let bytes = zip(
+            &f.signed(files, |body| body["shellContractId"] = json!(contract)),
+            CompressionMethod::Stored,
+        );
+        let path = f.directory.path().join("queued.vpk");
+        std::fs::write(&path, bytes).unwrap();
+        let job = upload_jobs::enqueue_vpk(
+            &ctx.pool,
+            &ctx.storage_path,
+            "admin",
+            "payload.vpk",
+            &path,
+            "example.app",
+            &contract,
+        )
+        .await
+        .unwrap();
+        upload_jobs::process_next(&ctx.pool, &service)
+            .await
+            .unwrap();
+        let result = upload_jobs::get(&ctx.pool, &job.id).await.unwrap();
+        assert_eq!(
+            result.status,
+            if valid { "ready" } else { "failed" },
+            "{:?}",
+            result.error
+        );
+    }
+    let releases = lellostore_backend::db::paravoid::releases(&ctx.pool, "example.app")
+        .await
+        .unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].validation_state, "verified");
+    assert_eq!(releases[0].publication_state, "draft");
+}

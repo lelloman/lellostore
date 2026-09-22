@@ -252,6 +252,7 @@ export interface DistributionReview {
 }
 export interface AppDistribution {
   distribution_mode: string; publication_revision: number; contracts: ShellContract[]; releases: VpkRelease[]
+  installers?: { installer_version: number; contract_id: string }[]
   streams: { contract_id: string; revision: number; status: string }[]
   grants: ParavoidGrant[]
   events: { id: number; action: string; actor_subject: string; created_at: string; revision: number }[]
@@ -272,6 +273,8 @@ export interface ParavoidConfiguration {
 }
 
 export interface UploadJob {
+  kind?: 'apk' | 'vpk'
+  distribution_mode?: 'normal' | 'paravoid'
   id: string
   file_name: string
   actor_subject: string
@@ -448,12 +451,13 @@ export const api = {
     file: File,
     name?: string,
     description?: string,
-    isBeta = false
+    isBeta = false,
+    distributionMode: 'normal' | 'paravoid' = 'normal'
   ): Promise<UploadResponse> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('publication', 'draft')
-    formData.append('distribution_mode', 'normal')
+    formData.append('distribution_mode', distributionMode)
     if (name) formData.append('name', name)
     if (description) formData.append('description', description)
     formData.append('is_beta', String(isBeta))
@@ -526,9 +530,9 @@ export const api = {
     })
   },
 
-  async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false, transitionReview?: string): Promise<PublicationResult> {
+  async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false, transitionReview?: string, bootstrapVpk?: string): Promise<PublicationResult> {
     return request(`/api/admin/apps/${encodeURIComponent(packageName)}/publications`, {
-      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, replace_latest: replaceLatest, transition_review: transitionReview }),
+      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, replace_latest: replaceLatest, transition_review: transitionReview, bootstrap_vpk: bootstrapVpk }),
     })
   },
 

@@ -188,6 +188,12 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
     let signing = keys(dir.path());
     let ctx = common::create_paravoid_test_context(signing.clone()).await;
     seed(&ctx.pool, &signing, "apkKey").await;
+    let canonical = TestServer::new(ctx.router.clone()).unwrap();
+    canonical
+        .get("/api/apps/test.app/versions/1/apk")
+        .await
+        .assert_status_conflict();
+
     let key = URL_SAFE_NO_PAD.encode([7_u8; 32]);
     sqlx::query("INSERT INTO paravoid_grants(id,key_id,credential_sha256,package_name,contract_id,installer_version,user_subject,acquisition_id,issued_at) VALUES ('grant','key',?,'test.app',?,1,'alice','copy',1)")
         .bind(hex::encode(Sha256::digest(key.as_bytes()))).bind("a".repeat(64)).execute(&ctx.pool).await.unwrap();
@@ -342,6 +348,81 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
     .await
     .unwrap();
     assert_eq!(certificate.len(), 64);
+    let registered = paravoid::contract(&ctx.pool, "test.app", &"a".repeat(64))
+        .await
+        .unwrap();
+    let trust: Value = serde_json::from_str(&registered.trust_json).unwrap();
+    let descriptor = json!({"profile":"complete-apk-v1","runtimeAbi":1,"trustPolicy":trust,
+        "installed":{"applicationId":"test.app","minSdk":30,"manifestSha256":"b".repeat(64),"declarations":{},"pinnedResources":{},"runtimeClasses":{},"nativeAbis":{},"ledgerReservations":{},"apkSigners":[certificate],"toolchain":{}},
+        "distribution":{"bootstrap":"embedded","enabled":true,"baseUrl":"https://store.test/api/paravoid/","channel":"stable","authentication":"apkKey","debugHttpAllowed":false}});
+    let canonical = lellostore_backend::paravoid::canonical_json(&descriptor).unwrap();
+    let contract_id = hex::encode(Sha256::digest(&canonical));
+    let document = lellostore_backend::paravoid::canonical_json(
+        &json!({"version":1,"contractId":contract_id,"descriptor":descriptor}),
+    )
+    .unwrap();
+    let archive = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&unsigned)
+        .unwrap();
+    let mut zip = zip::ZipWriter::new_append(archive).unwrap();
+    zip.start_file(
+        lellostore_backend::paravoid::shell_policy::APK_PATH,
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    std::io::Write::write_all(&mut zip, &document).unwrap();
+    zip.finish().unwrap();
+    let signed = Command::new(tools.join("apksigner"))
+        .args(["sign", "--ks"])
+        .arg(&keystore)
+        .args([
+            "--ks-key-alias",
+            "test",
+            "--ks-pass",
+            "pass:testpassword",
+            "--v1-signing-enabled",
+            "false",
+            "--v2-signing-enabled",
+            "true",
+            "--v3-signing-enabled",
+            "true",
+            "--v4-signing-enabled",
+            "false",
+            "--out",
+        ])
+        .arg(&source)
+        .arg(&unsigned)
+        .output()
+        .unwrap();
+    assert!(
+        signed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&signed.stderr)
+    );
+    let mut tx = ctx.pool.begin().await.unwrap();
+    sqlx::query("PRAGMA defer_foreign_keys=ON")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE paravoid_contracts SET contract_id=?,descriptor_json=?")
+        .bind(&contract_id)
+        .bind(String::from_utf8(canonical).unwrap())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE paravoid_installers SET contract_id=?")
+        .bind(&contract_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE vpk_releases SET contract_id=?")
+        .bind(&contract_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
     let original = std::fs::read(&source).unwrap();
     sqlx::query("UPDATE app_versions SET sha256 = ?, size = ? WHERE package_name = 'test.app'")
         .bind(hex::encode(Sha256::digest(&original)))
@@ -403,6 +484,23 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
             .unwrap()
             .signatures
     );
+    let mut wrong_trust = trust.clone();
+    wrong_trust["minimumHeadRevision"] = json!(99);
+    let wrong_trust_path = dir.path().join("wrong-trust.json");
+    std::fs::write(&wrong_trust_path, wrong_trust.to_string()).unwrap();
+    let mismatched = Command::new(env!("CARGO_BIN_EXE_paravoid_grant_check"))
+        .arg(&wrong_trust_path)
+        .arg(&contract_id)
+        .args(["https://store.test/api/paravoid/", "stable", "apk"])
+        .arg(&output)
+        .arg("--source-apk")
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        !mismatched.status.success(),
+        "Detached trust must not override the signed APK policy"
+    );
     if let Ok(classes) = std::env::var("PARAVOID_JAVA_CLASSES") {
         let trust = ctx
             .storage_path
@@ -416,7 +514,7 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
                 "com.lelloman.paravoidandroid.delivery.tools.GrantCheck",
             ])
             .arg(&trust)
-            .arg("a".repeat(64))
+            .arg(&contract_id)
             .args(["https://store.test/api/paravoid/", "stable", "apk"])
             .arg(&output)
             .output()
@@ -425,19 +523,35 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
             checked.status.success(),
             "Upstream Java rejected Store-personalized grant"
         );
+        let pinned = Command::new("java")
+            .args([
+                "-cp",
+                &classes,
+                "com.lelloman.paravoidandroid.delivery.tools.GrantCheck",
+                "pinned",
+            ])
+            .arg(&source)
+            .arg("apk")
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(
+            pinned.status.success(),
+            "Upstream APK-pinned grant verification failed"
+        );
         paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
             .await
             .unwrap();
         let server = TestServer::new(ctx.router.clone()).unwrap();
         let envelope = apk_grant::read(&mut std::fs::File::open(&output).unwrap()).unwrap();
-        let policy = paravoid::contract(&ctx.pool, "test.app", &"a".repeat(64))
+        let policy = paravoid::contract(&ctx.pool, "test.app", &contract_id)
             .await
             .unwrap()
             .policy()
             .unwrap();
         let grant = policy.verify_grant(&envelope).unwrap();
         let response = server
-            .get(&head_url())
+            .get(&head_url().replace(&"a".repeat(64), &contract_id))
             .add_header("Authorization", format!("Bearer {}", grant.credential()))
             .await;
         response.assert_status_ok();
@@ -446,7 +560,7 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
         let checked = Command::new("java")
             .args(["-cp", &classes, "StoreHeadCheck"])
             .arg(&trust)
-            .arg("a".repeat(64))
+            .arg(&contract_id)
             .arg("https://store.test/api/paravoid/")
             .arg(&head)
             .output()

@@ -100,7 +100,7 @@ describe('Apps Store', () => {
       const file = new File(['test'], 'test.apk', { type: 'application/vnd.android.package-archive' })
       const result = await store.uploadApp(file, 'Custom Name', 'Description')
 
-      expect(api.uploadApp).toHaveBeenCalledWith(file, 'Custom Name', 'Description')
+      expect(api.uploadApp).toHaveBeenCalledWith(file, 'Custom Name', 'Description', false, 'normal')
       expect(api.getApps).toHaveBeenCalled()
       expect(result).toEqual(mockResponse)
       expect(store.isUploading).toBe(false)

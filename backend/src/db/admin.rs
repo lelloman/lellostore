@@ -487,6 +487,14 @@ pub async fn set_release_channel(
     .bind(package_name)
     .execute(&mut *tx)
     .await?;
+    let pinned: Option<(String, bool)> = sqlx::query_as("SELECT distribution_mode,is_beta FROM app_versions WHERE package_name = ? AND version_code = ?")
+        .bind(package_name).bind(version_code).fetch_optional(&mut *tx).await?;
+    if pinned.is_some_and(|(mode, previous)| mode == "paravoid" && previous != is_beta) {
+        return Err(AppError::Conflict(
+            "A Paravoid channel is pinned in the signed APK; upload a new installer to change it"
+                .into(),
+        ));
+    }
     let result = sqlx::query(
         "UPDATE app_versions SET is_beta = ? WHERE package_name = ? AND version_code = ?",
     )

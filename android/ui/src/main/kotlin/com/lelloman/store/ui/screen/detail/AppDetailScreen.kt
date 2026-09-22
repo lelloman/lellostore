@@ -1,5 +1,6 @@
 package com.lelloman.store.ui.screen.detail
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -170,6 +171,13 @@ private fun AppDetailContent(
     onReleaseChannelOverrideChanged: (ReleaseChannelOverride) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    var hasUpdateControls by remember(context, app.packageName, app.installedVersion) {
+        mutableStateOf(app.canOpen && ParavoidControls.available(context, app.packageName))
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasUpdateControls = app.canOpen && ParavoidControls.available(context, app.packageName)
+    }
     var showRepairDialog by rememberSaveable { mutableStateOf(false) }
     var showAutoUpdateDialog by rememberSaveable { mutableStateOf(false) }
     var showReleaseChannelDialog by rememberSaveable { mutableStateOf(false) }
@@ -253,6 +261,16 @@ private fun AppDetailContent(
                 }
             }
 
+            if (hasUpdateControls && !isDownloading) {
+                TextButton(onClick = {
+                    if (!ParavoidControls.open(context, app.packageName)) {
+                        hasUpdateControls = false
+                        Toast.makeText(context, R.string.paravoid_controls_unavailable, Toast.LENGTH_LONG).show()
+                    }
+                }) {
+                    Text(stringResource(R.string.paravoid_manage_updates))
+                }
+            }
             if (app.canRepairAccess && !isDownloading) {
                 TextButton(onClick = { showRepairDialog = true }) {
                     Text(stringResource(R.string.paravoid_repair_access))

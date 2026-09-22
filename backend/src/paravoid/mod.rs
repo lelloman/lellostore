@@ -1,6 +1,7 @@
 //! Paravoid v1 protocol primitives. These are stateless checks, not publication
 //! authorization, durable replay admission, or complete VPK verification.
 pub mod apk_grant;
+pub mod apk_policy;
 pub mod archive;
 pub mod compatibility;
 mod components;

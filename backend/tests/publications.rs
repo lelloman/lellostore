@@ -23,6 +23,7 @@ fn request(code: i64, revision: i64) -> PublishRequest {
         expected_revision: revision,
         replace_latest: false,
         transition_review: None,
+        bootstrap_vpk: None,
     }
 }
 

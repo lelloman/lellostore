@@ -16,6 +16,7 @@ fn u64_at(b: &[u8], at: usize) -> u64 {
 pub struct Carrier {
     pub grant: Option<Vec<u8>>,
     pub signatures: std::collections::BTreeMap<u32, [u8; 32]>,
+    pub personalization_compatible: bool,
 }
 pub fn read<R: Read + Seek>(reader: &mut R) -> Result<Vec<u8>, Error> {
     inspect(reader)?
@@ -114,5 +115,12 @@ pub fn inspect<R: Read + Seek>(reader: &mut R) -> Result<Carrier, Error> {
     if at != stop || (!ids.contains(&0x7109871a) && !ids.contains(&0xf05368c0)) {
         return Err(Error::Malformed);
     }
-    Ok(Carrier { grant, signatures })
+    let personalization_compatible = ids
+        .iter()
+        .all(|id| matches!(*id, 0x7109871a | 0xf05368c0 | 0x42726577 | GRANT_ID));
+    Ok(Carrier {
+        grant,
+        signatures,
+        personalization_compatible,
+    })
 }

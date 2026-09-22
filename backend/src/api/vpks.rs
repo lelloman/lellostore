@@ -18,6 +18,8 @@ pub async fn overview(
         .await?
         .ok_or_else(|| AppError::NotFound("App not found".into()))?;
     let contracts = paravoid::contracts(&state.db, &package).await?;
+    let installers: Vec<(i64,String)> = sqlx::query_as("SELECT installer_version,contract_id FROM paravoid_installers WHERE package_name = ? ORDER BY installer_version DESC").bind(&package).fetch_all(&state.db).await?;
+    let installers: Vec<_> = installers.into_iter().map(|(version,contract)| serde_json::json!({"installer_version":version,"contract_id":contract})).collect();
     let releases = paravoid::releases(&state.db, &package).await?;
     let streams: Vec<paravoid::Stream> = sqlx::query_as(
         "SELECT * FROM paravoid_streams WHERE package_name = ? ORDER BY contract_id",
@@ -33,7 +35,7 @@ pub async fn overview(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(
-        serde_json::json!({"distribution_mode":app.distribution_mode,"publication_revision":app.publication_revision,"contracts":contracts,"releases":releases,"streams":streams,"grants":grants,"events":events}),
+        serde_json::json!({"distribution_mode":app.distribution_mode,"publication_revision":app.publication_revision,"contracts":contracts,"installers":installers,"releases":releases,"streams":streams,"grants":grants,"events":events}),
     ))
 }
 pub async fn upload(
