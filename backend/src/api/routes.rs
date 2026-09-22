@@ -125,6 +125,10 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
                 .delete(handlers::delete_app),
         )
         .route("/apps/{package_name}/icon", post(handlers::upload_icon))
+        .route(
+            "/paravoid/configuration",
+            get(super::paravoid::configuration),
+        )
         .route("/uploads", get(super::uploads::list))
         .route("/uploads/{id}", get(super::uploads::get))
         .route("/uploads/{id}/retry", post(super::uploads::retry))

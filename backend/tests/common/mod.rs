@@ -91,6 +91,7 @@ async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> Tes
     ));
 
     let state = AppState {
+        paravoid_signing: None,
         db: pool.clone(),
         config: Arc::new(config),
         auth: None, // No auth for tests by default

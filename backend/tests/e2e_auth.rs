@@ -105,6 +105,7 @@ async fn create_auth_test_context_with_events(
     ));
 
     let state = AppState {
+        paravoid_signing: None,
         db: pool.clone(),
         config: Arc::new(config),
         auth: Some(auth_state),
@@ -1277,4 +1278,32 @@ async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
         .json();
     assert_eq!(retried["status"], "queued");
     assert!(retried["error"].is_null());
+}
+
+#[tokio::test]
+async fn paravoid_public_key_configuration_requires_administrator() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+    let path = "/api/admin/paravoid/configuration";
+    server
+        .get(path)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    server
+        .get(path)
+        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    let response = server
+        .get(path)
+        .add_header(
+            "Authorization",
+            format!("Bearer {}", oidc.get_admin_token()),
+        )
+        .await;
+    response.assert_status_ok();
+    assert_eq!(
+        response.json::<serde_json::Value>(),
+        serde_json::json!({"configured": false, "distribution_enabled": false, "signing": null})
+    );
 }

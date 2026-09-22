@@ -26,7 +26,8 @@
           Access
         </v-btn>
 
-        <v-btn v-if="authStore.isAdmin" :to="{ name: 'uploads-admin' }" variant="text" aria-label="Upload history">Uploads</v-btn>
+        <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'uploads-admin' }" variant="text" aria-label="Upload history">Uploads</v-btn>
+        <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'distribution-admin' }" variant="text">Distribution</v-btn>
         <v-spacer />
 
         <v-chip
@@ -74,6 +75,12 @@
               </v-list-item-subtitle>
             </v-list-item>
             <v-divider />
+            <template v-if="authStore.isAdmin">
+              <v-list-item :to="{ name: 'access-admin' }" prepend-icon="mdi-account-key-outline" title="App access" />
+              <v-list-item :to="{ name: 'uploads-admin' }" prepend-icon="mdi-upload" title="Uploads" />
+              <v-list-item :to="{ name: 'distribution-admin' }" prepend-icon="mdi-key-outline" title="Distribution" />
+              <v-divider />
+            </template>
             <v-list-item prepend-icon="mdi-logout" title="Sign out" @click="handleLogout" />
           </v-list>
         </v-menu>

@@ -123,8 +123,18 @@ async fn run() -> Result<(), BoxError> {
         None
     };
 
+    // An explicitly configured but invalid authority is a startup error. Never
+    // silently fall back to unsigned metadata or newly generated trust keys.
+    let paravoid_signing = std::env::var_os("PARAVOID_SIGNING_CONFIG")
+        .map(|path| {
+            lellostore_backend::paravoid::signing::OnlineSigning::load(std::path::Path::new(&path))
+                .map(Arc::new)
+        })
+        .transpose()?;
+
     // Build application state
     let state = AppState {
+        paravoid_signing,
         db: db.clone(),
         config: Arc::new(config.clone()),
         auth: auth_state,

@@ -2,6 +2,7 @@ pub mod acquisitions;
 pub mod events;
 pub mod file_response;
 pub mod handlers;
+pub mod paravoid;
 pub mod publications;
 pub mod routes;
 pub mod static_files;
@@ -16,6 +17,7 @@ use crate::services::{StorageService, UploadService};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub paravoid_signing: Option<Arc<crate::paravoid::signing::OnlineSigning>>,
     pub db: SqlitePool,
     pub config: Arc<Config>,
     pub auth: Option<AuthState>,

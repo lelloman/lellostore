@@ -5,3 +5,5 @@ pub mod db;
 pub mod error;
 pub mod metrics;
 pub mod services;
+
+pub mod paravoid;

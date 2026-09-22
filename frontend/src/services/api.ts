@@ -230,6 +230,20 @@ export interface AppsResponse {
   apps: AppListItem[]
 }
 
+export interface ParavoidConfiguration {
+  configured: boolean
+  distribution_enabled: boolean
+  signing: null | {
+    base_url: string
+    head_keys: Record<string, string>
+    grant_keys: Record<string, string>
+    head_fingerprints: Record<string, string>
+    grant_fingerprints: Record<string, string>
+    active_head_key: string
+    active_grant_key: string
+  }
+}
+
 export interface UploadJob {
   id: string
   file_name: string
@@ -434,6 +448,10 @@ export const api = {
     if (!version) throw new Error('The validated draft was removed. Check Uploads for details.')
     return { package_name: app.package_name, name: app.name, description: app.description, icon_url: app.icon_url, version }
 
+  },
+
+  async getParavoidConfiguration(): Promise<ParavoidConfiguration> {
+    return request('/api/admin/paravoid/configuration')
   },
 
   async getUploads(): Promise<UploadJob[]> {
