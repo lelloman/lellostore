@@ -1567,6 +1567,7 @@ dependencies = [
  "axum-test",
  "base64",
  "chrono",
+ "crc32fast",
  "dotenvy",
  "hex",
  "image",

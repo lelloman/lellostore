@@ -1,5 +1,8 @@
 //! Paravoid v1 protocol primitives. These are stateless checks, not publication
 //! authorization, durable replay admission, or complete VPK verification.
+pub mod archive;
+mod components;
+pub use components::{ComponentEntry, ComponentInspection};
 mod json;
 mod metadata;
 pub mod signing;

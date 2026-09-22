@@ -58,6 +58,9 @@ rollback, credential display, verification bypass or automatic data deletion.
 - Publisher draft upload, inspect, publish, withdraw and upload-and-publish flow.
 - Rust strict metadata parsing, role-separated RSA-3072 verification and canonical
   writing; all seven upstream Java metadata vectors agree at `d58457f`.
+- Bounded VPK container/signed-inventory inspection and nested APK/JAR scanning,
+  with an [offline preflight command](PARAVOID_VPK_INSPECTION.md). This is not
+  complete executable/resource compatibility verification or publication approval.
 - Operator-configured online head/grant authorities, pinned-policy-checked signing,
   and admin Distribution UI/public key export. See [signing setup](PARAVOID_SIGNING.md).
 

@@ -91,6 +91,9 @@ pub struct TrustPolicy {
     minimum_head_revision: u64,
 }
 impl TrustPolicy {
+    pub fn application_id(&self) -> &str {
+        &self.application_id
+    }
     pub fn minimum_payload_version(&self) -> u64 {
         self.minimum_payload_version
     }
