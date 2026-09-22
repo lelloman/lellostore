@@ -122,6 +122,25 @@ describe('Auth Store authorization', () => {
     expect(store.isAuthenticated).toBe(false)
   })
 
+  it('preserves an expired session after a connection failure and recovers on retry', async () => {
+    const saved = { expired: true, access_token: 'expired-token' } as Awaited<ReturnType<typeof authService.getUser>>
+    vi.mocked(authService.getUser).mockResolvedValue(saved)
+    vi.mocked(authService.silentRenew).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const store = useAuthStore()
+
+    await store.initialize()
+
+    expect(authService.clearLocalSession).not.toHaveBeenCalled()
+    expect(store.accessToken).toBe('expired-token')
+    expect(store.isAuthenticated).toBe(false)
+    expect(store.error).toContain('retry')
+
+    vi.mocked(authService.silentRenew).mockResolvedValue({ expired: false, access_token: 'renewed-token' } as Awaited<ReturnType<typeof authService.silentRenew>>)
+    await store.initialize()
+    expect(store.isAuthenticated).toBe(true)
+    expect(store.error).toBeNull()
+  })
+
   it('tracks users loaded by automatic silent renewal', () => {
     const store = useAuthStore()
     const renewedUser = {

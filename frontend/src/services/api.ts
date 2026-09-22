@@ -33,6 +33,8 @@ async function refreshAccessToken(): Promise<string | null> {
         return user.access_token
       }
       return null
+    } catch {
+      throw new ApiError(0, 'auth_unavailable', 'Unable to renew your session. Please retry when your connection is restored.')
     } finally {
       refreshPromise = null
     }
@@ -83,6 +85,9 @@ async function request<T>(
         // Retry the request with the new token
         return request<T>(path, options, true, parseResponse)
       }
+    }
+    if (isRetry) {
+      throw new ApiError(401, 'unauthorized', 'The server rejected the renewed session. Please retry.')
     }
     // The local session is no longer usable. Do not sign the user out of the
     // identity provider just because this application could not refresh it.

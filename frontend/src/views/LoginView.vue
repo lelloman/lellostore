@@ -21,7 +21,7 @@
             <v-col cols="12" md="6" class="signin-panel">
               <div class="signin-content">
                 <h2 class="signin-title mb-3">Welcome back</h2>
-                <p class="text-body-1 text-medium-emphasis mb-8">Sign in to continue.</p>
+                <p class="text-body-1 text-medium-emphasis mb-8">{{ authStore.user ? 'Reconnect to restore your session.' : 'Sign in to continue.' }}</p>
 
                 <v-alert
                   v-if="authStore.error"
@@ -41,7 +41,7 @@
                   prepend-icon="mdi-login"
                   @click="handleLogin"
                 >
-                  Sign in with SSO
+                  {{ authStore.user ? 'Retry connection' : 'Sign in with SSO' }}
                 </v-btn>
               </div>
             </v-col>
@@ -53,18 +53,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
+const router = useRouter()
 const isLoggingIn = ref(false)
 
 async function handleLogin() {
   isLoggingIn.value = true
+  if (authStore.user) {
+    try {
+      await authStore.initialize()
+      if (authStore.isAuthenticated) {
+        const destination = sessionStorage.getItem('redirectPath') || '/'
+        sessionStorage.removeItem('redirectPath')
+        await router.replace(destination)
+      }
+    } finally {
+      isLoggingIn.value = false
+    }
+    return
+  }
   await authStore.login()
   // The redirect to the OIDC provider keeps the loading state active.
 }
+
+function reconnect() {
+  if (authStore.user && !isLoggingIn.value) void handleLogin()
+}
+onMounted(() => window.addEventListener('online', reconnect))
+onUnmounted(() => window.removeEventListener('online', reconnect))
 </script>
 
 <style scoped>

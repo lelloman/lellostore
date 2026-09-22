@@ -21,6 +21,7 @@ const settings = {
 
 class AuthService {
   private userManager: UserManager
+  private renewal: Promise<User | null> | null = null
 
   constructor() {
     this.userManager = new UserManager(settings)
@@ -90,12 +91,29 @@ class AuthService {
     return await response.json() as CurrentIdentity
   }
 
-  async silentRenew(): Promise<User | null> {
-    try {
-      return await this.userManager.signinSilent()
-    } catch (error) {
-      console.error('Silent renew failed:', error)
-      return null
+  silentRenew(): Promise<User | null> {
+    if (!this.renewal) {
+      this.renewal = this.renewWithRetry().finally(() => {
+        this.renewal = null
+      })
+    }
+    return this.renewal
+  }
+
+  private async renewWithRetry(): Promise<User | null> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.userManager.signinSilent()
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'error' in error
+          ? error.error : undefined
+        // Only an explicit provider rejection makes the saved session unusable.
+        if (['invalid_grant', 'login_required', 'interaction_required', 'consent_required', 'account_selection_required'].includes(String(code))) {
+          return null
+        }
+        if (attempt >= 2) throw error
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+      }
     }
   }
 }

@@ -81,7 +81,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       await syncBackendIdentity()
     } catch (e) {
-      error.value = 'Failed to initialize authentication'
+      error.value = 'Unable to restore your session. Check your connection and retry.'
       console.error('Auth initialization error:', e)
     } finally {
       isLoading.value = false

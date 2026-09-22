@@ -23,6 +23,7 @@ vi.mock('@/router', () => ({
 
 import { api } from '@/services/api'
 import { authService } from '@/services/auth'
+import router from '@/router'
 
 describe('api.downloadApk', () => {
   beforeEach(() => {
@@ -73,6 +74,28 @@ describe('api authentication recovery', () => {
 
     expect(authStore.clearSession).toHaveBeenCalledOnce()
     expect(authStore.logout).not.toHaveBeenCalled()
+  })
+
+  it('preserves the session and stays on the page when renewal is temporarily unavailable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ status: 401, ok: false } as Response)
+    vi.mocked(authService.silentRenew).mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(api.getApps()).rejects.toMatchObject({ code: 'auth_unavailable' })
+    expect(authStore.clearSession).not.toHaveBeenCalled()
+    expect(router.push).not.toHaveBeenCalled()
+
+    vi.mocked(authService.silentRenew).mockResolvedValue({ access_token: 'renewed' } as Awaited<ReturnType<typeof authService.silentRenew>>)
+    vi.mocked(fetch).mockResolvedValueOnce({ status: 401, ok: false } as Response)
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ apps: [] }) } as Response)
+    await expect(api.getApps()).resolves.toEqual({ apps: [] })
+  })
+
+  it('does not erase a renewed session when the API still rejects it', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ status: 401, ok: false } as Response)
+    vi.mocked(authService.silentRenew).mockResolvedValue({ access_token: 'renewed' } as Awaited<ReturnType<typeof authService.silentRenew>>)
+    await expect(api.getApps()).rejects.toMatchObject({ status: 401 })
+    expect(authStore.clearSession).not.toHaveBeenCalled()
+    expect(router.push).not.toHaveBeenCalled()
   })
 })
 
