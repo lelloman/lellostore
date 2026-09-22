@@ -168,3 +168,25 @@ permission is held. It uses an explicit component in that package, refreshes the
 capability on resume, and handles replacement/removal gracefully. Upstream still
 needs to wire/export the Activity in the shell recovery process; the Store does not
 claim that manifest/device gate is complete.
+
+The signed HTTP gate runs against the production authenticated router and an isolated
+mock OIDC issuer. It uploads a real signed shell and real D8/AAPT2 VPK through HTTP,
+processes their durable jobs, publishes the bootstrap atomically, acquires and
+verifies the delivered installer, and fetches a signed head and exact payload bytes.
+Both public and keyed modes run; keyed grant revocation denies cached heads and
+ranged payloads. Signed installer transitions in both directions require migration
+review and preserve the retained payload stream. Migration evidence in this test is
+explicitly fixture data, not evidence of Android app-data preservation.
+
+```sh
+bash scripts/check-paravoid-delivery.sh /path/to/sdk
+```
+
+This runs the SDK-dependent registration, personalization and authenticated HTTP
+tests with fresh throwaway keys. It requires a local listening socket for mock OIDC,
+Java, OpenSSL, Python 3, and the Android SDK above. The backend CI job runs this gate
+in addition to its regular tests. No deployment or device installation occurs.
+
+Both authenticated and test-only canonical APK routes reject keyed/unverified
+shells with `acquisition_required`; they cannot supply a grantless installer to
+legacy clients, including via ranged downloads.

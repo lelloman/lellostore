@@ -68,11 +68,17 @@ fn u16_at(b: &[u8], at: usize) -> u16 {
 fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
 }
-fn extras(bytes: &[u8]) -> Result<()> {
+fn extras(bytes: &[u8], local_padding: bool) -> Result<()> {
     let mut at = 0;
     while at < bytes.len() {
         if bytes.len() - at < 4 {
-            return Err(InspectionError::Archive);
+            // Android zipalign may append up to three zero bytes to a nested
+            // local extra area. Central headers still require complete fields.
+            return if local_padding && bytes[at..].iter().all(|b| *b == 0) {
+                Ok(())
+            } else {
+                Err(InspectionError::Archive)
+            };
         }
         let tag = u16_at(bytes, at);
         let length = u16_at(bytes, at + 2) as usize;
@@ -190,7 +196,7 @@ pub(super) fn scan<R: Read + Seek>(
         region
             .read_exact(&mut extra)
             .map_err(|_| InspectionError::Read)?;
-        extras(&extra)?;
+        extras(&extra, false)?;
         let local_offset = u32_at(&header, 42) as u64;
         if local_offset + 30 > central {
             return Err(InspectionError::Archive);
@@ -231,7 +237,7 @@ pub(super) fn scan<R: Read + Seek>(
         region
             .read_exact(&mut local_extra)
             .map_err(|_| InspectionError::Read)?;
-        extras(&local_extra)?;
+        extras(&local_extra, true)?;
         let mut extent_end = data_end;
         if flags & 8 != 0 {
             if data_end + 12 > central {

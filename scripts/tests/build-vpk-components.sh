@@ -22,13 +22,7 @@ javac --release 8 -d "$output/classes" "$output/java/example/Payload.java"
 python3 - "$output" <<'PY'
 import json, pathlib, sys, zipfile
 root = pathlib.Path(sys.argv[1])
-# As in Paravoid ResourceArchive, retain compiled entry bytes but rebuild the
-# unsigned ZIP metadata; raw AAPT2 output can contain unstructured alignment extras.
-with zipfile.ZipFile(root / 'resources.apk') as source:
-    contents = [(entry.filename, source.read(entry)) for entry in source.infolist()]
-with zipfile.ZipFile(root / 'resources.apk', 'w') as target:
-    for name, data in contents:
-        target.writestr(name, data, compress_type=zipfile.ZIP_STORED if name == 'resources.arsc' else zipfile.ZIP_DEFLATED)
+# Keep AAPT2 output intact, including Android local alignment padding.
 entries = []
 for line in (root / 'R.txt').read_text().splitlines():
     fields = line.split()

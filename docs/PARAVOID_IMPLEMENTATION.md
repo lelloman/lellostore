@@ -110,6 +110,11 @@ rollback, credential display, verification bypass or automatic data deletion.
   metadata through its Room cache and repairs the installed published shell.
 - Publisher commands: distribution, upload-vpk, upload-status, publish-vpk and
   withdraw-vpk. VPK upload queues a draft and returns its durable job identity.
+- Authenticated HTTP acceptance covers real signed shell/VPK uploads, atomic
+  bootstrap publication, public/keyed acquisition, exact delivery bytes, revocation,
+  and reviewed mode switching in both directions. SDK-dependent checks run in CI.
+- Nested APK/JAR validation agrees with upstream `9118a93` on Android zipalign's
+  short zero-padding tails; real AAPT2 output is tested without repacking.
 - Runtime container includes Python, apksigner and the independent Rust grant
   verifier. See [delivery operations](PARAVOID_DELIVERY.md).
 
@@ -118,7 +123,8 @@ rollback, credential display, verification bypass or automatic data deletion.
 1. Production packaging/runtime integration against upstream's finalized policy
    carrier. Store signature/policy registration, verified VPK admission and empty
    bootstrap publication are implemented and tested with real signed APKs. The
-   upstream complete-policy packaging/runtime work remains in progress.
+   upstream now produces complete VPKs at `9cc8a63`; APK carrier embedding and
+   installed runtime wiring remain in progress.
 2. Embedded complete-VPK bootstrap ingestion/publication once upstream defines and
    wires its APK carrier. Legacy module.zip/resource carriers must not be relabeled
    complete VPKs. Embedded policies can register, but publication fails explicitly.

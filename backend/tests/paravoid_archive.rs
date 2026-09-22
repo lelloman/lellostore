@@ -494,6 +494,40 @@ fn checks_component_formats_and_pinned_resource_reservations() {
     let report = verify(files.clone()).unwrap();
     assert_eq!(report.dex_files, 1);
     assert_eq!(report.resource_reservations, 1);
+    // Mirror upstream 9118a93: only nested local headers may have a short
+    // zero tail. Exercise these bytes through both Rust and Java verifiers.
+    let nested = zip(
+        &BTreeMap::from([("probe.txt".into(), b"content".to_vec())]),
+        CompressionMethod::Stored,
+    );
+    for padding in 1..=3 {
+        let directory = central(&nested);
+        let insertion = 30 + "probe.txt".len();
+        let mut aligned = nested.clone();
+        aligned.splice(insertion..insertion, vec![0; padding]);
+        aligned[28..30].copy_from_slice(&(padding as u16).to_le_bytes());
+        let end = aligned.len() - 22;
+        aligned[end + 16..end + 20].copy_from_slice(&((directory + padding) as u32).to_le_bytes());
+        let mut candidate = files.clone();
+        candidate.insert("java-resources.jar".into(), aligned.clone());
+        assert!(verify(candidate).is_ok());
+        aligned[insertion] = 1;
+        let mut bad = files.clone();
+        bad.insert("java-resources.jar".into(), aligned);
+        assert!(verify(bad).is_err());
+        // The same truncated field in a central header is not alignment.
+        let mut central_padding = nested.clone();
+        let insertion = central_padding.len() - 22;
+        central_padding.splice(insertion..insertion, vec![0; padding]);
+        central_padding[directory + 30..directory + 32]
+            .copy_from_slice(&(padding as u16).to_le_bytes());
+        let end = central_padding.len() - 22;
+        central_padding[end + 12..end + 16]
+            .copy_from_slice(&((end - directory) as u32).to_le_bytes());
+        let mut bad = files.clone();
+        bad.insert("java-resources.jar".into(), central_padding);
+        assert!(verify(bad).is_err());
+    }
     // Re-signing malicious content cannot make a corrupt DEX acceptable.
     for index in [0, 8, 12, 32, 36, 40, 111] {
         let mut bad = files.clone();

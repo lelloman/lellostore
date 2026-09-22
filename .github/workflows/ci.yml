@@ -68,6 +68,16 @@ jobs:
       - name: Run tests
         working-directory: lellostore/backend
         run: cargo test --all-features --locked
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - name: Verify signed Paravoid uploads, acquisitions and HTTP delivery
+        working-directory: lellostore
+        run: bash scripts/check-paravoid-delivery.sh
 
   android:
     runs-on: ubuntu-latest

@@ -23,6 +23,14 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
 async fn create_auth_test_context_with_events(
     catalog_events: lellostore_backend::api::events::CatalogEventHub,
 ) -> (TestContext, MockOidc) {
+    create_auth_test_context_options(catalog_events, None, None).await
+}
+
+async fn create_auth_test_context_options(
+    catalog_events: lellostore_backend::api::events::CatalogEventHub,
+    signing: Option<Arc<lellostore_backend::paravoid::signing::OnlineSigning>>,
+    sdk: Option<&std::path::Path>,
+) -> (TestContext, MockOidc) {
     use lellostore_backend::api::{routes::create_router, AppState};
     use lellostore_backend::auth::{AuthState, JwksCache, TokenValidator};
     use lellostore_backend::config::{Config, OidcConfig};
@@ -96,6 +104,9 @@ async fn create_auth_test_context_with_events(
     let apk_parser = ApkParser::new(create_fake_aapt2(temp_dir.path()));
     #[cfg(not(unix))]
     let apk_parser = ApkParser::new(std::path::PathBuf::from("aapt2"));
+    let apk_parser = sdk
+        .map(|p| ApkParser::new(p.join("build-tools/36.0.0/aapt2")))
+        .unwrap_or(apk_parser);
     let upload_service = Arc::new(UploadService::new(
         (*storage).clone(),
         apk_parser,
@@ -105,8 +116,17 @@ async fn create_auth_test_context_with_events(
     ));
 
     let state = AppState {
-        personalizer: None,
-        paravoid_signing: None,
+        personalizer: sdk.map(|sdk| {
+            Arc::new(
+                lellostore_backend::services::personalization::Personalizer::new(
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../scripts/paravoid-personalize.py"),
+                    sdk.join("build-tools/36.0.0/apksigner"),
+                    env!("CARGO_BIN_EXE_paravoid_grant_check").into(),
+                ),
+            )
+        }),
+        paravoid_signing: signing,
         db: pool.clone(),
         config: Arc::new(config),
         auth: Some(auth_state),
@@ -1308,3 +1328,63 @@ async fn paravoid_public_key_configuration_requires_administrator() {
         serde_json::json!({"configured": false, "distribution_enabled": false, "signing": null})
     );
 }
+
+#[tokio::test]
+async fn canonical_download_requires_acquisition_for_keyed_and_unverified_shells() {
+    use lellostore_backend::db::access::{set_direct_grant, AppAccessLevel};
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+    sqlx::query("INSERT INTO apps(package_name,name,distribution_mode) VALUES ('test.shell','Shell','paravoid')").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,distribution_mode) VALUES ('test.shell',1,'1','shell.apk',3,'hash',30,'paravoid')").execute(&ctx.pool).await.unwrap();
+    std::fs::write(ctx.storage_path.join("shell.apk"), b"apk").unwrap();
+    let url = "/api/apps/test.shell/versions/1/apk";
+    let token = format!("Bearer {}", oidc.get_user_token());
+    server.get(url).await.assert_status_unauthorized();
+    server
+        .get(url)
+        .add_header("Authorization", &token)
+        .await
+        .assert_status_not_found();
+    set_direct_grant(&ctx.pool, "test-user", "test.shell", AppAccessLevel::Stable)
+        .await
+        .unwrap();
+    server
+        .get(url)
+        .add_header("Authorization", &token)
+        .await
+        .assert_status_conflict();
+    sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('test.shell',?,1,'stable','apkKey','empty','https://store.test/api/paravoid/','{}','{}','verified')").bind("a".repeat(64)).execute(&ctx.pool).await.unwrap();
+    server
+        .get(url)
+        .add_header("Authorization", &token)
+        .await
+        .assert_status_conflict();
+    server
+        .get(url)
+        .add_header("Authorization", &token)
+        .add_header("Range", "bytes=0-1")
+        .await
+        .assert_status_conflict();
+    sqlx::query("UPDATE paravoid_contracts SET authentication='public'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    let public = server.get(url).add_header("Authorization", &token).await;
+    public.assert_status_ok();
+    assert_eq!(public.as_bytes().as_ref(), b"apk");
+    sqlx::query("UPDATE paravoid_contracts SET verification_state='pending'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    server
+        .get(url)
+        .add_header("Authorization", &token)
+        .await
+        .assert_status_conflict();
+}
+
+#[path = "common/signed_shell.rs"]
+mod signed_shell;
+
+#[path = "support/paravoid_http.rs"]
+mod paravoid_http;

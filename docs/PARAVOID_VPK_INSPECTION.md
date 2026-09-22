@@ -76,9 +76,11 @@ ANDROID_HOME=/path/to/android-sdk scripts/check-paravoid-vpk-interop.sh ../parav
 
 With Android SDK platform/build-tools 36, the second command builds real D8 DEX
 and AAPT2 resource content, signs a VPK with a throwaway key, and checks it in both
-Rust and Java. As in upstream packaging, unsigned resource ZIP metadata is rebuilt
-to remove AAPT2 alignment padding while preserving compiled entry bytes. This is
-host format interoperability, not installation or execution acceptance.
+Rust and Java. AAPT2 output is kept intact, including local alignment padding.
+The comparison covers upstream `9118a93`: one to three trailing zero bytes are
+allowed in nested local extra areas, while nonzero tails and truncated central
+fields remain rejected. This is host format interoperability, not installation
+or execution acceptance.
 
 An explicit `--working-tree` second argument compares one copied snapshot of
 upstream development files. When `InstalledPolicyCodec` is present, it also

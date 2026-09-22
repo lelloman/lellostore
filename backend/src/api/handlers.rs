@@ -408,6 +408,20 @@ pub async fn get_authorized_icon(
     get_icon(State(state), Path(package_name)).await
 }
 
+async fn ensure_canonical_download(
+    state: &AppState,
+    version: &db::models::AppVersion,
+) -> Result<(), AppError> {
+    if version.distribution_mode == "paravoid" {
+        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND c.authentication = 'public' AND c.verification_state = 'verified')")
+            .bind(&version.package_name).bind(version.version_code).fetch_one(&state.db).await?;
+        if !public {
+            return Err(AppError::Conflict("acquisition_required: use an APK acquisition to receive this shell with update access".into()));
+        }
+    }
+    Ok(())
+}
+
 /// Serve APK file with Range header support
 pub async fn download_apk(
     State(state): State<AppState>,
@@ -426,13 +440,7 @@ pub async fn download_apk(
             ))
         })?;
 
-    if version.distribution_mode == "paravoid" {
-        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts c JOIN paravoid_installers i USING(package_name,contract_id) WHERE i.package_name = ? AND i.installer_version = ? AND c.authentication = 'public' AND c.verification_state = 'verified')")
-            .bind(&package_name).bind(version_code).fetch_one(&state.db).await?;
-        if !public {
-            return Err(AppError::Conflict("acquisition_required: use an APK acquisition to receive this shell with update access".into()));
-        }
-    }
+    ensure_canonical_download(&state, &version).await?;
     // Build full path
     let full_path = state.config.storage_path.join(&version.apk_path);
 
@@ -467,6 +475,7 @@ pub async fn download_authorized_apk(
         .find(|version| version.version_code == version_code)
         .filter(|version| access == AppAccessLevel::Beta || !version.is_beta)
         .ok_or_else(|| AppError::NotFound(format!("Version {version_code} not found")))?;
+    ensure_canonical_download(&state, &version).await?;
     let full_path = state.config.storage_path.join(&version.apk_path);
     let filename = format!("{}-{}.apk", package_name, version.version_name);
     let range_header = headers.get(RANGE).and_then(|header| header.to_str().ok());
