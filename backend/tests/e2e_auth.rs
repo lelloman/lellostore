@@ -1125,16 +1125,31 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
             .http_transport()
             .build(ctx.router.clone())
             .unwrap();
-        let mut socket = server
-            .get_websocket("/api/events")
-            .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
-            .await
-            .into_websocket()
-            .await;
+        let mut sockets = Vec::new();
+        for _ in 0..3 {
+            sockets.push(
+                server
+                    .get_websocket("/api/events")
+                    .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+                    .await
+                    .into_websocket()
+                    .await,
+            );
+        }
+        // A disconnected peer must release its reservation; every remaining
+        // connection must receive shutdown before drain completes.
+        drop(sockets.pop());
         shutdown.request();
-        let (result, message) = tokio::join!(hub.drain(), socket.receive_message());
+        let receive_closes = async {
+            for socket in &mut sockets {
+                assert!(matches!(
+                    socket.receive_message().await,
+                    axum_test::WsMessage::Close(_)
+                ));
+            }
+        };
+        let (result, ()) = tokio::join!(hub.drain(), receive_closes);
         result.unwrap();
-        assert!(matches!(message, axum_test::WsMessage::Close(_)));
         server
             .get_websocket("/api/events")
             .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))

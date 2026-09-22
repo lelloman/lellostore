@@ -5,9 +5,8 @@ use simple_server::axum::{
     response::{IntoResponse, Response},
 };
 use simple_server::lifecycle::Shutdown;
-use std::sync::{Arc, Mutex};
+use simple_server::tasks::{WorkGuard, WorkTracker};
 use tokio::sync::broadcast;
-use tokio_util::task::{task_tracker::TaskTrackerToken, TaskTracker};
 
 use crate::auth::AuthenticatedUser;
 
@@ -15,10 +14,7 @@ use crate::auth::AuthenticatedUser;
 pub struct CatalogEventHub {
     sender: broadcast::Sender<CatalogEvent>,
     shutdown: Shutdown,
-    connections: TaskTracker,
-    // Serialize admission with closing the tracker; TaskTracker::close alone
-    // does not prohibit adding tasks after wait() has already completed.
-    accepting: Arc<Mutex<bool>>,
+    connections: WorkTracker,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -39,33 +35,21 @@ impl CatalogEventHub {
         Self {
             sender,
             shutdown,
-            connections: TaskTracker::new(),
-            accepting: Arc::new(Mutex::new(true)),
+            connections: WorkTracker::new(),
         }
     }
 
-    fn admit_connection(&self) -> Option<TaskTrackerToken> {
-        let accepting = self
-            .accepting
-            .lock()
-            .expect("catalog admission lock poisoned");
-        if !*accepting || self.shutdown.is_requested() {
+    fn admit_connection(&self) -> Option<WorkGuard> {
+        if self.shutdown.is_requested() {
             return None;
         }
-        Some(self.connections.token())
+        self.connections.try_acquire("catalog-websocket").ok()
     }
 
     /// Close admission and wait for all accepted upgrades and socket handlers.
     pub async fn drain(&self) -> std::io::Result<()> {
         self.shutdown.requested().await;
-        {
-            let mut accepting = self
-                .accepting
-                .lock()
-                .expect("catalog admission lock poisoned");
-            *accepting = false;
-            self.connections.close();
-        }
+        self.connections.close();
         self.connections.wait().await;
         tracing::info!("Catalog event connections drained");
         Ok(())
@@ -163,6 +147,26 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(hub.admit_connection().is_none());
+    }
+
+    #[tokio::test]
+    async fn interrupted_drain_retains_all_pending_upgrade_reservations() {
+        let shutdown = Shutdown::new();
+        let hub = CatalogEventHub::new(shutdown.clone());
+        let first = hub.admit_connection().unwrap();
+        let second = hub.clone().admit_connection().unwrap();
+        shutdown.request();
+        let budget = std::time::Duration::from_millis(10);
+        assert!(tokio::time::timeout(budget, hub.drain()).await.is_err());
+        assert!(hub.admit_connection().is_none());
+        drop(first);
+        assert!(tokio::time::timeout(budget, hub.drain()).await.is_err());
+        drop(second);
+        tokio::time::timeout(std::time::Duration::from_secs(1), hub.drain())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(hub.clone().admit_connection().is_none());
     }
 
     #[tokio::test]
