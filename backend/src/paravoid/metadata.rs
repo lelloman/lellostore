@@ -157,6 +157,14 @@ pub struct InstalledPolicy {
     authentication: Authentication,
 }
 impl InstalledPolicy {
+    pub(crate) fn trusts_online_key(&self, role: &str, id: &str, spki: &[u8]) -> bool {
+        let keys = match role {
+            "head" => &self.trust.head_keys,
+            "grant" => &self.trust.grant_keys,
+            _ => return false,
+        };
+        keys.get(id).is_some_and(|pinned| pinned == spki)
+    }
     pub fn minimum_head_revision(&self) -> u64 {
         self.trust.minimum_head_revision()
     }

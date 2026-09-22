@@ -210,8 +210,8 @@ impl OnlineSigning {
         sdk: u64,
         abis: &[String],
     ) -> Result<Vec<u8>, SigningError> {
-        let bytes =
-            self.head_keys[&self.active_head_key].sign(&self.active_head_key, "head", body)?;
+        let (id, signer) = select_signer(&self.head_keys, &self.active_head_key, "head", policy)?;
+        let bytes = signer.sign(id, "head", body)?;
         policy.verify_head(&bytes, sdk, abis)?;
         Ok(bytes)
     }
@@ -220,9 +220,28 @@ impl OnlineSigning {
         body: &Value,
         policy: &InstalledPolicy,
     ) -> Result<Vec<u8>, SigningError> {
-        let bytes =
-            self.grant_keys[&self.active_grant_key].sign(&self.active_grant_key, "grant", body)?;
+        let (id, signer) =
+            select_signer(&self.grant_keys, &self.active_grant_key, "grant", policy)?;
+        let bytes = signer.sign(id, "grant", body)?;
         policy.verify_grant(&bytes)?;
         Ok(bytes)
     }
+}
+
+fn select_signer<'a>(
+    keys: &'a BTreeMap<String, Signer>,
+    active: &'a str,
+    role: &str,
+    policy: &InstalledPolicy,
+) -> Result<(&'a str, &'a Signer), SigningError> {
+    // Prefer the operator's active key, but retain service for installed policies
+    // which only trust an older configured key. Both ID and material must match.
+    std::iter::once((active, &keys[active]))
+        .chain(
+            keys.iter()
+                .filter(|(id, _)| id.as_str() != active)
+                .map(|(id, signer)| (id.as_str(), signer)),
+        )
+        .find(|(id, signer)| policy.trusts_online_key(role, id, &signer.spki))
+        .ok_or(SigningError::Configuration)
 }

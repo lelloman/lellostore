@@ -168,7 +168,7 @@ fn online_signing_round_trips_and_rejects_unsafe_configuration() {
     use lellostore_backend::paravoid::signing::{OnlineSigning, SigningError};
     use std::{os::unix::fs::PermissionsExt, process::Command};
     let temp = tempfile::tempdir().unwrap();
-    for role in ["head", "grant"] {
+    for role in ["head", "grant", "head-next", "grant-next"] {
         let pem = temp.path().join(format!("{role}.pem"));
         let der = temp.path().join(format!("{role}.pk8"));
         // Fresh throwaway test authorities. No private keys are committed or
@@ -212,6 +212,25 @@ fn online_signing_round_trips_and_rejects_unsafe_configuration() {
         Authentication::ApkKey,
     )
     .unwrap();
+    let mut rotated_configuration = configuration.clone();
+    rotated_configuration["headKeys"]["head-next"] = json!("head-next.pk8");
+    rotated_configuration["grantKeys"]["grant-next"] = json!("grant-next.pk8");
+    rotated_configuration["activeHeadKey"] = json!("head-next");
+    rotated_configuration["activeGrantKey"] = json!("grant-next");
+    std::fs::write(&path, serde_json::to_vec(&rotated_configuration).unwrap()).unwrap();
+    let rotated = OnlineSigning::load(&path).unwrap();
+    let all_public = rotated.public_configuration();
+    let mut updated_trust = trust.clone();
+    updated_trust["headKeys"] = json!(all_public.head_keys);
+    updated_trust["grantKeys"] = json!(all_public.grant_keys);
+    let updated_policy = InstalledPolicy::new(
+        TrustPolicy::parse(&serde_json::to_vec(&updated_trust).unwrap()).unwrap(),
+        "a".repeat(64),
+        all_public.base_url,
+        "stable".into(),
+        Authentication::ApkKey,
+    )
+    .unwrap();
     for (file, role) in [("head-a.json", "head"), ("grant.json", "grant")] {
         let input: Value = serde_json::from_slice(&fixture(file)).unwrap();
         let body: Value =
@@ -223,6 +242,26 @@ fn online_signing_round_trips_and_rejects_unsafe_configuration() {
             signer.sign_grant(&body, &policy)
         }
         .unwrap();
+        let retained = if role == "head" {
+            rotated.sign_head(&body, &policy, 30, &["x86_64".into()])
+        } else {
+            rotated.sign_grant(&body, &policy)
+        }
+        .unwrap();
+        assert_eq!(
+            retained, signed,
+            "Old installed policy must keep its trusted signer after rotation"
+        );
+        let current = if role == "head" {
+            rotated.sign_head(&body, &updated_policy, 30, &["x86_64".into()])
+        } else {
+            rotated.sign_grant(&body, &updated_policy)
+        }
+        .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&current).unwrap()["keyId"],
+            format!("{role}-next")
+        );
         let envelope: Value = serde_json::from_slice(&signed).unwrap();
         let mut exact = format!("paravoid/v1/{role}\n").into_bytes();
         exact.extend(STANDARD.decode(envelope["body"].as_str().unwrap()).unwrap());

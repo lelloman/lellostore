@@ -59,8 +59,10 @@ The server loads keys at startup and does not hot-reload them.
 ## Rotation and recovery
 
 Public-key maps may contain several keys per role; exactly one key per role is
-active for new metadata. Install shells trusting a new key **before** making it
-active. Signing checks the target shell policy and refuses an unpinned active key.
+active for new metadata. New shells can pin the new key before it becomes active. Signing prefers the active
+key when the target shell trusts it, otherwise it uses a retained configured key
+whose ID and public bytes exactly match that shell policy. Retain old keys while
+servicing older shells; removing every trusted signer makes their requests fail.
 Removing an online key does not remove that root from already installed shells.
 Removing compromised trust requires a new shell APK. Release-signing private keys
 stay in the author's release infrastructure and never enter this configuration.
