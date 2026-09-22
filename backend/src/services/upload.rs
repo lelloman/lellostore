@@ -15,6 +15,8 @@ use super::storage::{StorageError, StorageService};
 
 #[derive(Debug, Error)]
 pub enum UploadError {
+    #[error("{0}")]
+    InvalidPayload(String),
     #[error("File too large (max: {max} bytes, got: {actual} bytes)")]
     FileTooLarge { max: u64, actual: u64 },
 
@@ -70,6 +72,9 @@ pub struct UploadService {
 }
 
 impl UploadService {
+    pub(crate) fn storage_root(&self) -> &Path {
+        self.storage.root()
+    }
     pub fn new(
         storage: StorageService,
         apk_parser: ApkParser,

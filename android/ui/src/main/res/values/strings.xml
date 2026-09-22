@@ -202,4 +202,7 @@
     <string name="splash_title">LelloStore</string>
     <string name="settings_audit_title">Update diagnostics</string>
     <string name="settings_audit_subtitle">Timing, results, and export · 4 MiB rolling history</string>
+    <string name="paravoid_repair_access">Repair update access</string>
+    <string name="paravoid_repair_explanation">Reinstall this app version with new update access. Your app data stays in place. Android will ask you to confirm installation.</string>
+    <string name="paravoid_repair_confirm">Reinstall</string>
 </resources>

@@ -33,6 +33,30 @@ pub async fn create(
     Path(package): Path<String>,
     Json(request): Json<AcquisitionRequest>,
 ) -> Result<Json<AcquisitionResponse>, AppError> {
+    let keyed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ? AND authentication = 'apkKey' AND verification_state = 'verified')")
+        .bind(&package).bind(request.version_code).fetch_one(&state.db).await?;
+    if keyed {
+        let personalizer = state
+            .personalizer
+            .as_ref()
+            .ok_or_else(|| AppError::Config("Personalization is not configured".into()))?;
+        let signing = state
+            .paravoid_signing
+            .as_ref()
+            .ok_or_else(|| AppError::Config("Signing is not configured".into()))?;
+        return Ok(response(
+            personalizer
+                .acquire(
+                    &state.db,
+                    &state.config.storage_path,
+                    signing,
+                    &user.0.subject,
+                    &package,
+                    &request,
+                )
+                .await?,
+        ));
+    }
     Ok(response(
         acquisitions::create(&state.db, &user.0.subject, &package, &request).await?,
     ))

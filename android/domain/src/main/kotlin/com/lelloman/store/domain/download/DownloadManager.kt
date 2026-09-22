@@ -8,6 +8,7 @@ interface DownloadManager {
         packageName: String,
         versionCode: Int,
         installationMode: InstallationMode = InstallationMode.FOREGROUND,
+        purpose: com.lelloman.store.domain.model.AcquisitionPurpose = com.lelloman.store.domain.model.AcquisitionPurpose.INSTALL,
     ): DownloadResult
     fun cancelDownload(packageName: String)
     fun canInstallPackages(): Boolean

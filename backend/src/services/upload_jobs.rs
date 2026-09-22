@@ -8,6 +8,9 @@ use std::sync::Arc;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct UploadJob {
+    pub kind: String,
+    pub package_name: Option<String>,
+    pub contract_id: Option<String>,
     pub id: String,
     pub actor_subject: String,
     pub file_name: String,
@@ -37,7 +40,18 @@ pub async fn process_next(pool: &SqlitePool, service: &UploadService) -> Result<
     let Some(job) = job else {
         return Ok(false);
     };
-    let result = service.process_queued_upload(&job).await;
+    let result = if job.kind == "vpk" {
+        super::vpks::process_job(pool, service.storage_root(), &job)
+            .await
+            .map_err(|e| match e {
+                AppError::BadRequest(message)
+                | AppError::Conflict(message)
+                | AppError::NotFound(message) => super::UploadError::InvalidPayload(message),
+                other => super::UploadError::DatabaseError(other),
+            })
+    } else {
+        service.process_queued_upload(&job).await.map(|_| ())
+    };
     if let Err(error) = result {
         let message = match error {
             super::UploadError::DatabaseError(_)
@@ -64,7 +78,24 @@ pub async fn run(
     sqlx::query("UPDATE upload_jobs SET status = 'queued' WHERE status = 'validating'")
         .execute(&pool)
         .await?;
+    let mut next_cleanup = tokio::time::Instant::now();
     loop {
+        if tokio::time::Instant::now() >= next_cleanup {
+            match super::retention::cleanup(
+                &pool,
+                service.storage_root(),
+                chrono::Utc::now().timestamp(),
+            )
+            .await
+            {
+                Ok(removed) if removed > 0 => {
+                    tracing::info!(removed, "Expired transfer copies cleaned up")
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%error, "Transfer cleanup will retry next hour"),
+            }
+            next_cleanup = tokio::time::Instant::now() + std::time::Duration::from_secs(3600);
+        }
         if shutdown.is_requested() {
             return Ok(());
         }
@@ -78,6 +109,34 @@ pub async fn run(
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn enqueue_inner(
+    pool: &SqlitePool,
+    storage: &std::path::Path,
+    actor: &str,
+    file_name: &str,
+    source: &std::path::Path,
+    name: Option<String>,
+    description: Option<String>,
+    is_beta: bool,
+    target: Option<(&str, &str)>,
+) -> Result<UploadJob, AppError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let directory = storage.join("uploads");
+    tokio::fs::create_dir_all(&directory).await?;
+    let input = directory.join(&id);
+    tokio::fs::copy(source, &input).await?;
+    tokio::fs::File::open(&input).await?.sync_all().await?;
+    tokio::fs::File::open(&directory).await?.sync_all().await?;
+    let result = sqlx::query("INSERT INTO upload_jobs(id, actor_subject, file_name, input_path, override_name, override_description, is_beta, kind, package_name, contract_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id).bind(actor).bind(file_name).bind(input.to_string_lossy().as_ref()).bind(name).bind(description).bind(is_beta).bind(if target.is_some() {"vpk"} else {"apk"}).bind(target.map(|v| v.0)).bind(target.map(|v| v.1)).execute(pool).await;
+    if let Err(error) = result {
+        let _ = tokio::fs::remove_file(input).await;
+        return Err(error.into());
+    }
+    get(pool, &id).await
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn enqueue(
     pool: &SqlitePool,
     storage: &std::path::Path,
@@ -88,18 +147,39 @@ pub async fn enqueue(
     description: Option<String>,
     is_beta: bool,
 ) -> Result<UploadJob, AppError> {
-    let id = uuid::Uuid::new_v4().to_string();
-    let directory = storage.join("uploads");
-    tokio::fs::create_dir_all(&directory).await?;
-    let input = directory.join(&id);
-    tokio::fs::copy(source, &input).await?;
-    tokio::fs::File::open(&input).await?.sync_all().await?;
-    tokio::fs::File::open(&directory).await?.sync_all().await?;
-    let result = sqlx::query("INSERT INTO upload_jobs(id, actor_subject, file_name, input_path, override_name, override_description, is_beta) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(&id).bind(actor).bind(file_name).bind(input.to_string_lossy().as_ref()).bind(name).bind(description).bind(is_beta).execute(pool).await;
-    if let Err(error) = result {
-        let _ = tokio::fs::remove_file(input).await;
-        return Err(error.into());
-    }
-    get(pool, &id).await
+    enqueue_inner(
+        pool,
+        storage,
+        actor,
+        file_name,
+        source,
+        name,
+        description,
+        is_beta,
+        None,
+    )
+    .await
+}
+#[allow(clippy::too_many_arguments)]
+pub async fn enqueue_vpk(
+    pool: &SqlitePool,
+    storage: &std::path::Path,
+    actor: &str,
+    file_name: &str,
+    source: &std::path::Path,
+    package: &str,
+    contract: &str,
+) -> Result<UploadJob, AppError> {
+    enqueue_inner(
+        pool,
+        storage,
+        actor,
+        file_name,
+        source,
+        None,
+        None,
+        false,
+        Some((package, contract)),
+    )
+    .await
 }

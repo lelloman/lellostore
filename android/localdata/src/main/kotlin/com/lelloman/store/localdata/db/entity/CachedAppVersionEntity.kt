@@ -33,4 +33,6 @@ data class CachedAppVersionEntity(
     val uploadedAt: Long,
     @ColumnInfo(name = "is_beta")
     val isBeta: Boolean = false,
+    @ColumnInfo(name = "distribution_mode", defaultValue = "'normal'")
+    val distributionMode: String = "normal",
 )

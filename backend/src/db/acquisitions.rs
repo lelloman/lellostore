@@ -12,7 +12,7 @@ pub enum AcquisitionPurpose {
 }
 
 impl AcquisitionPurpose {
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Install => "install",
             Self::Update => "update",
@@ -45,7 +45,7 @@ pub struct Acquisition {
     pub apk_path: String,
 }
 
-async fn authorize(
+pub(crate) async fn authorize(
     conn: &mut SqliteConnection,
     subject: &str,
     package: &str,
@@ -119,10 +119,23 @@ pub async fn create(
     let version = sqlx::query_as::<_, super::models::AppVersion>("SELECT * FROM app_versions WHERE package_name = ? AND version_code = ? AND publication_state = 'published'")
         .bind(package).bind(request.version_code).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::NotFound("Published installer not found".into()))?;
-    if version.distribution_mode != "normal" || request.purpose == AcquisitionPurpose::Repair {
+    if version.distribution_mode == "paravoid" {
+        let public: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ? AND installer_version = ? AND verification_state = 'verified' AND authentication = 'public')")
+            .bind(package).bind(request.version_code).fetch_one(&mut *tx).await?;
+        if !public {
+            return Err(AppError::Conflict(
+                "This shell requires verified personalization".into(),
+            ));
+        }
+    } else if request.purpose == AcquisitionPurpose::Repair {
         return Err(AppError::BadRequest(
-            "Shell acquisition and repair require the Paravoid personalization implementation"
-                .into(),
+            "Access repair requires a Paravoid shell".into(),
+        ));
+    }
+    let reserved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM personalization_jobs WHERE user_subject = ? AND idempotency_key = ?)").bind(subject).bind(&request.idempotency_key).fetch_one(&mut *tx).await?;
+    if reserved {
+        return Err(AppError::Conflict(
+            "Idempotency key is reserved for a personalized acquisition".into(),
         ));
     }
     let acquisition = Acquisition {

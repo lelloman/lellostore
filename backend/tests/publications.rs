@@ -185,3 +185,28 @@ async fn deleted_app_keeps_identity_and_revision_history() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn older_devices_keep_a_compatible_historical_installer_after_shell_adoption() {
+    let ctx = create_test_context().await;
+    draft(&ctx.pool, 1, false).await;
+    draft(&ctx.pool, 2, false).await;
+    sqlx::query("UPDATE app_versions SET publication_state = 'published'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE app_versions SET min_sdk = 30, distribution_mode = 'paravoid' WHERE version_code = 2").execute(&ctx.pool).await.unwrap();
+    let server = TestServer::new(ctx.router).unwrap();
+    let old: serde_json::Value = server.get("/api/apps?sdk=28").await.json();
+    assert_eq!(old["apps"][0]["latest_version"]["version_code"], 1);
+    assert_eq!(
+        old["apps"][0]["latest_version"]["distribution_mode"],
+        "normal"
+    );
+    let modern: serde_json::Value = server.get("/api/apps?sdk=30").await.json();
+    assert_eq!(modern["apps"][0]["latest_version"]["version_code"], 2);
+    let detail: serde_json::Value = server.get("/api/apps/test.app?sdk=28").await.json();
+    assert_eq!(detail["versions"].as_array().unwrap().len(), 1);
+    let unsupported: serde_json::Value = server.get("/api/apps?sdk=23").await.json();
+    assert!(unsupported["apps"].as_array().unwrap().is_empty());
+}

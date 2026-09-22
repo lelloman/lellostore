@@ -15,7 +15,7 @@ import com.lelloman.store.localdata.db.entity.InstalledAppEntity
         CachedAppVersionEntity::class,
         InstalledAppEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class LellostoreDatabase : RoomDatabase() {

@@ -64,7 +64,7 @@ class DownloadManagerImplTest {
         installationCoordinator = mockk(relaxed = true)
         foregroundServiceStarter = mockk(relaxed = true)
 
-        coEvery { remoteApiClient.acquireApk(any(), any(), any()) } coAnswers {
+        coEvery { remoteApiClient.acquireApk(any(), any(), any(), any()) } coAnswers {
             val packageName = firstArg<String>()
             val versionCode = secondArg<Int>()
             val version = appsRepository.refreshApp(packageName).getOrThrow().versions.first { it.versionCode == versionCode }

@@ -19,10 +19,11 @@ class VerifiedApkProvider @Inject constructor(private val api: RemoteApiClient) 
         onProgress: (Long) -> Unit = {},
         onVerifying: () -> Unit = {},
         onMetadata: (Long) -> Unit = {},
+        purpose: com.lelloman.store.domain.model.AcquisitionPurpose = com.lelloman.store.domain.model.AcquisitionPurpose.INSTALL,
     ): File {
         require(version.sha256?.matches(Regex("[a-fA-F0-9]{64}")) == true) { "Missing APK verification metadata" }
         require(version.size > 0) { "Invalid APK size" }
-        val acquisition = api.acquireApk(packageName, version.versionCode, java.util.UUID.randomUUID().toString()).getOrThrow()
+        val acquisition = api.acquireApk(packageName, version.versionCode, java.util.UUID.randomUUID().toString(), purpose).getOrThrow()
         require(acquisition.packageName == packageName && acquisition.versionCode == version.versionCode) { "Acquisition identity does not match requested APK" }
         val expected = acquisition.sha256
         val expectedSize = acquisition.size

@@ -31,4 +31,6 @@ data class CachedAppEntity(
     val accessLevel: String = "stable",
     @ColumnInfo(name = "latest_version_is_beta")
     val latestVersionIsBeta: Boolean = false,
+    @ColumnInfo(name = "latest_distribution_mode", defaultValue = "'normal'")
+    val latestDistributionMode: String = "normal",
 )

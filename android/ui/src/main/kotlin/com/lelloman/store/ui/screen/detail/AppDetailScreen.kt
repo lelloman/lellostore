@@ -142,6 +142,7 @@ fun AppDetailScreen(
                         onInstallClick = viewModel::onInstallClick,
                         onUpdateClick = viewModel::onUpdateClick,
                         onOpenClick = viewModel::onOpenClick,
+                        onRepairAccess = viewModel::onRepairAccess,
                         onCancelDownload = viewModel::onCancelDownload,
                         onGrantPermissionClick = viewModel::onGrantPermissionClick,
                         onAutoUpdateOverrideChanged = viewModel::onAutoUpdateOverrideChanged,
@@ -162,12 +163,14 @@ private fun AppDetailContent(
     onInstallClick: () -> Unit,
     onUpdateClick: () -> Unit,
     onOpenClick: () -> Unit,
+    onRepairAccess: () -> Unit,
     onCancelDownload: () -> Unit,
     onGrantPermissionClick: () -> Unit,
     onAutoUpdateOverrideChanged: (AutoUpdateOverride) -> Unit,
     onReleaseChannelOverrideChanged: (ReleaseChannelOverride) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showRepairDialog by rememberSaveable { mutableStateOf(false) }
     var showAutoUpdateDialog by rememberSaveable { mutableStateOf(false) }
     var showReleaseChannelDialog by rememberSaveable { mutableStateOf(false) }
     val isDownloading = downloadState != null &&
@@ -247,6 +250,12 @@ private fun AppDetailContent(
                             Text(stringResource(R.string.open))
                         }
                     }
+                }
+            }
+
+            if (app.canRepairAccess && !isDownloading) {
+                TextButton(onClick = { showRepairDialog = true }) {
+                    Text(stringResource(R.string.paravoid_repair_access))
                 }
             }
 
@@ -362,6 +371,15 @@ private fun AppDetailContent(
     }
 
 
+    if (showRepairDialog) {
+        AlertDialog(
+            onDismissRequest = { showRepairDialog = false },
+            title = { Text(stringResource(R.string.paravoid_repair_access)) },
+            text = { Text(stringResource(R.string.paravoid_repair_explanation)) },
+            confirmButton = { TextButton(onClick = { showRepairDialog = false; onRepairAccess() }) { Text(stringResource(R.string.paravoid_repair_confirm)) } },
+            dismissButton = { TextButton(onClick = { showRepairDialog = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     if (showAutoUpdateDialog) {
         PolicySelectionDialog(
             title = stringResource(R.string.app_auto_update),

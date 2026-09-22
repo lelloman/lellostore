@@ -135,6 +135,21 @@ class UploadTest(unittest.TestCase):
             "publisher-client",
         )
 
+    def test_vpk_upload_returns_durable_job_without_publishing(self):
+        connection = FakeConnection(FakeHttpResponse({"id": "saved-job", "status": "queued"}, 202))
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "payload.vpk"
+            artifact.write_bytes(b"server-validates-this")
+            with mock.patch.object(publisher, "_open_connection", return_value=connection):
+                result = publisher.upload_vpk(artifact, "example.app", "a" * 64, self.config, "token")
+        self.assertEqual(result["id"], "saved-job")
+        self.assertEqual(connection.request, ("POST", "/api/admin/apps/example.app/contracts/" + "a" * 64 + "/vpks"))
+        body = b"".join(connection.chunks)
+        self.assertIn(b"server-validates-this", body)
+        self.assertEqual(dict(connection.headers)["Content-Length"], str(len(body)))
+        self.assertTrue(connection.closed)
+        self.assertEqual(publisher._prepare_legacy_invocation(["upload-vpk", "example.app"]), ["upload-vpk", "example.app"])
+
     def test_streams_artifact_and_reads_snake_case_response(self):
         response = {
             "package_name": "com.example.publisher",

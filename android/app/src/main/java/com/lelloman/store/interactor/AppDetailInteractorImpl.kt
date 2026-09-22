@@ -70,6 +70,9 @@ class AppDetailInteractorImpl @Inject constructor(
     override suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult =
         downloadManager.downloadAndInstall(packageName, versionCode)
 
+    override suspend fun repairAccess(packageName: String, versionCode: Int): DownloadResult =
+        downloadManager.downloadAndInstall(packageName, versionCode, purpose = com.lelloman.store.domain.model.AcquisitionPurpose.REPAIR)
+
     override fun cancelDownload(packageName: String) {
         downloadManager.cancelDownload(packageName)
     }
@@ -103,6 +106,7 @@ class AppDetailInteractorImpl @Inject constructor(
                     size = version.size,
                     uploadedAtMillis = version.uploadedAt.toEpochMilliseconds(),
                     isBeta = version.isBeta,
+                    distributionMode = version.distributionMode,
                 )
             },
             accessLevel = accessLevel,

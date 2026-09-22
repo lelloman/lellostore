@@ -105,6 +105,7 @@ async fn create_auth_test_context_with_events(
     ));
 
     let state = AppState {
+        personalizer: None,
         paravoid_signing: None,
         db: pool.clone(),
         config: Arc::new(config),

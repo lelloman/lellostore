@@ -84,5 +84,6 @@ object RemoteApiModule {
     ): RemoteApiClient = RemoteApiClientImpl(
         httpClient = httpClient,
         baseUrlProvider = { configStore.serverUrl.value },
+        deviceSdk = android.os.Build.VERSION.SDK_INT,
     )
 }

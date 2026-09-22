@@ -65,4 +65,5 @@ data class AppVersionModel(
     val size: Long,
     val uploadedAtMillis: Long,
     val isBeta: Boolean = false,
+    val distributionMode: String = "normal",
 )

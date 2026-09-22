@@ -62,13 +62,14 @@ class DownloadManagerImpl @Inject constructor(
         packageName: String,
         versionCode: Int,
         installationMode: InstallationMode,
+        purpose: com.lelloman.store.domain.model.AcquisitionPurpose,
     ): DownloadResult {
         val task = synchronized(downloadJobs) {
             if (downloadJobs.containsKey(packageName)) {
                 return DownloadResult.Failed("Download already in progress")
             }
             scope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                performDownloadAndInstall(packageName, versionCode, installationMode)
+                performDownloadAndInstall(packageName, versionCode, installationMode, purpose)
             }.also { downloadJobs[packageName] = it }
         }
         task.start()
@@ -86,6 +87,7 @@ class DownloadManagerImpl @Inject constructor(
         packageName: String,
         versionCode: Int,
         installationMode: InstallationMode,
+        purpose: com.lelloman.store.domain.model.AcquisitionPurpose,
     ): DownloadResult {
 
         val operationId = java.util.UUID.randomUUID().toString()
@@ -127,6 +129,7 @@ class DownloadManagerImpl @Inject constructor(
             var lastSample = System.nanoTime()
             apkProvider.prepare(packageName, versionInfo, destination,
                 onMetadata = { expectedSize = it },
+                purpose = purpose,
                 onProgress = { bytes ->
                     updateProgress(packageName, DownloadState.DOWNLOADING, bytes.toFloat() / expectedSize, bytes, expectedSize)
                     if (System.nanoTime() - lastSample >= 5_000_000_000L) {

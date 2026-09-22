@@ -23,6 +23,7 @@ import java.io.InputStream
 
 internal class RemoteApiClientImpl(
     private val httpClient: HttpClient,
+    private val deviceSdk: Int? = null,
     private val baseUrlProvider: () -> String,
 ) : RemoteApiClient {
 
@@ -30,7 +31,7 @@ internal class RemoteApiClientImpl(
         get() = baseUrlProvider().trimEnd('/')
 
     override suspend fun getApps(): Result<List<App>> = runCatching {
-        val response = httpClient.get("$baseUrl/api/apps")
+        val response = httpClient.get("$baseUrl/api/apps") { deviceSdk?.let { url.parameters.append("sdk", it.toString()) } }
         if (!response.status.isSuccess()) {
             throw ApiException("Failed to get apps: ${response.status}")
         }
@@ -41,7 +42,7 @@ internal class RemoteApiClientImpl(
     }
 
     override suspend fun getApp(packageName: String): Result<AppDetail> = runCatching {
-        val response = httpClient.get("$baseUrl/api/apps/$packageName")
+        val response = httpClient.get("$baseUrl/api/apps/$packageName") { deviceSdk?.let { url.parameters.append("sdk", it.toString()) } }
         if (!response.status.isSuccess()) {
             throw ApiException("Failed to get app $packageName: ${response.status}")
         }
@@ -69,10 +70,10 @@ internal class RemoteApiClientImpl(
             response.bodyAsChannel().toInputStream()
         }
 
-    override suspend fun acquireApk(packageName: String, versionCode: Int, idempotencyKey: String): Result<ApkAcquisition> = runCatching {
+    override suspend fun acquireApk(packageName: String, versionCode: Int, idempotencyKey: String, purpose: com.lelloman.store.domain.model.AcquisitionPurpose): Result<ApkAcquisition> = runCatching {
         val response = httpClient.post("$baseUrl/api/apps/$packageName/acquisitions") {
             contentType(ContentType.Application.Json)
-            setBody(AcquisitionRequestDto(versionCode, idempotencyKey))
+            setBody(AcquisitionRequestDto(versionCode, idempotencyKey, purpose.wireValue))
         }
         if (!response.status.isSuccess()) throw ApiException("Failed to acquire APK: ${response.status}")
         response.body<ApkAcquisitionDto>().toDomain()

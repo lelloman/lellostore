@@ -46,7 +46,12 @@ object LocalDataModule {
             context,
             LellostoreDatabase::class.java,
             "lellostore.db"
-        ).fallbackToDestructiveMigration(dropAllTables = true).build()
+        ).addMigrations(object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_app_versions ADD COLUMN distribution_mode TEXT NOT NULL DEFAULT 'normal'")
+                db.execSQL("ALTER TABLE cached_apps ADD COLUMN latest_distribution_mode TEXT NOT NULL DEFAULT 'normal'")
+            }
+        }).fallbackToDestructiveMigration(dropAllTables = true).build()
     }
 
     @Provides

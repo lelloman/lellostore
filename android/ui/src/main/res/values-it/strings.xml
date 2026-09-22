@@ -203,4 +203,7 @@
     <string name="splash_title">LelloStore</string>
     <string name="settings_audit_title">Diagnostica aggiornamenti</string>
     <string name="settings_audit_subtitle">Tempi, risultati ed esportazione · cronologia circolare di 4 MiB</string>
+    <string name="paravoid_repair_access">Ripristina accesso agli aggiornamenti</string>
+    <string name="paravoid_repair_explanation">Reinstalla questa versione con un nuovo accesso agli aggiornamenti. I dati dell’app restano al loro posto. Android chiederà di confermare l’installazione.</string>
+    <string name="paravoid_repair_confirm">Reinstalla</string>
 </resources>

@@ -28,15 +28,24 @@ pub async fn create_test_app() -> (TempDir, Router) {
 }
 
 pub async fn create_test_context() -> TestContext {
-    create_test_context_inner(true).await
+    create_test_context_inner(true, None).await
 }
 
 pub async fn create_fail_closed_test_app() -> (TempDir, Router) {
-    let ctx = create_test_context_inner(false).await;
+    let ctx = create_test_context_inner(false, None).await;
     (ctx.temp_dir, ctx.router)
 }
 
-async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> TestContext {
+#[allow(dead_code)]
+pub async fn create_paravoid_test_context(
+    signing: Arc<lellostore_backend::paravoid::signing::OnlineSigning>,
+) -> TestContext {
+    create_test_context_inner(true, Some(signing)).await
+}
+async fn create_test_context_inner(
+    allow_unauthenticated_for_tests: bool,
+    signing: Option<Arc<lellostore_backend::paravoid::signing::OnlineSigning>>,
+) -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let storage_path = temp_dir.path().join("storage");
@@ -91,7 +100,8 @@ async fn create_test_context_inner(allow_unauthenticated_for_tests: bool) -> Tes
     ));
 
     let state = AppState {
-        paravoid_signing: None,
+        personalizer: None,
+        paravoid_signing: signing,
         db: pool.clone(),
         config: Arc::new(config),
         auth: None, // No auth for tests by default

@@ -57,6 +57,24 @@ class AppDetailViewModelTest {
     }
 
     @Test
+    fun `repair targets installed shell even when newer installer exists`() = runTest {
+        fakeInteractor.mutableApp.value = AppDetailModel("com.test.app", "Test", null, "", listOf(
+            AppVersionModel(1, "1", 10, 0, distributionMode = "paravoid"),
+            AppVersionModel(2, "2", 10, 0),
+        ))
+        fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 1, "1")
+        createViewModel()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.app!!.canRepairAccess).isTrue()
+        viewModel.onRepairAccess()
+        advanceUntilIdle()
+        assertThat(fakeInteractor.repairedVersion).isEqualTo(1)
+        fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 2, "2")
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.app!!.canRepairAccess).isFalse()
+    }
+
+    @Test
     fun `initial state triggers refresh`() = runTest {
         createViewModel()
         advanceUntilIdle()
@@ -646,6 +664,7 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
     var downloadAndInstallPackageName: String? = null
     var downloadAndInstallVersionCode: Int? = null
     var downloadAndInstallResult: DownloadResult = DownloadResult.Success
+    var repairedVersion: Int? = null
     var cancelDownloadCalled = false
     var cancelDownloadPackageName: String? = null
     var openInstallPermissionSettingsCalled = false
@@ -677,6 +696,8 @@ class FakeAppDetailInteractor : AppDetailViewModel.Interactor {
         downloadAndInstallVersionCode = versionCode
         return downloadAndInstallResult
     }
+
+    override suspend fun repairAccess(packageName: String, versionCode: Int): DownloadResult { repairedVersion = versionCode; return DownloadResult.Success }
 
     override fun cancelDownload(packageName: String) {
         cancelDownloadCalled = true

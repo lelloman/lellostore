@@ -32,6 +32,7 @@ data class AppDetailUiModel(
     val effectiveReleaseChannel: ReleaseChannel,
     val hasBetaAccess: Boolean,
     val isPolicyConfigurable: Boolean,
+    val canRepairAccess: Boolean = false,
 )
 
 data class AppVersionUiModel(

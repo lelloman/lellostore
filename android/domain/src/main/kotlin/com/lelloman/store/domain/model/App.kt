@@ -21,6 +21,7 @@ data class AppVersion(
     val minSdk: Int,
     val uploadedAt: Instant,
     val isBeta: Boolean = false,
+    val distributionMode: String = "normal",
 )
 
 data class AppDetail(

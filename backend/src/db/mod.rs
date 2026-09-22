@@ -2,6 +2,7 @@ pub mod access;
 pub mod acquisitions;
 pub mod admin;
 pub mod models;
+pub mod paravoid;
 pub mod publications;
 
 use sqlx::sqlite::{SqliteConnection, SqlitePool, SqlitePoolOptions};

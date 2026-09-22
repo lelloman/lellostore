@@ -81,6 +81,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     aapt \
     default-jre-headless \
+    python3 \
+    apksigner \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -101,6 +103,10 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=backend-builder /app/target/release/lellostore-backend /usr/local/bin/lellostore
 
+COPY --from=backend-builder /app/target/release/paravoid_grant_check /usr/local/bin/paravoid-grant-check
+COPY scripts/paravoid-personalize.py /usr/local/lib/lellostore/paravoid-personalize.py
+COPY scripts/vendor/paravoid /usr/local/lib/lellostore/vendor/paravoid
+
 # Switch to non-root user
 USER lellostore
 
@@ -108,6 +114,9 @@ USER lellostore
 # binary keeps its safer loopback default for non-container deployments.
 ENV LISTEN_ADDR=0.0.0.0:8080
 ENV BUNDLETOOL_PATH=/usr/local/lib/bundletool.jar
+ENV PARAVOID_PERSONALIZER=/usr/local/lib/lellostore/paravoid-personalize.py
+ENV PARAVOID_GRANT_VERIFIER=/usr/local/bin/paravoid-grant-check
+ENV APKSIGNER_PATH=/usr/bin/apksigner
 ENV JAVA_PATH=/usr/bin/java
 ENV AAPT2_PATH=/usr/bin/aapt2
 

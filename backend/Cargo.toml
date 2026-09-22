@@ -44,6 +44,7 @@ prometheus = "0.14"
 lazy_static = "1.4"
 
 # Utilities
+tempfile = "3"
 thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -65,7 +66,6 @@ path = "src/bin/mock_oidc.rs"
 [dev-dependencies]
 tokio-test = "0.4"
 axum-test = { version = "18", features = ["ws"] }
-tempfile = "3"
 
 [profile.release]
 lto = true

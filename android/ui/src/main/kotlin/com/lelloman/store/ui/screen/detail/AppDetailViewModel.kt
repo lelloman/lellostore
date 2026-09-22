@@ -132,6 +132,7 @@ class AppDetailViewModel @Inject constructor(
                 latestVersion != null &&
                 installed.versionCode < latestVersion.versionCode,
             canOpen = installed != null,
+            canRepairAccess = installed != null && app.versions.any { it.versionCode == installed.versionCode && it.distributionMode == "paravoid" },
             autoUpdateOverride = preferences.autoUpdateOverride,
             releaseChannelOverride = preferences.releaseChannelOverride,
             effectiveAutoUpdate = policy.autoUpdateEnabled,
@@ -207,6 +208,17 @@ class AppDetailViewModel @Inject constructor(
         onInstallClick() // Same action as install
     }
 
+    fun onRepairAccess() {
+        val app = mutableState.value.app ?: return
+        val installed = app.installedVersion ?: return
+        if (!app.canRepairAccess) return
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(installationFailure = null)
+            val result = interactor.repairAccess(packageName, installed.versionCode)
+            mutableState.value = mutableState.value.copy(installationFailure = result as? DownloadResult.Failed)
+        }
+    }
+
     fun onOpenClick() {
         viewModelScope.launch {
             mutableEvents.emit(AppDetailScreenEvent.OpenApp(packageName))
@@ -257,6 +269,7 @@ class AppDetailViewModel @Inject constructor(
         suspend fun refreshApp(packageName: String): Result<AppDetailModel>
         suspend fun refreshInstalledApp(packageName: String)
         suspend fun downloadAndInstall(packageName: String, versionCode: Int): DownloadResult
+        suspend fun repairAccess(packageName: String, versionCode: Int): DownloadResult
         fun cancelDownload(packageName: String)
         fun canInstallPackages(): Boolean
         fun openInstallPermissionSettings()

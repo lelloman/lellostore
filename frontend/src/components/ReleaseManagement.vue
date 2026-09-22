@@ -12,6 +12,7 @@
       <v-tab value="installers">Installers</v-tab>
       <v-tab value="history">Publication history</v-tab>
       <v-tab value="access">Access</v-tab>
+      <v-tab value="paravoid">Paravoid</v-tab>
     </v-tabs>
     <v-divider />
     <v-alert v-if="error" type="error" variant="tonal" class="ma-4" role="alert">{{ error }}</v-alert>
@@ -60,6 +61,7 @@
           <v-btn :to="{ name: 'access-admin' }" variant="outlined">Manage app access</v-btn>
         </div>
       </v-window-item>
+    <v-window-item value="paravoid"><ParavoidManagement v-if="tab === 'paravoid'" :package-name="app.package_name" @changed="emit('changed')" /></v-window-item>
     </v-window>
   </v-card>
 
@@ -96,6 +98,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import ParavoidManagement from './ParavoidManagement.vue'
 import { api, type App, type AppVersion, type PublicationEvent } from '@/services/api'
 
 const props = defineProps<{ app: App }>()

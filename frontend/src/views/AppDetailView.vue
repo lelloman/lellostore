@@ -41,6 +41,12 @@
                 </template>
               </AuthenticatedImg>
             </div>
+    <v-dialog :model-value="!!repairVersion" max-width="540" @update:model-value="v => { if (!v) repairVersion = null }">
+      <v-card title="Repair update access">
+        <v-card-text>Download a new authorized copy, then install it over the same app version on your device. Your app data stays in place. Use a newer installer if your installed version is newer than this one.</v-card-text>
+        <v-card-actions><v-btn @click="repairVersion = null">Cancel</v-btn><v-spacer /><v-btn @click="downloadRepair">Download repair APK</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
 
             <div class="hero-copy">
               <div class="d-flex align-center flex-wrap ga-2 mb-2">
@@ -188,6 +194,7 @@
                 >
                   <v-icon>mdi-download-outline</v-icon>
                 </v-btn>
+                <v-btn v-if="item.distribution_mode === 'paravoid'" size="small" variant="text" @click="repairVersion = item">Repair update access</v-btn>
                 <v-btn
                   v-if="authStore.isAdmin"
                   icon
@@ -343,10 +350,17 @@ async function deleteVersion() {
   }
 }
 
-async function downloadVersion(version: AppVersion) {
+const repairVersion = ref<AppVersion | null>(null)
+async function downloadRepair() {
+  const version = repairVersion.value
+  repairVersion.value = null
+  if (version) await downloadVersion(version, 'repair')
+}
+
+async function downloadVersion(version: AppVersion, purpose: 'install' | 'repair' = 'install') {
   if (!app.value) return
   try {
-    const blob = await api.downloadApk(app.value.package_name, version.version_code)
+    const blob = await api.downloadApk(app.value.package_name, version.version_code, purpose)
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url

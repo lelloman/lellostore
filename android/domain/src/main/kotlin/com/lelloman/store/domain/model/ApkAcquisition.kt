@@ -8,3 +8,5 @@ data class ApkAcquisition(
     val size: Long,
     val sha256: String,
 )
+
+enum class AcquisitionPurpose(val wireValue: String) { INSTALL("install"), UPDATE("update"), REPAIR("repair") }

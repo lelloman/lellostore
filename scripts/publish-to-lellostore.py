@@ -499,6 +499,43 @@ def store_request(config: PublisherConfig, token: str, path: str, data: dict | N
         connection.close()
 
 
+def upload_vpk(artifact: Path, package: str, contract: str, config: PublisherConfig, token: str) -> dict:
+    """Queue an immutable payload draft; server validation is authoritative."""
+    if not artifact.is_file() or artifact.suffix.lower() != ".vpk" or artifact.stat().st_size == 0:
+        raise PublisherError("Provide a non-empty .vpk file")
+    boundary = "LelloStore-" + secrets.token_hex(16)
+    # Fixed filename avoids untrusted multipart header parameters.
+    prefix = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"payload.vpk\"\r\n"
+              "Content-Type: application/octet-stream\r\n\r\n").encode()
+    suffix = f"\r\n--{boundary}--\r\n".encode()
+    base = urllib.parse.urlsplit(config.store_url)
+    path = f"{base.path.rstrip('/')}/api/admin/apps/{urllib.parse.quote(package, safe='')}/contracts/{urllib.parse.quote(contract, safe='')}/vpks"
+    connection = _open_connection(base, timeout=300)
+    try:
+        connection.putrequest("POST", path)
+        connection.putheader("Authorization", f"Bearer {token}")
+        connection.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
+        connection.putheader("Content-Length", str(len(prefix) + artifact.stat().st_size + len(suffix)))
+        connection.endheaders()
+        connection.send(prefix)
+        with artifact.open("rb") as stream:
+            while chunk := stream.read(UPLOAD_CHUNK_SIZE):
+                connection.send(chunk)
+        connection.send(suffix)
+        response = connection.getresponse()
+        raw = response.read()
+        if response.status != 202:
+            raise PublisherError(f"VPK upload rejected (HTTP {response.status})")
+        result = json.loads(raw)
+        if not isinstance(result, dict) or not isinstance(result.get("id"), str):
+            raise PublisherError("Upload returned no durable job identity")
+        return result
+    except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+        raise PublisherError(f"VPK upload failed: {error}") from error
+    finally:
+        connection.close()
+
+
 def _add_configuration_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--store-url", help="LelloStore base URL (LELLOSTORE_URL)")
     parser.add_argument(
@@ -543,6 +580,23 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--json", action="store_true")
         _add_configuration_arguments(command)
 
+    for name in ("distribution", "upload-vpk", "publish-vpk", "withdraw-vpk", "upload-status"):
+        command = commands.add_parser(name, help="Manage Paravoid payload drafts and distribution")
+        if name == "upload-status":
+            command.add_argument("upload_id")
+        else:
+            command.add_argument("package_name")
+        if name == "upload-vpk":
+            command.add_argument("contract_id")
+            command.add_argument("artifact", type=Path)
+        if name in {"publish-vpk", "withdraw-vpk"}:
+            command.add_argument("vpk_id")
+            command.add_argument("--expected-revision", type=int, required=True)
+        if name in {"upload-vpk", "publish-vpk", "withdraw-vpk"}:
+            command.add_argument("--yes", action="store_true")
+        command.add_argument("--json", action="store_true")
+        _add_configuration_arguments(command)
+
     logout = commands.add_parser("logout", help="Delete the cached token for this issuer and client")
     logout.add_argument("--json", action="store_true", help="Print the result as JSON")
     _add_configuration_arguments(logout)
@@ -550,7 +604,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _prepare_legacy_invocation(arguments: list[str]) -> list[str]:
-    if arguments and arguments[0] not in {"upload", "logout", "inspect", "publish", "withdraw", "-h", "--help", "--version"}:
+    if arguments and arguments[0] not in {"distribution", "upload-vpk", "publish-vpk", "withdraw-vpk", "upload-status", "upload", "logout", "inspect", "publish", "withdraw", "-h", "--help", "--version"}:
         if not arguments[0].startswith("-"):
             return ["upload", *arguments]
     return arguments
@@ -607,6 +661,29 @@ def main(
                 path += f"/versions/{parsed.version_code}/withdraw"
                 data = {"expected_revision": parsed.expected_revision}
             print(json.dumps(store_request(config, token, path, data), sort_keys=True, indent=None if json_output else 2))
+            return 0
+
+        if parsed.command in {"distribution", "upload-vpk", "publish-vpk", "withdraw-vpk", "upload-status"}:
+            if hasattr(parsed, "yes") and not parsed.yes:
+                if not sys.stdin.isatty() or input(f"Type '{parsed.command}' to confirm: ").strip() != parsed.command:
+                    raise PublisherError("Action cancelled; pass --yes after authorization", exit_code=2)
+            token = device_flow_auth(config, json_output=json_output)
+            if parsed.command == "upload-vpk":
+                result = upload_vpk(parsed.artifact, parsed.package_name, parsed.contract_id, config, token)
+            else:
+                data = None
+                if parsed.command == "upload-status":
+                    path = f"/api/admin/uploads/{urllib.parse.quote(parsed.upload_id, safe='')}"
+                else:
+                    path = f"/api/admin/apps/{urllib.parse.quote(parsed.package_name, safe='')}"
+                    if parsed.command == "distribution":
+                        path += "/distribution"
+                    else:
+                        action = "publish" if parsed.command == "publish-vpk" else "withdraw"
+                        path += f"/vpks/{urllib.parse.quote(parsed.vpk_id, safe='')}/{action}"
+                        data = {"expected_revision": parsed.expected_revision}
+                result = store_request(config, token, path, data)
+            print(json.dumps(result, sort_keys=True, indent=None if json_output else 2))
             return 0
 
         artifact_info = validate_artifact(parsed.artifact)

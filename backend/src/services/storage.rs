@@ -60,6 +60,9 @@ pub struct StorageService {
 }
 
 impl StorageService {
+    pub(crate) fn root(&self) -> &Path {
+        &self.base_path
+    }
     pub fn new(base_path: PathBuf) -> Self {
         Self { base_path }
     }

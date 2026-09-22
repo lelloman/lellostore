@@ -157,6 +157,12 @@ pub struct InstalledPolicy {
     authentication: Authentication,
 }
 impl InstalledPolicy {
+    pub fn minimum_head_revision(&self) -> u64 {
+        self.trust.minimum_head_revision()
+    }
+    pub fn minimum_payload_version(&self) -> u64 {
+        self.trust.minimum_payload_version()
+    }
     pub fn endpoint(&self) -> &str {
         &self.base_url
     }

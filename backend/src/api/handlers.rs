@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use simple_server::axum::{
-    extract::{multipart::Field, Multipart, Path, State},
+    extract::{multipart::Field, Multipart, Path, Query, State},
     http::{header::RANGE, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -36,6 +36,7 @@ pub struct LatestVersionInfo {
     pub uploaded_at: String,
     pub is_beta: bool,
     pub publication_state: String,
+    pub distribution_mode: String,
 }
 
 /// App info for list endpoint
@@ -197,6 +198,7 @@ async fn list_apps_with_access(
     state: &AppState,
     access: Vec<db::access::EffectiveAppAccess>,
     include_drafts: bool,
+    sdk: Option<u32>,
 ) -> Result<Json<AppsListResponse>, AppError> {
     let apps = db::get_all_apps(&state.db).await?;
 
@@ -213,6 +215,7 @@ async fn list_apps_with_access(
             .await?
             .into_iter()
             .filter(|version| include_drafts || version.publication_state == "published")
+            .filter(|version| sdk.is_none_or(|sdk| version.min_sdk <= i64::from(sdk)))
             .filter(|version| grant.access_level == AppAccessLevel::Beta || !version.is_beta)
             .collect::<Vec<_>>();
         if !include_drafts && versions.is_empty() {
@@ -229,6 +232,7 @@ async fn list_apps_with_access(
             total_size,
             latest_version: latest.map(|v| LatestVersionInfo {
                 publication_state: v.publication_state,
+                distribution_mode: v.distribution_mode,
                 version_code: v.version_code,
                 version_name: v.version_name,
                 size: v.size,
@@ -245,7 +249,10 @@ async fn list_apps_with_access(
     Ok(Json(AppsListResponse { apps: items }))
 }
 
-pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListResponse>, AppError> {
+pub async fn list_apps(
+    State(state): State<AppState>,
+    Query(device): Query<DeviceQuery>,
+) -> Result<Json<AppsListResponse>, AppError> {
     let access = db::get_all_apps(&state.db)
         .await?
         .into_iter()
@@ -254,15 +261,21 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
             access_level: AppAccessLevel::Beta,
         })
         .collect();
-    list_apps_with_access(&state, access, false).await
+    list_apps_with_access(&state, access, false, device.sdk).await
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct DeviceQuery {
+    pub sdk: Option<u32>,
 }
 
 pub async fn list_authorized_apps(
     user: AuthenticatedUser,
     State(state): State<AppState>,
+    Query(device): Query<DeviceQuery>,
 ) -> Result<Json<AppsListResponse>, AppError> {
     let access = db::access::get_effective_app_access(&state.db, &user.0.subject).await?;
-    list_apps_with_access(&state, access, false).await
+    list_apps_with_access(&state, access, false, device.sdk).await
 }
 
 pub async fn list_admin_apps(
@@ -277,7 +290,7 @@ pub async fn list_admin_apps(
             access_level: AppAccessLevel::Beta,
         })
         .collect();
-    list_apps_with_access(&state, access, true).await
+    list_apps_with_access(&state, access, true, None).await
 }
 
 pub async fn get_admin_app(
@@ -285,7 +298,12 @@ pub async fn get_admin_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,
 ) -> Result<Json<AppDetailResponse>, AppError> {
-    let Json(mut response) = get_app(State(state.clone()), Path(package_name.clone())).await?;
+    let Json(mut response) = get_app(
+        State(state.clone()),
+        Path(package_name.clone()),
+        Query(DeviceQuery::default()),
+    )
+    .await?;
     response.versions = db::get_app_versions(&state.db, &package_name)
         .await?
         .iter()
@@ -297,13 +315,18 @@ pub async fn get_admin_app(
 pub async fn get_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,
+    Query(device): Query<DeviceQuery>,
 ) -> Result<Json<AppDetailResponse>, AppError> {
     let app = db::get_app(&state.db, &package_name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
 
     let versions = db::get_published_versions(&state.db, &package_name).await?;
-    let version_infos: Vec<AppVersionInfo> = versions.iter().map(to_version_info).collect();
+    let version_infos: Vec<AppVersionInfo> = versions
+        .iter()
+        .filter(|v| device.sdk.is_none_or(|sdk| v.min_sdk <= i64::from(sdk)))
+        .map(to_version_info)
+        .collect();
 
     Ok(Json(AppDetailResponse {
         package_name: app.package_name.clone(),
@@ -321,6 +344,7 @@ pub async fn get_authorized_app(
     user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(package_name): Path<String>,
+    Query(device): Query<DeviceQuery>,
 ) -> Result<Json<AppDetailResponse>, AppError> {
     let access =
         db::access::get_effective_access_for_app(&state.db, &user.0.subject, &package_name)
@@ -332,6 +356,11 @@ pub async fn get_authorized_app(
     let versions = db::get_published_versions(&state.db, &package_name)
         .await?
         .into_iter()
+        .filter(|version| {
+            device
+                .sdk
+                .is_none_or(|sdk| version.min_sdk <= i64::from(sdk))
+        })
         .filter(|version| access == AppAccessLevel::Beta || !version.is_beta)
         .map(|version| to_version_info(&version))
         .collect();
@@ -732,6 +761,16 @@ pub async fn delete_app(
     let _app = db::get_app(&state.db, &package_name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
+
+    let retained: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM paravoid_contracts WHERE package_name = ?)",
+    )
+    .bind(&package_name)
+    .fetch_one(&state.db)
+    .await?;
+    if retained {
+        return Err(AppError::Conflict("This app has retained Paravoid contracts. Withdraw its installers and retire its streams instead of deleting delivery history.".into()));
+    }
 
     // Delete from database (cascades to versions due to FK)
     db::delete_app(&state.db, &package_name).await?;

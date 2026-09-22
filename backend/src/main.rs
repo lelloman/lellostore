@@ -134,6 +134,7 @@ async fn run() -> Result<(), BoxError> {
 
     // Build application state
     let state = AppState {
+        personalizer: lellostore_backend::services::personalization::Personalizer::from_env()?,
         paravoid_signing,
         db: db.clone(),
         config: Arc::new(config.clone()),

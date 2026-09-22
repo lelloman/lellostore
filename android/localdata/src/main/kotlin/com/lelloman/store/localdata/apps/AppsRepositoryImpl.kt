@@ -74,6 +74,7 @@ class AppsRepositoryImpl(
                 updatedAt = System.currentTimeMillis(),
                 accessLevel = appDetail.accessLevel.name.lowercase(),
                 latestVersionIsBeta = latestVersion.isBeta,
+                latestDistributionMode = latestVersion.distributionMode,
             )
             appsDao.insertApp(appEntity)
 
@@ -87,6 +88,7 @@ class AppsRepositoryImpl(
                     minSdk = v.minSdk,
                     uploadedAt = v.uploadedAt.toEpochMilliseconds(),
                     isBeta = v.isBeta,
+                    distributionMode = v.distributionMode,
                 )
             }
             appVersionsDao.deleteVersions(packageName)
@@ -109,6 +111,7 @@ class AppsRepositoryImpl(
             minSdk = latestVersionMinSdk,
             uploadedAt = Instant.fromEpochMilliseconds(latestVersionUploadedAt),
             isBeta = latestVersionIsBeta,
+            distributionMode = latestDistributionMode,
         ),
         accessLevel = accessLevel.toAccessLevel(),
     )
@@ -121,6 +124,7 @@ class AppsRepositoryImpl(
         minSdk = minSdk,
         uploadedAt = Instant.fromEpochMilliseconds(uploadedAt),
         isBeta = isBeta,
+        distributionMode = distributionMode,
     )
 
     private fun App.toEntity(): CachedAppEntity = CachedAppEntity(
@@ -137,6 +141,7 @@ class AppsRepositoryImpl(
         updatedAt = System.currentTimeMillis(),
         accessLevel = accessLevel.name.lowercase(),
         latestVersionIsBeta = latestVersion.isBeta,
+                latestDistributionMode = latestVersion.distributionMode,
     )
 
     private fun String.toAccessLevel(): AppAccessLevel = when (lowercase()) {

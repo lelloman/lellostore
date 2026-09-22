@@ -330,7 +330,7 @@ class TestRemoteApiClient(
     // Fixture acquisitions use the mock catalog's canonical bytes. Real HTTP contracts
     // and per-acquisition metadata are covered by RemoteApiClientImplTest.
     private val acquisitions = mutableMapOf<String, Pair<String, Int>>()
-    override suspend fun acquireApk(packageName: String, versionCode: Int, idempotencyKey: String): Result<com.lelloman.store.domain.model.ApkAcquisition> = runCatching {
+    override suspend fun acquireApk(packageName: String, versionCode: Int, idempotencyKey: String, purpose: com.lelloman.store.domain.model.AcquisitionPurpose): Result<com.lelloman.store.domain.model.ApkAcquisition> = runCatching {
         val version = getApp(packageName).getOrThrow().versions.first { it.versionCode == versionCode }
         acquisitions[idempotencyKey] = packageName to versionCode
         com.lelloman.store.domain.model.ApkAcquisition(idempotencyKey, packageName, versionCode, version.size, version.sha256!!)

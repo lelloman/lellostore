@@ -19,7 +19,7 @@ class VerifiedApkProviderTest {
     private val version = AppVersion(1, "1", 3, "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04", 24, Instant.fromEpochMilliseconds(0))
 
     @Before fun acquisitions() {
-        coEvery { api.acquireApk("com.example", 1, any()) } answers {
+        coEvery { api.acquireApk("com.example", 1, any(), any()) } answers {
             Result.success(ApkAcquisition("copy", "com.example", 1, version.size, version.sha256!!))
         }
     }
@@ -54,7 +54,7 @@ class VerifiedApkProviderTest {
     @Test fun `personalized metadata replaces the catalog artifact hash and size`() = runTest {
         val bytes = "personalized APK".toByteArray()
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        coEvery { api.acquireApk(any(), any(), any()) } answers {
+        coEvery { api.acquireApk(any(), any(), any(), any()) } answers {
             Result.success(ApkAcquisition("personal", "com.example", 1, bytes.size.toLong(), hash))
         }
         coEvery { api.downloadAcquisition("personal") } answers { Result.success(bytes.inputStream()) }
@@ -64,7 +64,7 @@ class VerifiedApkProviderTest {
     }
 
     @Test fun `wrong acquisition identity fails before downloading`() = runTest {
-        coEvery { api.acquireApk(any(), any(), any()) } answers {
+        coEvery { api.acquireApk(any(), any(), any(), any()) } answers {
             Result.success(ApkAcquisition("wrong", "another.app", 1, version.size, version.sha256!!))
         }
         assertThat(runCatching { provider.prepare("com.example", version, temp.newFile()) }.isFailure).isTrue()

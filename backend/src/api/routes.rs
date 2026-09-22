@@ -30,6 +30,16 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
         get_service(simple_server::health::Probe::liveness().endpoint(handlers::health_check)),
     );
 
+    router = router
+        .route(
+            "/api/paravoid/v1/apps/{package}/head",
+            get(super::delivery::head),
+        )
+        .route(
+            "/api/paravoid/v1/apps/{package}/releases/{release}/payload.vpk",
+            get(super::delivery::download),
+        );
+
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {
         // User routes require authentication (any valid user)
@@ -128,6 +138,38 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .route(
             "/paravoid/configuration",
             get(super::paravoid::configuration),
+        )
+        .route(
+            "/apps/{package_name}/distribution",
+            get(super::vpks::overview),
+        )
+        .route(
+            "/apps/{package_name}/contracts/{contract_id}/vpks",
+            post(super::vpks::upload),
+        )
+        .route(
+            "/apps/{package_name}/vpks/{id}/notes",
+            put(super::vpks::notes),
+        )
+        .route(
+            "/apps/{package_name}/vpks/{id}/publish",
+            post(super::vpks::publish),
+        )
+        .route(
+            "/apps/{package_name}/vpks/{id}/withdraw",
+            post(super::vpks::withdraw),
+        )
+        .route(
+            "/apps/{package_name}/vpks/{id}/file",
+            get(super::vpks::download),
+        )
+        .route(
+            "/apps/{package_name}/streams/{contract_id}",
+            put(super::vpks::stream),
+        )
+        .route(
+            "/apps/{package_name}/grants/{id}/revoke",
+            post(super::vpks::revoke),
         )
         .route("/uploads", get(super::uploads::list))
         .route("/uploads/{id}", get(super::uploads::get))

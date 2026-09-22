@@ -230,6 +230,28 @@ export interface AppsResponse {
   apps: AppListItem[]
 }
 
+export interface ShellContract {
+  package_name: string; contract_id: string; installer_version: number
+  channel: string; authentication: string; bootstrap: string; base_url: string
+  verification_state: string; validation_report: string
+}
+export interface VpkRelease {
+  id: string; package_name: string; contract_id: string; release_id: string; payload_version: number
+  archive_size: number; archive_sha256: string; manifest_sha256: string; manifest_json: string
+  min_sdk: number; max_sdk: number; abis_json: string; signing_key_id: string
+  validation_state: string; validation_report: string; publication_state: string; release_notes: string
+}
+export interface ParavoidGrant {
+  id: string; key_id: string; contract_id: string; installer_version: number; user_subject: string
+  issued_at: number; expires_at: number; revoked_at: number | null; last_used_at: number | null; request_count: number
+}
+export interface AppDistribution {
+  distribution_mode: string; publication_revision: number; contracts: ShellContract[]; releases: VpkRelease[]
+  streams: { contract_id: string; revision: number; status: string }[]
+  grants: ParavoidGrant[]
+  events: { id: number; action: string; actor_subject: string; created_at: string; revision: number }[]
+}
+
 export interface ParavoidConfiguration {
   configured: boolean
   distribution_enabled: boolean
@@ -306,8 +328,8 @@ export const api = {
     return `${API_BASE}/api/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/apk`
   },
 
-  async downloadApk(packageName: string, versionCode: number): Promise<Blob> {
-    const acquisition = await api.acquireApk(packageName, versionCode)
+  async downloadApk(packageName: string, versionCode: number, purpose: 'install' | 'repair' = 'install'): Promise<Blob> {
+    const acquisition = await api.acquireApk(packageName, versionCode, purpose)
     if (acquisition.package_name !== packageName || acquisition.version_code !== versionCode ||
       !/^[a-zA-Z0-9_-]{1,128}$/.test(acquisition.id) ||
       !/^[a-fA-F0-9]{64}$/.test(acquisition.sha256) || !Number.isSafeInteger(acquisition.size) || acquisition.size <= 0) {
@@ -326,10 +348,10 @@ export const api = {
     return blob
   },
 
-  async acquireApk(packageName: string, versionCode: number): Promise<ApkAcquisition> {
+  async acquireApk(packageName: string, versionCode: number, purpose: 'install' | 'repair' = 'install'): Promise<ApkAcquisition> {
     return request(`/api/apps/${encodeURIComponent(packageName)}/acquisitions`, {
       method: 'POST', redirect: 'error',
-      body: JSON.stringify({ version_code: versionCode, purpose: 'install', idempotency_key: crypto.randomUUID() }),
+      body: JSON.stringify({ version_code: versionCode, purpose, idempotency_key: crypto.randomUUID() }),
     })
   },
 
@@ -448,6 +470,33 @@ export const api = {
     if (!version) throw new Error('The validated draft was removed. Check Uploads for details.')
     return { package_name: app.package_name, name: app.name, description: app.description, icon_url: app.icon_url, version }
 
+  },
+
+  async getAppDistribution(packageName: string): Promise<AppDistribution> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/distribution`)
+  },
+  async uploadVpk(packageName: string, contract: string, file: File): Promise<UploadJob> {
+    const body = new FormData(); body.append('file', file)
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/contracts/${encodeURIComponent(contract)}/vpks`, { method: 'POST', body })
+  },
+  async publishVpk(packageName: string, id: string, revision: number, withdraw = false): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/vpks/${encodeURIComponent(id)}/${withdraw ? 'withdraw' : 'publish'}`, { method: 'POST', body: JSON.stringify({ expected_revision: revision }) })
+  },
+  async saveVpkNotes(packageName: string, id: string, revision: number, notes: string): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/vpks/${encodeURIComponent(id)}/notes`, { method: 'PUT', body: JSON.stringify({ expected_revision: revision, release_notes: notes }) })
+  },
+  async setParavoidStream(packageName: string, contract: string, revision: number, retired: boolean): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/streams/${encodeURIComponent(contract)}`, { method: 'PUT', body: JSON.stringify({ expected_revision: revision, retired }) })
+  },
+  async revokeParavoidGrant(packageName: string, id: string, revision: number): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/grants/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: JSON.stringify({ expected_revision: revision }) })
+  },
+  async downloadVpk(packageName: string, release: VpkRelease): Promise<Blob> {
+    const blob = await request<Blob>(`/api/admin/apps/${encodeURIComponent(packageName)}/vpks/${encodeURIComponent(release.id)}/file`, { redirect: 'error' }, false, response => response.blob())
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
+    const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+    if (blob.size !== release.archive_size || hash !== release.archive_sha256) throw new Error('VPK checksum verification failed')
+    return blob
   },
 
   async getParavoidConfiguration(): Promise<ParavoidConfiguration> {
