@@ -50,5 +50,64 @@ pub async fn cleanup(pool: &SqlitePool, storage: &Path, now: i64) -> Result<u64,
             .execute(pool)
             .await?;
     }
+    removed += cleanup_orphans(pool, storage, now).await?;
+    Ok(removed)
+}
+
+/// Seven-day grace separates crash leftovers from work being committed now.
+/// Only generated names in transfer namespaces are eligible; published artifacts
+/// and failed-upload inputs with a durable job are never treated as orphans.
+async fn cleanup_orphans(pool: &SqlitePool, storage: &Path, now: i64) -> Result<u64, AppError> {
+    let mut removed = 0;
+    for namespace in ["uploads", "acquisitions"] {
+        let mut entries = match tokio::fs::read_dir(storage.join(namespace)).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            if removed >= 500 {
+                return Ok(removed);
+            }
+            let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(&id).is_err() {
+                continue;
+            }
+            let info = tokio::fs::symlink_metadata(entry.path()).await?;
+            if info.file_type().is_symlink() {
+                continue;
+            }
+            let modified = info
+                .modified()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| AppError::Internal("Invalid transfer file timestamp".into()))?
+                .as_secs();
+            if modified > now.saturating_sub(7 * 86400).max(0) as u64 {
+                continue;
+            }
+            let query = if namespace == "uploads" {
+                "SELECT EXISTS(SELECT 1 FROM upload_jobs WHERE id = ?)"
+            } else {
+                "SELECT EXISTS(SELECT 1 FROM personalization_jobs WHERE id = ?) OR EXISTS(SELECT 1 FROM acquisitions WHERE id = ?)"
+            };
+            let mut query = sqlx::query_scalar::<_, bool>(query).bind(&id);
+            if namespace == "acquisitions" {
+                query = query.bind(&id);
+            }
+            if query.fetch_one(pool).await? {
+                continue;
+            }
+            if namespace == "acquisitions" && info.is_dir() {
+                tokio::fs::remove_dir_all(entry.path()).await?;
+            } else if namespace == "uploads" && info.is_file() {
+                tokio::fs::remove_file(entry.path()).await?;
+            } else {
+                continue;
+            }
+            removed += 1;
+        }
+    }
     Ok(removed)
 }

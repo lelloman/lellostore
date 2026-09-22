@@ -104,8 +104,9 @@ rollback, credential display, verification bypass or automatic data deletion.
    upload/publication remains gated; existing streams are retired explicitly.
 3. Shell-controls deep link once
    upstream defines its installed management Activity contract.
-4. Cleanup of orphaned files and abandoned failed inputs, device acceptance and
-   tested backup/restore procedures. HTTP/storage metrics cover delivery traffic,
+4. Device acceptance and tested backup/restore procedures. Failed inputs are
+   intentionally retained for inspection/retry; unreferenced generated transfer
+   files are reclaimed after seven days. HTTP/storage metrics cover delivery traffic,
    VPKs, personalized copies and queued inputs. Keep one backend
    instance: durable jobs currently use a single worker and personalization mutex.
 

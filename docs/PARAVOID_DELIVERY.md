@@ -96,7 +96,8 @@ be deleted through the catalog API; withdraw installers and retire streams inste
 Hourly cleanup removes personalized transfer directories one hour after their
 24-hour acquisition expiry, and successful upload inputs after seven days. It retains
 job/acquisition identities, grant authorization and all published artifacts. Failed
-upload inputs remain available for retry. Multi-instance leases and orphan-file cleanup
+upload inputs remain available for retry. Generated upload/acquisition files with no
+durable record are removed after a seven-day grace period. Multi-instance leases
 are not implemented. Monitor disk usage. Existing Prometheus HTTP metrics normalize package/release/grant
 identifiers; storage gauges now include VPKs, personalized acquisitions and upload
 inputs, so these files contribute to total storage usage. VPK copies are synced before an atomic link
