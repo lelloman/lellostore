@@ -171,32 +171,12 @@ async fn test_app_not_found() {
 }
 
 #[tokio::test]
-async fn test_apps_list_after_insert() {
+async fn test_app_without_a_published_release_is_hidden() {
     let ctx = create_test_context().await;
     let server = TestServer::new(ctx.router).unwrap();
-
-    // Insert app
     insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
-
-    // List should now include the app
-    let response = server.get("/api/apps").await;
-    assert_eq!(response.status_code(), StatusCode::OK);
-
-    let body: serde_json::Value = response.json();
-    let apps = body["apps"].as_array().unwrap();
-
-    // Debug output
-    if apps.is_empty() {
-        panic!("Apps list is empty after insert! Body: {}", body);
-    }
-
-    assert_eq!(apps.len(), 1);
-    assert_eq!(apps[0]["package_name"], "com.test.app");
-    // Verify snake_case format
-    assert!(apps[0]["icon_url"].is_string());
-    // latest_version is null when no versions exist
-    assert!(apps[0]["latest_version"].is_null());
-    assert_eq!(apps[0]["total_size"], 0);
+    let body: serde_json::Value = server.get("/api/apps").await.json();
+    assert!(body["apps"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -297,6 +277,15 @@ async fn test_icon_urls_track_content_changes() {
     let storage = lellostore_backend::services::StorageService::new(ctx.storage_path.clone());
     let icon_path = storage.save_icon("com.example.app", b"old icon").unwrap();
     insert_test_app(&ctx.pool, "com.example.app", "Test App", Some(&icon_path)).await;
+    insert_test_version(
+        &ctx.pool,
+        "com.example.app",
+        1,
+        "1.0",
+        "apks/example.apk",
+        3,
+    )
+    .await;
 
     let mut previous_url = String::new();
     // Same-sized replacements without changing DB timestamps must invalidate

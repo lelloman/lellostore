@@ -3,12 +3,19 @@ package com.lelloman.store.remoteapi
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.model.App
 import com.lelloman.store.domain.model.AppDetail
+import com.lelloman.store.domain.model.ApkAcquisition
+import com.lelloman.store.remoteapi.dto.ApkAcquisitionDto
+import com.lelloman.store.remoteapi.dto.AcquisitionRequestDto
 import com.lelloman.store.remoteapi.dto.AppDetailDto
 import com.lelloman.store.remoteapi.dto.AppsResponseDto
 import com.lelloman.store.remoteapi.dto.toDomain
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.toInputStream
@@ -61,6 +68,22 @@ internal class RemoteApiClientImpl(
             }
             response.bodyAsChannel().toInputStream()
         }
+
+    override suspend fun acquireApk(packageName: String, versionCode: Int, idempotencyKey: String): Result<ApkAcquisition> = runCatching {
+        val response = httpClient.post("$baseUrl/api/apps/$packageName/acquisitions") {
+            contentType(ContentType.Application.Json)
+            setBody(AcquisitionRequestDto(versionCode, idempotencyKey))
+        }
+        if (!response.status.isSuccess()) throw ApiException("Failed to acquire APK: ${response.status}")
+        response.body<ApkAcquisitionDto>().toDomain()
+    }
+
+    override suspend fun downloadAcquisition(acquisitionId: String): Result<InputStream> = runCatching {
+        require(acquisitionId.matches(Regex("[a-zA-Z0-9_-]{1,128}"))) { "Invalid acquisition ID" }
+        val response = httpClient.get("$baseUrl/api/acquisitions/$acquisitionId/apk")
+        if (!response.status.isSuccess()) throw ApiException("Failed to download acquired APK: ${response.status}")
+        response.bodyAsChannel().toInputStream()
+    }
 }
 
 class ApiException(message: String, cause: Throwable? = null) : Exception(message, cause)

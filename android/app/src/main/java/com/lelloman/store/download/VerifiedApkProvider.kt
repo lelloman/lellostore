@@ -18,16 +18,22 @@ class VerifiedApkProvider @Inject constructor(private val api: RemoteApiClient) 
         destination: File,
         onProgress: (Long) -> Unit = {},
         onVerifying: () -> Unit = {},
+        onMetadata: (Long) -> Unit = {},
     ): File {
-        val expected = version.sha256
-        require(expected != null && expected.matches(Regex("[a-fA-F0-9]{64}"))) { "Missing APK verification metadata" }
+        require(version.sha256?.matches(Regex("[a-fA-F0-9]{64}")) == true) { "Missing APK verification metadata" }
         require(version.size > 0) { "Invalid APK size" }
-        val reusable = destination.isFile && destination.length() == version.size && sha256(destination).equals(expected, true)
+        val acquisition = api.acquireApk(packageName, version.versionCode, java.util.UUID.randomUUID().toString()).getOrThrow()
+        require(acquisition.packageName == packageName && acquisition.versionCode == version.versionCode) { "Acquisition identity does not match requested APK" }
+        val expected = acquisition.sha256
+        val expectedSize = acquisition.size
+        require(expected.matches(Regex("[a-fA-F0-9]{64}")) && expectedSize > 0) { "Invalid acquisition verification metadata" }
+        onMetadata(expectedSize)
+        val reusable = destination.isFile && destination.length() == expectedSize && sha256(destination).equals(expected, true)
         if (!reusable) {
             destination.parentFile?.mkdirs()
             destination.delete()
             try {
-                api.downloadApk(packageName, version.versionCode).getOrThrow().use { input ->
+                api.downloadAcquisition(acquisition.id).getOrThrow().use { input ->
                     val operationContext = currentCoroutineContext()
                     runInterruptible(Dispatchers.IO) {
                         destination.outputStream().use { output ->
@@ -38,7 +44,7 @@ class VerifiedApkProvider @Inject constructor(private val api: RemoteApiClient) 
                                 val count = input.read(buffer)
                                 if (count < 0) break
                                 total += count
-                                check(total <= version.size) { "APK exceeds its declared size" }
+                                check(total <= expectedSize) { "APK exceeds its declared size" }
                                 output.write(buffer, 0, count)
                                 onProgress(total)
                             }
@@ -52,7 +58,7 @@ class VerifiedApkProvider @Inject constructor(private val api: RemoteApiClient) 
         }
         currentCoroutineContext().ensureActive()
         onVerifying()
-        if (destination.length() != version.size || !sha256(destination).equals(expected, true)) {
+        if (destination.length() != expectedSize || !sha256(destination).equals(expected, true)) {
             destination.delete()
             throw SecurityException("APK size or SHA256 verification failed")
         }

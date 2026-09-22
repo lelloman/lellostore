@@ -21,6 +21,9 @@ pub enum UploadError {
     #[error("Invalid file type: expected APK or AAB")]
     InvalidFileType,
 
+    #[error("This is a Paravoid shell. Use the Paravoid distribution workflow once complete shell verification is enabled.")]
+    UnsupportedShell,
+
     #[error("Version {version_code} already exists for {package_name}")]
     VersionExists {
         package_name: String,
@@ -49,7 +52,7 @@ pub enum UploadError {
     Io(#[from] std::io::Error),
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct UploadResult {
     pub package_name: String,
     pub version_code: i64,
@@ -179,6 +182,69 @@ impl UploadService {
         is_beta: bool,
         replace_latest: bool,
     ) -> Result<UploadResult, UploadError> {
+        self.process_upload(
+            file_name,
+            upload_path,
+            override_name,
+            override_description,
+            is_beta,
+            replace_latest,
+            false,
+            None,
+        )
+        .await
+    }
+
+    pub async fn process_draft_upload(
+        &self,
+        file_name: &str,
+        upload_path: &Path,
+        override_name: Option<String>,
+        override_description: Option<String>,
+        is_beta: bool,
+    ) -> Result<UploadResult, UploadError> {
+        self.process_upload(
+            file_name,
+            upload_path,
+            override_name,
+            override_description,
+            is_beta,
+            false,
+            true,
+            None,
+        )
+        .await
+    }
+
+    pub async fn process_queued_upload(
+        &self,
+        job: &super::upload_jobs::UploadJob,
+    ) -> Result<UploadResult, UploadError> {
+        self.process_upload(
+            &job.file_name,
+            Path::new(&job.input_path),
+            job.override_name.clone(),
+            job.override_description.clone(),
+            job.is_beta,
+            false,
+            true,
+            Some(&job.id),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn process_upload(
+        &self,
+        file_name: &str,
+        upload_path: &Path,
+        override_name: Option<String>,
+        override_description: Option<String>,
+        is_beta: bool,
+        replace_latest: bool,
+        draft: bool,
+        job_id: Option<&str>,
+    ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
         let size = tokio::fs::metadata(upload_path).await?.len();
         if size > self.max_size {
@@ -223,6 +289,16 @@ impl UploadService {
         }
 
         // 6. Parse APK metadata
+        if draft {
+            let file = std::fs::File::open(&apk_path)?;
+            let archive = ZipArchive::new(file).map_err(|_| UploadError::InvalidFileType)?;
+            if archive
+                .file_names()
+                .any(|name| name.starts_with("assets/paravoid/"))
+            {
+                return Err(UploadError::UnsupportedShell);
+            }
+        }
         let metadata = self.apk_parser.parse(&apk_path).await?;
 
         // 7. Check for existing version
@@ -231,6 +307,17 @@ impl UploadService {
                 package_name: metadata.package_name,
                 version_code: metadata.version_code,
             });
+        }
+
+        if draft {
+            let used: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM published_apk_identities WHERE package_name = ? AND version_code = ?)")
+                .bind(&metadata.package_name).bind(metadata.version_code).fetch_one(&self.db).await.map_err(AppError::Database)?;
+            if used {
+                return Err(UploadError::VersionExists {
+                    package_name: metadata.package_name,
+                    version_code: metadata.version_code,
+                });
+            }
         }
 
         // 8. Calculate SHA-256
@@ -247,6 +334,21 @@ impl UploadService {
             &apk_path,
         ) {
             Ok(path) => path,
+            Err(StorageError::AlreadyExists(_)) if job_id.is_some() => {
+                let stored = self
+                    .storage
+                    .get_apk_path(&metadata.package_name, metadata.version_code);
+                if calculate_sha256_file(&stored).await? != sha256 {
+                    return Err(UploadError::VersionExists {
+                        package_name: metadata.package_name,
+                        version_code: metadata.version_code,
+                    });
+                }
+                format!(
+                    "apks/{}/{}.apk",
+                    metadata.package_name, metadata.version_code
+                )
+            }
             Err(StorageError::AlreadyExists(_)) => {
                 return Err(UploadError::VersionExists {
                     package_name: metadata.package_name,
@@ -257,17 +359,18 @@ impl UploadService {
         };
 
         // 11. Save icon if available (best-effort)
-        let icon_path = if let Some(icon_data) = &metadata.icon_data {
-            match self.storage.save_icon(&metadata.package_name, icon_data) {
-                Ok(path) => Some(path),
-                Err(e) => {
-                    warn!("Failed to save icon for {}: {}", metadata.package_name, e);
-                    None
+        let icon_path =
+            if let Some(icon_data) = metadata.icon_data.as_ref().filter(|_| !draft || is_new_app) {
+                match self.storage.save_icon(&metadata.package_name, icon_data) {
+                    Ok(path) => Some(path),
+                    Err(e) => {
+                        warn!("Failed to save icon for {}: {}", metadata.package_name, e);
+                        None
+                    }
                 }
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
         // 12. Update database (with cleanup on failure)
         let app_name = override_name
@@ -291,6 +394,8 @@ impl UploadService {
                 is_new_app,
                 is_beta,
                 replace_latest,
+                draft,
+                job_id,
             )
             .await;
 
@@ -345,6 +450,8 @@ impl UploadService {
         is_new_app: bool,
         is_beta: bool,
         replace_latest: bool,
+        draft: bool,
+        job_id: Option<&str>,
     ) -> Result<Option<i64>, UploadError> {
         // Start a transaction
         let mut tx = self.db.begin().await.map_err(AppError::Database)?;
@@ -358,7 +465,7 @@ impl UploadService {
                 icon_path,
             )
             .await?;
-        } else {
+        } else if !draft {
             // Update icon only if we have a new one (and optionally name/description)
             db::update_app_tx(
                 &mut tx,
@@ -415,6 +522,15 @@ impl UploadService {
         )
         .await?;
 
+        if draft {
+            sqlx::query("UPDATE app_versions SET publication_state = 'draft', proposed_name = ?, proposed_description = ?, published_at = NULL WHERE package_name = ? AND version_code = ?")
+                .bind(override_name).bind(override_description).bind(package_name).bind(version_code)
+                .execute(&mut *tx).await.map_err(AppError::Database)?;
+        } else {
+            sqlx::query("INSERT OR IGNORE INTO published_apk_identities(package_name, version_code, sha256) VALUES (?, ?, ?)")
+                .bind(package_name).bind(version_code).bind(sha256).execute(&mut *tx).await.map_err(AppError::Database)?;
+        }
+
         if let Some(previous_version) = previous_version {
             sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ?")
                 .bind(package_name)
@@ -424,6 +540,11 @@ impl UploadService {
                 .map_err(AppError::Database)?;
         }
 
+        if let Some(id) = job_id {
+            let result = serde_json::json!({"package_name": package_name, "version_code": version_code, "version_name": version_name, "app_name": app_name, "is_new_app": is_new_app});
+            sqlx::query("UPDATE upload_jobs SET status = 'ready', result_json = ?, updated_at = datetime('now') WHERE id = ? AND status = 'validating'")
+                .bind(result.to_string()).bind(id).execute(&mut *tx).await.map_err(AppError::Database)?;
+        }
         // Commit transaction
         tx.commit().await.map_err(AppError::Database)?;
 
@@ -489,7 +610,7 @@ fn detect_file_type(path: &Path, filename: &str) -> FileType {
     }
 }
 
-async fn calculate_sha256_file(path: &Path) -> Result<String, std::io::Error> {
+pub(crate) async fn calculate_sha256_file(path: &Path) -> Result<String, std::io::Error> {
     let mut file = tokio::fs::File::open(path).await?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];

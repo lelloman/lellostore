@@ -224,10 +224,15 @@ async fn test_complete_app_lifecycle_with_auth() {
     let response = server
         .post("/api/admin/apps")
         .add_header("Authorization", format!("Bearer {}", user_token))
-        .multipart(axum_test::multipart::MultipartForm::new().add_part(
-            "file",
-            axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
-        ))
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("publication", "draft")
+                .add_text("distribution_mode", "normal")
+                .add_part(
+                    "file",
+                    axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
+                ),
+        )
         .await;
     assert_eq!(
         response.status_code(),
@@ -242,15 +247,27 @@ async fn test_complete_app_lifecycle_with_auth() {
     let response = server
         .post("/api/admin/apps")
         .add_header("Authorization", format!("Bearer {}", admin_token))
-        .multipart(axum_test::multipart::MultipartForm::new().add_part(
-            "file",
-            axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
-        ))
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("publication", "draft")
+                .add_text("distribution_mode", "normal")
+                .add_part(
+                    "file",
+                    axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
+                ),
+        )
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
     let uploaded: serde_json::Value = response.json();
     assert_eq!(uploaded["package_name"], "com.test.app");
     assert_eq!(uploaded["version"]["version_code"], 1);
+    assert_eq!(uploaded["version"]["publication_state"], "draft");
+    server
+        .post("/api/admin/apps/com.test.app/publications")
+        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .json(&serde_json::json!({"version_code": 1, "expected_revision": 0}))
+        .await
+        .assert_status_ok();
 
     let grant = server
         .put("/api/admin/users/test-user/apps/com.test.app")
@@ -408,7 +425,11 @@ async fn test_multi_app_database_operations() {
     assert_eq!(response.status_code(), StatusCode::OK);
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
-    assert_eq!(apps.len(), 3, "Should have 3 apps");
+    assert_eq!(
+        apps.len(),
+        2,
+        "Only apps with published releases are visible"
+    );
 
     // Verify app1 has latest version info
     let app1 = apps
@@ -419,15 +440,9 @@ async fn test_multi_app_database_operations() {
     assert!(app1["latest_version"].is_object());
     assert_eq!(app1["latest_version"]["version_code"], 3);
 
-    // Verify app3 has no versions
-    let app3 = apps
+    assert!(!apps
         .iter()
-        .find(|a| a["package_name"] == "com.example.app3")
-        .unwrap();
-    assert!(
-        app3["latest_version"].is_null(),
-        "App3 should have no versions"
-    );
+        .any(|app| app["package_name"] == "com.example.app3"));
 
     // =========================================================================
     // PHASE 2: Get app details with versions
@@ -499,14 +514,15 @@ async fn test_multi_app_database_operations() {
     );
 
     // =========================================================================
-    // PHASE 5: Admin deletes a version
+    // PHASE 5: Admin withdraws a published version
     // =========================================================================
 
     let response = server
-        .delete("/api/admin/apps/com.example.app1/versions/1")
+        .post("/api/admin/apps/com.example.app1/versions/1/withdraw")
         .add_header("Authorization", format!("Bearer {}", admin_token))
+        .json(&serde_json::json!({"expected_revision": 0}))
         .await;
-    assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
+    assert_eq!(response.status_code(), StatusCode::OK);
 
     // Verify version deleted
     let response = server
@@ -541,7 +557,11 @@ async fn test_multi_app_database_operations() {
         .await;
     let body: serde_json::Value = response.json();
     let apps = body["apps"].as_array().unwrap();
-    assert_eq!(apps.len(), 2, "Should have 2 apps after deletion");
+    assert_eq!(
+        apps.len(),
+        1,
+        "Only app1 has published releases after app2 deletion"
+    );
 
     // =========================================================================
     // PHASE 7: User cannot delete
@@ -567,46 +587,22 @@ async fn test_multi_app_database_operations() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // =========================================================================
-    // PHASE 8: Delete remaining versions to auto-delete app
+    // PHASE 8: Published identities cannot be deleted through the draft endpoint.
     // =========================================================================
-
-    // Delete version 2
-    let response = server
-        .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
-        .await;
-    assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
-
-    // Delete version 3 (last one) - should also delete the app
-    let response = server
-        .delete("/api/admin/apps/com.example.app1/versions/3")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
-        .await;
-    assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
-
-    // Verify app auto-deleted
-    let response = server
-        .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    assert_eq!(
-        response.status_code(),
-        StatusCode::NOT_FOUND,
-        "App should be auto-deleted when last version is removed"
-    );
-
-    // =========================================================================
-    // PHASE 9: Final state check
-    // =========================================================================
-
-    let response = server
+    for code in [2, 3] {
+        server
+            .delete(&format!("/api/admin/apps/com.example.app1/versions/{code}"))
+            .add_header("Authorization", format!("Bearer {}", admin_token))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+    }
+    let body: serde_json::Value = server
         .get("/api/apps")
         .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    let body: serde_json::Value = response.json();
-    let apps = body["apps"].as_array().unwrap();
-    assert_eq!(apps.len(), 1, "Should have only app3 remaining");
-    assert_eq!(apps[0]["package_name"], "com.example.app3");
+        .await
+        .json();
+    assert_eq!(body["apps"].as_array().unwrap().len(), 1);
+    assert_eq!(body["apps"][0]["package_name"], "com.example.app1");
 }
 
 /// Test token expiration and refresh scenarios
@@ -1070,7 +1066,7 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 /// Exercise authentication, upgrade, multipart upload and event serialization
 /// through real sockets after the Axum migration.
 #[tokio::test]
-async fn authenticated_websocket_receives_catalog_change_after_upload() {
+async fn authenticated_websocket_receives_catalog_change_after_publication() {
     let (ctx, oidc) = create_auth_test_context().await;
     let server = TestServer::builder()
         .http_transport()
@@ -1093,14 +1089,26 @@ async fn authenticated_websocket_receives_catalog_change_after_upload() {
             format!("Bearer {}", oidc.get_admin_token()),
         )
         .multipart(
-            axum_test::multipart::MultipartForm::new().add_part(
-                "file",
-                axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
-                    .file_name("test.apk"),
-            ),
+            axum_test::multipart::MultipartForm::new()
+                .add_text("publication", "draft")
+                .add_text("distribution_mode", "normal")
+                .add_part(
+                    "file",
+                    axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
+                        .file_name("test.apk"),
+                ),
         )
         .await
         .assert_status(StatusCode::CREATED);
+    server
+        .post("/api/admin/apps/com.test.app/publications")
+        .add_header(
+            "Authorization",
+            format!("Bearer {}", oidc.get_admin_token()),
+        )
+        .json(&serde_json::json!({"version_code": 1, "expected_revision": 0}))
+        .await
+        .assert_status_ok();
     let event = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         socket.receive_json::<serde_json::Value>(),
@@ -1163,16 +1171,23 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn replacement_upload_parameter_replaces_release_and_validates_boolean() {
+async fn publication_replacement_withdraws_without_deleting_and_legacy_uploads_fail_explicitly() {
     let (ctx, oidc) = create_auth_test_context().await;
     let server = TestServer::new(ctx.router.clone()).unwrap();
     let authorization = format!("Bearer {}", oidc.get_admin_token());
-    for (code, value, status) in [
-        (1, "false", StatusCode::CREATED),
-        (2, "yes", StatusCode::BAD_REQUEST),
-        (2, "true", StatusCode::CREATED),
-        (1, "true", StatusCode::CONFLICT),
-    ] {
+    server
+        .post("/api/admin/apps")
+        .add_header("Authorization", authorization.clone())
+        .multipart(
+            axum_test::multipart::MultipartForm::new().add_part(
+                "file",
+                axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
+                    .file_name("test.apk"),
+            ),
+        )
+        .await
+        .assert_status_bad_request();
+    for code in [1, 2] {
         let parser = ctx.temp_dir.path().join("fake-aapt2");
         std::fs::write(&parser, format!("#!/bin/sh\necho \"package: name='com.test.app' versionCode='{code}' versionName='{code}.0'\"\necho \"sdkVersion:'24'\"\necho \"application-label:'Test App'\"\n")).unwrap();
         server
@@ -1180,21 +1195,86 @@ async fn replacement_upload_parameter_replaces_release_and_validates_boolean() {
             .add_header("Authorization", authorization.clone())
             .multipart(
                 axum_test::multipart::MultipartForm::new()
+                    .add_text("publication", "draft")
+                    .add_text("distribution_mode", "normal")
                     .add_part(
                         "file",
                         axum_test::multipart::Part::bytes(create_test_apk("com.test.app", code))
                             .file_name("test.apk"),
-                    )
-                    .add_text("replace_latest", value),
+                    ),
             )
             .await
-            .assert_status(status);
+            .assert_status(StatusCode::CREATED);
+        server.post("/api/admin/apps/com.test.app/publications").add_header("Authorization", authorization.clone())
+            .json(&serde_json::json!({"version_code": code, "expected_revision": code - 1, "replace_latest": true}))
+            .await.assert_status_ok();
     }
     let versions = lellostore_backend::db::get_app_versions(&ctx.pool, "com.test.app")
         .await
         .unwrap();
-    assert_eq!(versions.len(), 1);
-    assert_eq!(versions[0].version_code, 2);
+    assert_eq!(versions.len(), 2);
+    assert_eq!(versions[0].publication_state, "published");
+    assert_eq!(versions[1].publication_state, "withdrawn");
     assert!(ctx.storage_path.join("apks/com.test.app/2.apk").exists());
-    assert!(!ctx.storage_path.join("apks/com.test.app/1.apk").exists());
+    assert!(ctx.storage_path.join("apks/com.test.app/1.apk").exists());
+}
+
+#[tokio::test]
+async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::new(ctx.router).unwrap();
+    let admin = format!("Bearer {}", oidc.get_admin_token());
+    let response = server
+        .post("/api/admin/apps?asynchronous=true")
+        .add_header("Authorization", &admin)
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("publication", "draft")
+                .add_text("distribution_mode", "normal")
+                .add_part(
+                    "file",
+                    axum_test::multipart::Part::bytes(b"invalid bytes".to_vec())
+                        .file_name("invalid.bin"),
+                ),
+        )
+        .await;
+    response.assert_status(StatusCode::ACCEPTED);
+    let job: serde_json::Value = response.json();
+    assert_eq!(job["status"], "queued");
+    assert!(job.get("input_path").is_none());
+    let id = job["id"].as_str().unwrap();
+    let stored: String = sqlx::query_scalar("SELECT input_path FROM upload_jobs WHERE id = ?")
+        .bind(id)
+        .fetch_one(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(stored).unwrap(), b"invalid bytes");
+    server
+        .get("/api/admin/uploads")
+        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    let history: Vec<serde_json::Value> = server
+        .get("/api/admin/uploads")
+        .add_header("Authorization", &admin)
+        .await
+        .json();
+    assert_eq!(history.len(), 1);
+    server
+        .post(&format!("/api/admin/uploads/{id}/retry"))
+        .add_header("Authorization", &admin)
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    sqlx::query("UPDATE upload_jobs SET status = 'failed', error = 'test failure' WHERE id = ?")
+        .bind(id)
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    let retried: serde_json::Value = server
+        .post(&format!("/api/admin/uploads/{id}/retry"))
+        .add_header("Authorization", &admin)
+        .await
+        .json();
+    assert_eq!(retried["status"], "queued");
+    assert!(retried["error"].is_null());
 }

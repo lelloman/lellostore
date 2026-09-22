@@ -208,23 +208,37 @@ publisher=${LELLOSTORE_PUBLISHER:-$HOME/lelloprojects/lellostore/scripts/publish
 "$publisher" upload app/build/outputs/apk/release/app-release.apk --yes --json
 ```
 
-Use `--replace-latest` to replace the highest version code in the selected channel
-(stable by default, or beta with `--beta`) and delete its APK after saving the new
-release:
+Uploads now create drafts. The publisher waits for durable server validation;
+review and publish the draft from the app's Releases page, or pass `--publish`
+when publication is already intended. Use `--replace-latest` to publish and
+withdraw the previous latest release in that channel. Withdrawn APKs are retained
+for existing acquisitions and history; this option no longer deletes them.
 
 ```bash
-python scripts/publish-to-lellostore.py upload path/to/app.apk --replace-latest
-./scripts/publish-android-to-lellostore.sh --replace-latest
+python scripts/publish-to-lellostore.py upload path/to/app.apk --publish
+python scripts/publish-to-lellostore.py inspect com.example.app
+python scripts/publish-to-lellostore.py publish com.example.app 42 --expected-revision 3
 ```
 
-The API equivalent is multipart field `replace_latest=true` on
-`POST /api/admin/apps`. It defaults to `false` and accepts only `true` or `false`.
-Replacement requires a higher version code; duplicate codes remain conflicts.
-If the channel has no releases, this behaves as a normal upload. Older history
-and the other channel are retained. The new release and removal of the previous
-catalog entry commit together; failed uploads retain the previous release.
-APK cleanup happens after commit; filesystem cleanup errors are logged for
-operator attention. Existing stale history is not bulk-deleted.
+`POST /api/admin/apps` requires multipart `publication=draft` and
+`distribution_mode=normal`. Add `?asynchronous=true` for a durable validation job
+(202); browser and publisher use this path. Inspect `/api/admin/uploads` or
+`/api/admin/uploads/{id}` and retry a failed job with POST to its `/retry` endpoint.
+The admin Uploads page exposes the same status and retry actions. Without the query
+parameter the endpoint validates synchronously and returns the draft (201).
+
+Publish with `POST /api/admin/apps/{package}/publications`, supplying
+`version_code`, the reviewed `expected_revision`, and optionally `replace_latest`.
+Publication requires a version code higher than every previously published APK,
+including withdrawn releases. Stale review revisions return a conflict.
+Legacy uploads without explicit draft intent fail with `client_upgrade_required`.
+Deploy the backend before the new browser, Android client and publisher.
+
+Acquisitions bind a user to exact APK bytes for 24 hours and recheck live access
+on every download. Browser and Android downloads verify the acquisition's size
+and checksum. Paravoid shell/VPK publication remains disabled pending upstream
+verification and personalization integration; see
+[implementation status](docs/PARAVOID_IMPLEMENTATION.md).
 
 Only pass `--yes` after the upload has already been authorized; without it the
 publisher asks for interactive confirmation immediately before authentication

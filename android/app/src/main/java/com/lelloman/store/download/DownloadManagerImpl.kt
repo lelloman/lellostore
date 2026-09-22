@@ -120,12 +120,13 @@ class DownloadManagerImpl @Inject constructor(
             val versionInfo = appDetail.versions.find { it.versionCode == versionCode }
                 ?: throw IllegalArgumentException("Version $versionCode not found for $packageName")
 
-            val expectedSize = versionInfo.size
+            var expectedSize = versionInfo.size
             destination = File(apksDir, "$packageName-$versionCode.apk")
             updateProgress(packageName, DownloadState.DOWNLOADING, 0f, 0, expectedSize)
             audit("download.started", mapOf("expected_bytes" to expectedSize))
             var lastSample = System.nanoTime()
             apkProvider.prepare(packageName, versionInfo, destination,
+                onMetadata = { expectedSize = it },
                 onProgress = { bytes ->
                     updateProgress(packageName, DownloadState.DOWNLOADING, bytes.toFloat() / expectedSize, bytes, expectedSize)
                     if (System.nanoTime() - lastSample >= 5_000_000_000L) {

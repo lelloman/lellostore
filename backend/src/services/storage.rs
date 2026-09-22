@@ -143,6 +143,9 @@ impl StorageService {
             return Err(StorageError::Io(error));
         }
 
+        destination.sync_all()?;
+        std::fs::File::open(&apk_dir)?.sync_all()?;
+
         Ok(format!("apks/{}/{}", package_name, file_name))
     }
 

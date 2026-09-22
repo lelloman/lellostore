@@ -166,12 +166,25 @@ class UploadTest(unittest.TestCase):
                 )
 
         self.assertEqual(result, response)
-        self.assertEqual(connection.request, ("POST", "/api/admin/apps"))
+        self.assertEqual(connection.request, ("POST", "/api/admin/apps?asynchronous=true"))
         self.assertIn(("Authorization", "Bearer access-token"), connection.headers)
         self.assertIn(b"test apk", b"".join(connection.chunks))
         self.assertTrue(connection.closed)
         self.assertIn("Package: com.example.publisher", output.getvalue())
         self.assertIn("Version: 2.0 (20)", output.getvalue())
+
+    def test_waits_for_validation_job_without_publishing(self):
+        connection = FakeConnection(FakeHttpResponse({"id": "job-1", "status": "queued"}, status=202))
+        ready = {"id": "job-1", "status": "ready", "result_json": json.dumps({"package_name": "com.test.app", "version_code": 1})}
+        app = {"package_name": "com.test.app", "name": "App", "versions": [{"version_code": 1, "version_name": "1"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "app.apk"
+            artifact.write_bytes(b"apk")
+            with mock.patch.object(publisher, "_open_connection", return_value=connection), mock.patch.object(publisher, "store_request", side_effect=[ready, app]) as requests, mock.patch.object(publisher.time, "sleep"), contextlib.redirect_stdout(io.StringIO()):
+                result = publisher.upload_artifact(artifact, "token", self.config)
+        self.assertEqual(result["upload_id"], "job-1")
+        self.assertEqual(requests.call_count, 2)
+        self.assertEqual(requests.call_args_list[0].args[2], "/api/admin/uploads/job-1")
 
     def test_json_mode_prints_machine_readable_result(self):
         response = {
@@ -226,7 +239,7 @@ class UploadTest(unittest.TestCase):
         self.assertIn(b'name="is_beta"', body)
         self.assertIn(b"true", body)
 
-    def test_replacement_upload_includes_field(self):
+    def test_replacement_is_requested_at_publication_not_upload(self):
         response = {
             "package_name": "com.example.publisher",
             "name": "Publisher App",
@@ -241,7 +254,9 @@ class UploadTest(unittest.TestCase):
                 publisher,
                 "_open_connection",
                 return_value=connection,
-            ), contextlib.redirect_stdout(io.StringIO()):
+            ), mock.patch.object(
+                publisher, "store_request", side_effect=[{"publication_revision": 7}, {"publication_state": "published"}]
+            ) as publication, contextlib.redirect_stdout(io.StringIO()):
                 publisher.upload_artifact(
                     artifact,
                     "access-token",
@@ -250,8 +265,10 @@ class UploadTest(unittest.TestCase):
                 )
 
         body = b"".join(connection.chunks)
-        self.assertIn(b'name="replace_latest"', body)
-        self.assertIn(b"true", body)
+        self.assertNotIn(b'name="replace_latest"', body)
+        self.assertIn(b'name="publication"', body)
+        self.assertIn(b"draft", body)
+        self.assertEqual(publication.call_args.args[3], {"version_code": 20, "expected_revision": 7, "replace_latest": True})
 
 
 class CommandLineTest(unittest.TestCase):

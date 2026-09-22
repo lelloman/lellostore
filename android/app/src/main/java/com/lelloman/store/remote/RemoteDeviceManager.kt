@@ -316,6 +316,7 @@ class RemoteDeviceManager @Inject constructor(
                 check(app.version.minSdk <= info.sdk) { "${app.name} requires Android API ${app.version.minSdk}; the receiver has API ${info.sdk}" }
                 mutableState.update { it.copy(activeApp = app.name, operation = RemoteOperationPhase.DOWNLOADING, bytes = 0, totalBytes = app.version.size) }
                 apks.prepare(app.packageName, app.version, file,
+                    onMetadata = { size -> mutableState.update { it.copy(totalBytes = size) } },
                     onProgress = { bytes -> mutableState.update { it.copy(bytes = bytes) } },
                     onVerifying = { mutableState.update { it.copy(operation = RemoteOperationPhase.VERIFYING) } })
                 requireLogin()

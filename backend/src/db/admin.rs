@@ -481,6 +481,12 @@ pub async fn set_release_channel(
     is_beta: bool,
 ) -> Result<(), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
+    sqlx::query(
+        "UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ?",
+    )
+    .bind(package_name)
+    .execute(&mut *tx)
+    .await?;
     let result = sqlx::query(
         "UPDATE app_versions SET is_beta = ? WHERE package_name = ? AND version_code = ?",
     )

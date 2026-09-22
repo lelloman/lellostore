@@ -2,7 +2,7 @@
 
 use simple_server::axum::{
     body::Body,
-    http::{header, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
 use std::path::Path;
@@ -26,6 +26,9 @@ pub enum RangeError {
 /// Returns (start, end) where end is inclusive.
 /// If end is not specified, returns (start, file_size - 1).
 pub fn parse_range_header(header: &str, file_size: u64) -> Result<(u64, u64), RangeError> {
+    if file_size == 0 {
+        return Err(RangeError::NotSatisfiable);
+    }
     // Must start with "bytes="
     let range_spec = header
         .strip_prefix("bytes=")
@@ -214,6 +217,65 @@ pub async fn serve_file(
     }
 
     builder.build().await
+}
+
+/// The caller must authorize before invoking this, including for conditional requests.
+pub async fn serve_immutable_file(
+    path: impl AsRef<Path>,
+    content_type: &'static str,
+    filename: String,
+    sha256: &str,
+    expected_size: u64,
+    headers: &HeaderMap,
+) -> Result<Response, AppError> {
+    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AppError::Internal(
+            "Invalid immutable artifact digest".into(),
+        ));
+    }
+    let path = path.as_ref();
+    if tokio::fs::metadata(path).await?.len() != expected_size {
+        return Err(AppError::Conflict("Stored artifact size changed".into()));
+    }
+    let etag = format!("\"{}\"", sha256.to_lowercase());
+    let not_modified = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|values| {
+            values.split(',').any(|v| {
+                let v = v.trim();
+                v == "*" || v.trim_start_matches("W/") == etag
+            })
+        });
+    let mut response = if not_modified {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        let range_allowed = headers
+            .get(header::IF_RANGE)
+            .map(|value| value.to_str().ok() == Some(etag.as_str()))
+            .unwrap_or(true);
+        let range = if range_allowed {
+            headers
+                .get(header::RANGE)
+                .and_then(|value| value.to_str().ok())
+        } else {
+            None
+        };
+        serve_file(path, content_type, Some(filename), range).await?
+    };
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&etag)
+            .map_err(|_| AppError::Internal("Invalid artifact ETag".into()))?,
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-cache"),
+    );
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Authorization"));
+    Ok(response)
 }
 
 #[cfg(test)]

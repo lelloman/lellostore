@@ -75,6 +75,12 @@ fn public_routes() -> Router<AppState> {
 /// User API routes (requires authentication, any valid user)
 fn user_routes(auth_state: AuthState) -> Router<AppState> {
     Router::new()
+        .route(
+            "/apps/{package_name}/acquisitions",
+            post(super::acquisitions::create),
+        )
+        .route("/acquisitions/{id}", get(super::acquisitions::get))
+        .route("/acquisitions/{id}/apk", get(super::acquisitions::download))
         .route("/me", get(handlers::get_current_user))
         .route("/events", get(events::catalog_events))
         .route("/apps", get(handlers::list_authorized_apps))
@@ -97,6 +103,18 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .min(usize::MAX as u64) as usize;
     Router::new()
         .route(
+            "/apps/{package_name}/publications",
+            post(super::publications::publish).get(super::publications::history),
+        )
+        .route(
+            "/apps/{package_name}/versions/{version_code}/withdraw",
+            post(super::publications::withdraw),
+        )
+        .route(
+            "/apps/{package_name}/versions/{version_code}/draft",
+            put(super::publications::edit_draft),
+        )
+        .route(
             "/apps",
             get(handlers::list_admin_apps).post(handlers::upload_app),
         )
@@ -107,6 +125,9 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
                 .delete(handlers::delete_app),
         )
         .route("/apps/{package_name}/icon", post(handlers::upload_icon))
+        .route("/uploads", get(super::uploads::list))
+        .route("/uploads/{id}", get(super::uploads::get))
+        .route("/uploads/{id}/retry", post(super::uploads::retry))
         .route(
             "/apps/{package_name}/versions/{version_code}",
             delete(handlers::delete_version).put(handlers::set_admin_release_channel),

@@ -124,7 +124,9 @@
           </v-col>
         </v-row>
 
-        <v-card class="versions-card surface-panel">
+        <ReleaseManagement v-if="authStore.isAdmin" :app="app" @changed="appsStore.fetchApp(packageName)" @upload="showUploadDialog = true" />
+
+        <v-card v-else class="versions-card surface-panel">
           <div class="versions-heading">
             <div>
               <p class="section-label mb-1">Release history</p>
@@ -248,6 +250,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import EditAppDialog from '@/components/EditAppDialog.vue'
+import ReleaseManagement from '@/components/ReleaseManagement.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AuthenticatedImg from '@/components/AuthenticatedImg.vue'
@@ -274,7 +277,7 @@ const app = computed(() => appsStore.currentApp)
 const sortedVersions = computed(() =>
   [...(app.value?.versions ?? [])].sort((a, b) => b.version_code - a.version_code)
 )
-const latestVersion = computed(() => sortedVersions.value[0] ?? null)
+const latestVersion = computed(() => sortedVersions.value.find(version => (version.publication_state ?? 'published') === 'published') ?? null)
 const totalSize = computed(() =>
   sortedVersions.value.reduce((total, version) => total + version.size, 0)
 )
@@ -362,7 +365,7 @@ function onAppUpdated() {
 
 function onVersionUploaded() {
   showUploadDialog.value = false
-  toast.success('Version uploaded successfully')
+  toast.success('Draft uploaded. Review it before publishing.')
   appsStore.fetchApp(packageName.value)
 }
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Mapping
 
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "lellostore" / "tokens"
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
@@ -353,6 +353,7 @@ def upload_artifact(
     is_beta: bool = False,
     json_output: bool = False,
     replace_latest: bool = False,
+    publish: bool = False,
 ) -> dict:
     artifact_info = validate_artifact(artifact)
     artifact = Path(artifact_info["artifact"])
@@ -363,13 +364,14 @@ def upload_artifact(
         f'Content-Disposition: form-data; name="file"; filename="{safe_filename}"\r\n'
         "Content-Type: application/octet-stream\r\n\r\n"
     ).encode()
-    trailing_parts = []
+    trailing_parts = [
+        _multipart_field(boundary, "publication", "draft"),
+        _multipart_field(boundary, "distribution_mode", "normal"),
+    ]
     if name:
         trailing_parts.append(_multipart_field(boundary, "name", name))
     if description:
         trailing_parts.append(_multipart_field(boundary, "description", description))
-    if replace_latest:
-        trailing_parts.append(_multipart_field(boundary, "replace_latest", "true"))
     if is_beta:
         trailing_parts.append(_multipart_field(boundary, "is_beta", "true"))
     trailing_parts.append(f"\r\n--{boundary}--\r\n".encode())
@@ -378,7 +380,7 @@ def upload_artifact(
     )
 
     parsed_store = urllib.parse.urlsplit(config.store_url)
-    upload_path = f"{parsed_store.path.rstrip('/')}/api/admin/apps"
+    upload_path = f"{parsed_store.path.rstrip('/')}/api/admin/apps?asynchronous=true"
     connection = _open_connection(parsed_store, timeout=300)
     _log(
         f"Uploading {artifact.name} ({artifact_info['size'] / 1024 / 1024:.1f} MB)...",
@@ -425,11 +427,45 @@ def upload_artifact(
     if not isinstance(result, dict):
         raise PublisherError("Upload succeeded but returned an unexpected response")
 
+    if response.status == 202:
+        job_id = result.get("id")
+        if not isinstance(job_id, str):
+            raise PublisherError("Upload accepted without a job identity")
+        deadline = time.monotonic() + 600
+        try:
+            while result.get("status") in {"queued", "validating"}:
+                if time.monotonic() > deadline:
+                    raise PublisherError("Validation is still running")
+                time.sleep(1)
+                result = store_request(config, token, f"/api/admin/uploads/{urllib.parse.quote(job_id, safe='')}")
+            if result.get("status") != "ready":
+                raise PublisherError(result.get("error") or "Validation failed")
+            identity = json.loads(result["result_json"])
+            app = store_request(config, token, f"/api/admin/apps/{urllib.parse.quote(identity['package_name'], safe='')}")
+            version = next(v for v in app["versions"] if v["version_code"] == identity["version_code"])
+            result = {"package_name": app["package_name"], "name": app["name"], "version": version, "upload_id": job_id}
+        except (PublisherError, KeyError, ValueError, StopIteration) as error:
+            raise PublisherError(f"Upload {job_id} was saved: {error}. Inspect Uploads in LelloStore; do not re-upload the artifact.") from error
+
+    if publish or replace_latest:
+        package = result.get("package_name")
+        version_code = (result.get("version") or {}).get("version_code")
+        if not isinstance(package, str) or not isinstance(version_code, int):
+            raise PublisherError("Draft created but response lacks publication identity")
+        try:
+            review = store_request(config, token, f"/api/admin/apps/{urllib.parse.quote(package, safe='')}")
+            result["publication"] = store_request(
+                config, token, f"/api/admin/apps/{urllib.parse.quote(package, safe='')}/publications",
+                {"version_code": version_code, "expected_revision": review["publication_revision"], "replace_latest": replace_latest},
+            )
+        except (PublisherError, KeyError) as error:
+            raise PublisherError(f"Draft {package} APK {version_code} was saved, but publication failed: {error}. Review it in LelloStore before retrying publication.") from error
+
     if json_output:
         print(json.dumps(result, sort_keys=True))
     else:
         version = result.get("version") or {}
-        print("\nSuccess!")
+        print("\nPublished!" if publish or replace_latest else "\nDraft saved. Review and publish it in LelloStore.")
         print(f"  Package: {result.get('package_name')}")
         print(f"  Name:    {result.get('name')}")
         print(
@@ -437,6 +473,30 @@ def upload_artifact(
             f"({version.get('version_code')})"
         )
     return result
+
+
+def store_request(config: PublisherConfig, token: str, path: str, data: dict | None = None) -> dict:
+    """Authenticated Store JSON request. Never follow credential-bearing redirects."""
+    parsed = urllib.parse.urlsplit(config.store_url)
+    connection = _open_connection(parsed)
+    body = json.dumps(data).encode() if data is not None else None
+    try:
+        connection.request(
+            "POST" if data is not None else "GET", f"{parsed.path.rstrip('/')}{path}", body=body,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        raw = response.read().decode(errors="replace")
+        if not 200 <= response.status < 300:
+            raise PublisherError(f"Store request failed (HTTP {response.status}): {raw}")
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            raise PublisherError("Unexpected Store response")
+        return result
+    except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+        raise PublisherError(f"Store request failed: {error}") from error
+    finally:
+        connection.close()
 
 
 def _add_configuration_arguments(parser: argparse.ArgumentParser) -> None:
@@ -465,12 +525,23 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("artifact", type=Path)
     upload.add_argument("--name", help="Override the application name")
     upload.add_argument("--description", help="Override the application description")
-    upload.add_argument("--replace-latest", action="store_true", help="Replace the latest release in this channel and delete its APK (requires a higher version code)")
+    upload.add_argument("--replace-latest", action="store_true", help="Publish and withdraw the previous latest release in this channel; retain its artifact")
+    upload.add_argument("--publish", action="store_true", help="Publish after upload and validation; otherwise leave a draft")
     upload.add_argument("--beta", action="store_true", help="Publish this release to the beta channel")
     upload.add_argument("--dry-run", action="store_true", help="Validate without authenticating or uploading")
     upload.add_argument("--json", action="store_true", help="Print the result as JSON")
     upload.add_argument("--yes", action="store_true", help="Skip the interactive upload confirmation")
     _add_configuration_arguments(upload)
+
+    for command_name in ("inspect", "publish", "withdraw"):
+        command = commands.add_parser(command_name, help=f"{command_name.capitalize()} an application release")
+        command.add_argument("package_name")
+        if command_name != "inspect":
+            command.add_argument("version_code", type=int)
+            command.add_argument("--expected-revision", type=int, required=True)
+            command.add_argument("--yes", action="store_true")
+        command.add_argument("--json", action="store_true")
+        _add_configuration_arguments(command)
 
     logout = commands.add_parser("logout", help="Delete the cached token for this issuer and client")
     logout.add_argument("--json", action="store_true", help="Print the result as JSON")
@@ -479,7 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _prepare_legacy_invocation(arguments: list[str]) -> list[str]:
-    if arguments and arguments[0] not in {"upload", "logout", "-h", "--help", "--version"}:
+    if arguments and arguments[0] not in {"upload", "logout", "inspect", "publish", "withdraw", "-h", "--help", "--version"}:
         if not arguments[0].startswith("-"):
             return ["upload", *arguments]
     return arguments
@@ -521,6 +592,23 @@ def main(
             print(json.dumps(result, sort_keys=True) if json_output else "Token cache cleared." if removed else "No cached token found.")
             return 0
 
+        if parsed.command in {"inspect", "publish", "withdraw"}:
+            if parsed.command != "inspect" and not parsed.yes:
+                if not sys.stdin.isatty() or input(f"{parsed.command.capitalize()} {parsed.package_name} APK {parsed.version_code}? Type '{parsed.command}': ").strip() != parsed.command:
+                    raise PublisherError("Action cancelled; pass --yes only after authorization", exit_code=2)
+            token = device_flow_auth(config, json_output=json_output)
+            package = urllib.parse.quote(parsed.package_name, safe="")
+            path = f"/api/admin/apps/{package}"
+            data = None
+            if parsed.command == "publish":
+                path += "/publications"
+                data = {"version_code": parsed.version_code, "expected_revision": parsed.expected_revision}
+            elif parsed.command == "withdraw":
+                path += f"/versions/{parsed.version_code}/withdraw"
+                data = {"expected_revision": parsed.expected_revision}
+            print(json.dumps(store_request(config, token, path, data), sort_keys=True, indent=None if json_output else 2))
+            return 0
+
         artifact_info = validate_artifact(parsed.artifact)
         if parsed.dry_run:
             if json_output:
@@ -542,6 +630,7 @@ def main(
             description=parsed.description,
             is_beta=parsed.beta,
             replace_latest=parsed.replace_latest,
+            publish=parsed.publish,
             json_output=json_output,
         )
         return 0

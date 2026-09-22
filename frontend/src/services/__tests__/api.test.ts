@@ -1,4 +1,7 @@
+/// <reference types="node" />
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
+import { Blob as NodeBlob } from 'node:buffer'
 
 const authStore = {
   accessToken: 'access-token',
@@ -30,23 +33,28 @@ describe('api.downloadApk', () => {
     vi.restoreAllMocks()
     vi.clearAllMocks()
     authStore.accessToken = 'access-token'
+    vi.stubGlobal('crypto', webcrypto)
   })
 
   it('downloads the APK with the current bearer token', async () => {
-    const expected = new Blob(['apk-bytes'], {
+    const expected = new NodeBlob(['apk-bytes'], {
       type: 'application/vnd.android.package-archive',
     })
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      status: 200,
-      ok: true,
-      blob: vi.fn().mockResolvedValue(expected),
+    const bytes = await expected.arrayBuffer()
+    const digest = await webcrypto.subtle.digest('SHA-256', bytes)
+    const sha256 = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 200, ok: true,
+      json: async () => ({ id: 'copy-1', package_name: 'com.example.app', version_code: 42, size: expected.size, sha256 }),
+    } as unknown as Response).mockResolvedValueOnce({
+      status: 200, ok: true, blob: async () => expected,
     } as unknown as Response)
 
     const result = await api.downloadApk('com.example.app', 42)
 
     expect(result).toBe(expected)
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/apps/com.example.app/versions/42/apk',
+      '/api/acquisitions/copy-1/apk',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer access-token',
@@ -54,6 +62,15 @@ describe('api.downloadApk', () => {
       })
     )
   })
+  it('rejects another app acquisition before requesting its bytes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 200, ok: true,
+      json: async () => ({ id: 'copy', package_name: 'another.app', version_code: 42, size: 3, sha256: 'a'.repeat(64) }),
+    } as unknown as Response)
+    await expect(api.downloadApk('com.example.app', 42)).rejects.toThrow('invalid acquisition metadata')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
 })
 
 describe('api authentication recovery', () => {
@@ -135,5 +152,29 @@ describe('api access administration', () => {
       '/api/admin/apps',
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer access-token' }) })
     )
+  })
+})
+
+describe('durable uploads', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+    authStore.accessToken = 'access-token'
+  })
+
+  it('returns the validated draft without publishing it', async () => {
+    const version = { version_code: 7, publication_state: 'draft' }
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ status: 202, ok: true, json: async () => ({ id: 'job', status: 'ready', result_json: JSON.stringify({ package_name: 'com.test.app', version_code: 7 }) }) } as Response)
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ package_name: 'com.test.app', name: 'App', icon_url: '', versions: [version] }) } as Response)
+    const result = await api.uploadApp(new File(['apk'], 'app.apk'))
+    expect(result.version).toEqual(version)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/admin/apps?asynchronous=true')
+  })
+
+  it('preserves failed job identity for inspection', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ status: 202, ok: true, json: async () => ({ id: 'job-failed', status: 'failed', error: 'Invalid file type' }) } as Response)
+    await expect(api.uploadApp(new File(['bad'], 'bad.apk'))).rejects.toThrow('job-failed: Invalid file type')
   })
 })

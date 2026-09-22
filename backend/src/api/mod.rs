@@ -1,8 +1,11 @@
+pub mod acquisitions;
 pub mod events;
 pub mod file_response;
 pub mod handlers;
+pub mod publications;
 pub mod routes;
 pub mod static_files;
+pub mod uploads;
 
 use sqlx::SqlitePool;
 use std::sync::Arc;

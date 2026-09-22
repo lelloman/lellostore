@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  { path: '/admin/uploads', name: 'uploads-admin', component: () => import('@/views/AdminUploadsView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
   {
     path: '/admin',
     name: 'access-admin',

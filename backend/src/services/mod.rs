@@ -2,6 +2,7 @@ pub mod aab;
 pub mod apk;
 pub mod storage;
 pub mod upload;
+pub mod upload_jobs;
 
 pub use aab::{AabConverter, AabError};
 pub use apk::{ApkError, ApkMetadata, ApkParser};

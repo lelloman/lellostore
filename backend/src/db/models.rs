@@ -10,6 +10,8 @@ pub struct App {
     pub icon_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub distribution_mode: String,
+    pub publication_revision: i64,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
@@ -27,4 +29,12 @@ pub struct AppVersion {
     pub min_sdk: i64,
     pub uploaded_at: String,
     pub is_beta: bool,
+    pub publication_state: String,
+    pub distribution_mode: String,
+    pub release_notes: String,
+    pub published_at: Option<String>,
+    #[serde(skip_serializing)]
+    pub proposed_name: Option<String>,
+    #[serde(skip_serializing)]
+    pub proposed_description: Option<String>,
 }

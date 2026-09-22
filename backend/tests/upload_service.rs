@@ -478,3 +478,96 @@ async fn replacement_retains_history_and_other_channel_and_rejects_rollback() {
     assert!(storage.get_apk_path("com.example.replace", 3).exists());
     assert!(!storage.get_apk_path("com.example.replace", 4).exists());
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn queued_upload_survives_source_removal_and_commits_draft_with_result() {
+    use lellostore_backend::services::upload_jobs;
+    let (temp, pool, storage) = setup_test_env().await;
+    let source = create_upload_file(&temp, "upload.apk");
+    let parser = ApkParser::new(create_fake_aapt2(
+        &temp,
+        "com.example.queued",
+        1,
+        "1.0",
+        "Queued",
+    ));
+    let service = UploadService::new(
+        storage.clone(),
+        parser,
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+    let job = upload_jobs::enqueue(
+        &pool,
+        &temp.path().join("storage"),
+        "admin",
+        "upload.apk",
+        &source,
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    std::fs::remove_file(source).unwrap();
+    assert_eq!(job.status, "queued");
+    // Simulate a process that copied the artifact but died before its DB commit.
+    storage
+        .save_apk_file(
+            "com.example.queued",
+            1,
+            std::path::Path::new(&job.input_path),
+        )
+        .unwrap();
+    assert!(upload_jobs::process_next(&pool, &service).await.unwrap());
+    let ready = upload_jobs::get(&pool, &job.id).await.unwrap();
+    assert_eq!(ready.status, "ready");
+    let result: serde_json::Value =
+        serde_json::from_str(ready.result_json.as_deref().unwrap()).unwrap();
+    assert_eq!(result["package_name"], "com.example.queued");
+    let state: String = sqlx::query_scalar("SELECT publication_state FROM app_versions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "draft");
+    assert!(!upload_jobs::process_next(&pool, &service).await.unwrap());
+}
+
+#[tokio::test]
+async fn invalid_queued_upload_preserves_failure_without_creating_release() {
+    use lellostore_backend::services::upload_jobs;
+    let (temp, pool, storage) = setup_test_env().await;
+    let source = temp.path().join("invalid");
+    std::fs::write(&source, b"not an archive").unwrap();
+    let service = UploadService::new(
+        storage,
+        ApkParser::new(PathBuf::from("aapt2")),
+        None,
+        pool.clone(),
+        1000,
+    );
+    let job = upload_jobs::enqueue(
+        &pool,
+        &temp.path().join("storage"),
+        "admin",
+        "invalid.bin",
+        &source,
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    upload_jobs::process_next(&pool, &service).await.unwrap();
+    let failed = upload_jobs::get(&pool, &job.id).await.unwrap();
+    assert_eq!(failed.status, "failed");
+    assert!(failed.error.unwrap().contains("Invalid file type"));
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM app_versions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    assert!(std::path::Path::new(&job.input_path).exists());
+}

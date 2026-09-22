@@ -35,6 +35,7 @@ pub struct LatestVersionInfo {
     pub min_sdk: i64,
     pub uploaded_at: String,
     pub is_beta: bool,
+    pub publication_state: String,
 }
 
 /// App info for list endpoint
@@ -48,6 +49,8 @@ pub struct AppListItem {
     pub total_size: i64,
     pub latest_version: Option<LatestVersionInfo>,
     pub access_level: AppAccessLevel,
+    pub distribution_mode: String,
+    pub publication_revision: i64,
 }
 
 /// Version info with URLs for detail endpoint
@@ -62,6 +65,10 @@ pub struct AppVersionInfo {
     pub min_sdk: i64,
     pub uploaded_at: String,
     pub is_beta: bool,
+    pub publication_state: String,
+    pub distribution_mode: String,
+    pub release_notes: String,
+    pub published_at: Option<String>,
 }
 
 /// App detail response
@@ -74,6 +81,8 @@ pub struct AppDetailResponse {
     pub icon_url: String,
     pub versions: Vec<AppVersionInfo>,
     pub access_level: AppAccessLevel,
+    pub distribution_mode: String,
+    pub publication_revision: i64,
 }
 
 /// Apps list response
@@ -116,6 +125,10 @@ fn to_version_info(v: &AppVersion) -> AppVersionInfo {
         min_sdk: v.min_sdk,
         uploaded_at: v.uploaded_at.clone(),
         is_beta: v.is_beta,
+        publication_state: v.publication_state.clone(),
+        distribution_mode: v.distribution_mode.clone(),
+        release_notes: v.release_notes.clone(),
+        published_at: v.published_at.clone(),
     }
 }
 
@@ -183,6 +196,7 @@ pub async fn get_current_user(
 async fn list_apps_with_access(
     state: &AppState,
     access: Vec<db::access::EffectiveAppAccess>,
+    include_drafts: bool,
 ) -> Result<Json<AppsListResponse>, AppError> {
     let apps = db::get_all_apps(&state.db).await?;
 
@@ -198,8 +212,12 @@ async fn list_apps_with_access(
         let versions = db::get_app_versions(&state.db, &app.package_name)
             .await?
             .into_iter()
+            .filter(|version| include_drafts || version.publication_state == "published")
             .filter(|version| grant.access_level == AppAccessLevel::Beta || !version.is_beta)
             .collect::<Vec<_>>();
+        if !include_drafts && versions.is_empty() {
+            continue;
+        }
         let total_size = versions.iter().map(|version| version.size).sum();
         let latest = versions.into_iter().max_by_key(|v| v.version_code);
 
@@ -210,6 +228,7 @@ async fn list_apps_with_access(
             icon_url: make_icon_url(state, &app.package_name, app.icon_path.as_deref()).await,
             total_size,
             latest_version: latest.map(|v| LatestVersionInfo {
+                publication_state: v.publication_state,
                 version_code: v.version_code,
                 version_name: v.version_name,
                 size: v.size,
@@ -218,6 +237,8 @@ async fn list_apps_with_access(
                 is_beta: v.is_beta,
             }),
             access_level: grant.access_level,
+            distribution_mode: app.distribution_mode,
+            publication_revision: app.publication_revision,
         });
     }
 
@@ -233,7 +254,7 @@ pub async fn list_apps(State(state): State<AppState>) -> Result<Json<AppsListRes
             access_level: AppAccessLevel::Beta,
         })
         .collect();
-    list_apps_with_access(&state, access).await
+    list_apps_with_access(&state, access, false).await
 }
 
 pub async fn list_authorized_apps(
@@ -241,14 +262,22 @@ pub async fn list_authorized_apps(
     State(state): State<AppState>,
 ) -> Result<Json<AppsListResponse>, AppError> {
     let access = db::access::get_effective_app_access(&state.db, &user.0.subject).await?;
-    list_apps_with_access(&state, access).await
+    list_apps_with_access(&state, access, false).await
 }
 
 pub async fn list_admin_apps(
     _admin: AdminUser,
     State(state): State<AppState>,
 ) -> Result<Json<AppsListResponse>, AppError> {
-    list_apps(State(state)).await
+    let access = db::get_all_apps(&state.db)
+        .await?
+        .into_iter()
+        .map(|app| db::access::EffectiveAppAccess {
+            package_name: app.package_name,
+            access_level: AppAccessLevel::Beta,
+        })
+        .collect();
+    list_apps_with_access(&state, access, true).await
 }
 
 pub async fn get_admin_app(
@@ -256,7 +285,13 @@ pub async fn get_admin_app(
     State(state): State<AppState>,
     Path(package_name): Path<String>,
 ) -> Result<Json<AppDetailResponse>, AppError> {
-    get_app(State(state), Path(package_name)).await
+    let Json(mut response) = get_app(State(state.clone()), Path(package_name.clone())).await?;
+    response.versions = db::get_app_versions(&state.db, &package_name)
+        .await?
+        .iter()
+        .map(to_version_info)
+        .collect();
+    Ok(Json(response))
 }
 
 pub async fn get_app(
@@ -267,7 +302,7 @@ pub async fn get_app(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{}' not found", package_name)))?;
 
-    let versions = db::get_app_versions(&state.db, &package_name).await?;
+    let versions = db::get_published_versions(&state.db, &package_name).await?;
     let version_infos: Vec<AppVersionInfo> = versions.iter().map(to_version_info).collect();
 
     Ok(Json(AppDetailResponse {
@@ -277,6 +312,8 @@ pub async fn get_app(
         icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions: version_infos,
         access_level: AppAccessLevel::Beta,
+        distribution_mode: app.distribution_mode,
+        publication_revision: app.publication_revision,
     }))
 }
 
@@ -292,7 +329,7 @@ pub async fn get_authorized_app(
     let app = db::get_app(&state.db, &package_name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("App '{package_name}' not found")))?;
-    let versions = db::get_app_versions(&state.db, &package_name)
+    let versions = db::get_published_versions(&state.db, &package_name)
         .await?
         .into_iter()
         .filter(|version| access == AppAccessLevel::Beta || !version.is_beta)
@@ -305,6 +342,8 @@ pub async fn get_authorized_app(
         icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions,
         access_level: access,
+        distribution_mode: app.distribution_mode,
+        publication_revision: app.publication_revision,
     }))
 }
 
@@ -347,7 +386,7 @@ pub async fn download_apk(
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     // Get version from database
-    let versions = db::get_app_versions(&state.db, &package_name).await?;
+    let versions = db::get_published_versions(&state.db, &package_name).await?;
     let version = versions
         .into_iter()
         .find(|v| v.version_code == version_code)
@@ -386,7 +425,7 @@ pub async fn download_authorized_apk(
         db::access::get_effective_access_for_app(&state.db, &user.0.subject, &package_name)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Version {version_code} not found")))?;
-    let version = db::get_app_versions(&state.db, &package_name)
+    let version = db::get_published_versions(&state.db, &package_name)
         .await?
         .into_iter()
         .find(|version| version.version_code == version_code)
@@ -420,8 +459,17 @@ pub struct UploadResponse {
 }
 
 /// Upload a new app or version (multipart form)
+#[derive(Debug, Default, Deserialize)]
+pub struct UploadOptions {
+    #[serde(default)]
+    pub asynchronous: bool,
+}
+
 pub async fn upload_app(
-    _admin: AdminUser,
+    admin: AdminUser,
+    simple_server::axum::extract::Query(options): simple_server::axum::extract::Query<
+        UploadOptions,
+    >,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
@@ -434,6 +482,8 @@ pub async fn upload_app(
     let mut override_description: Option<String> = None;
     let mut is_beta = false;
     let mut replace_latest = false;
+    let mut publication = None;
+    let mut distribution_mode = None;
 
     // Process multipart fields
     while let Some(mut field) = multipart
@@ -481,6 +531,12 @@ pub async fn upload_app(
                     AppError::Internal(format!("Failed to finish upload: {error}"))
                 })?;
                 uploaded_file = Some((filename, upload_path));
+            }
+            Some("publication") => {
+                publication = Some(read_metadata_text(field).await?);
+            }
+            Some("distribution_mode") => {
+                distribution_mode = Some(read_metadata_text(field).await?);
             }
             Some("name") => {
                 let text = read_metadata_text(field).await?;
@@ -530,16 +586,40 @@ pub async fn upload_app(
         )
     })?;
 
-    // Process the upload using UploadService
-    let result = state
-        .upload_service
-        .process_upload_file_with_replacement(
+    if publication.as_deref() != Some("draft") {
+        return Err(AppError::BadRequest("client_upgrade_required: uploads now create drafts; send publication=draft, then publish through /publications".into()));
+    }
+    if distribution_mode.as_deref() != Some("normal") {
+        return Err(AppError::BadRequest("distribution_mode must currently be normal; Paravoid artifacts require the complete verifier before publication".into()));
+    }
+    if replace_latest {
+        return Err(AppError::BadRequest(
+            "replace_latest belongs to publication, not upload".into(),
+        ));
+    }
+    if options.asynchronous {
+        let job = crate::services::upload_jobs::enqueue(
+            &state.db,
+            &state.config.storage_path,
+            &admin.0.subject,
             &filename,
             &upload_path,
             override_name,
             override_description,
             is_beta,
-            replace_latest,
+        )
+        .await?;
+        return Ok((StatusCode::ACCEPTED, Json(job)).into_response());
+    }
+    // Process the upload using UploadService
+    let result = state
+        .upload_service
+        .process_draft_upload(
+            &filename,
+            &upload_path,
+            override_name,
+            override_description,
+            is_beta,
         )
         .await
         .map_err(|e| match e {
@@ -548,6 +628,7 @@ pub async fn upload_app(
                 ..
             }) => AppError::PayloadTooLarge,
             crate::services::UploadError::InvalidFileType => AppError::InvalidFileType,
+            crate::services::UploadError::UnsupportedShell => AppError::BadRequest(e.to_string()),
             crate::services::UploadError::VersionExists {
                 package_name,
                 version_code,
@@ -586,7 +667,6 @@ pub async fn upload_app(
         version: to_version_info(version),
     };
 
-    state.catalog_events.notify_catalog_changed();
     Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
@@ -637,6 +717,8 @@ pub async fn update_app(
         icon_url: make_icon_url(&state, &app.package_name, app.icon_path.as_deref()).await,
         versions: version_infos,
         access_level: AppAccessLevel::Beta,
+        distribution_mode: app.distribution_mode,
+        publication_revision: app.publication_revision,
     }))
 }
 
@@ -755,28 +837,33 @@ pub async fn delete_version(
     State(state): State<AppState>,
     Path((package_name, version_code)): Path<(String, i64)>,
 ) -> Result<StatusCode, AppError> {
-    // Verify version exists
-    let versions = db::get_app_versions(&state.db, &package_name).await?;
-    let _version = versions
-        .iter()
-        .find(|v| v.version_code == version_code)
-        .ok_or_else(|| {
-            AppError::NotFound(format!(
-                "Version {} not found for '{}'",
-                version_code, package_name
-            ))
-        })?;
-
-    // Check if this is the last version
-    let is_last_version = versions.len() == 1;
-
-    // Commit the catalog change first. Deleting the app directly when this is
-    // its final version lets the foreign-key cascade make it one DB operation.
-    if is_last_version {
-        db::delete_app(&state.db, &package_name).await?;
-    } else {
-        db::delete_app_version(&state.db, &package_name, version_code).await?;
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ?",
+    )
+    .bind(&package_name)
+    .execute(&mut *tx)
+    .await?;
+    let removed = sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ? AND publication_state = 'draft'")
+        .bind(&package_name).bind(version_code).execute(&mut *tx).await?;
+    if removed.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Only drafts can be deleted. Published releases must be withdrawn.".into(),
+        ));
     }
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM app_versions WHERE package_name = ?")
+            .bind(&package_name)
+            .fetch_one(&mut *tx)
+            .await?;
+    let is_last_version = remaining == 0;
+    if is_last_version {
+        sqlx::query("DELETE FROM apps WHERE package_name = ?")
+            .bind(&package_name)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
 
     if let Err(error) = state.storage.delete_apk(&package_name, version_code) {
         tracing::warn!(

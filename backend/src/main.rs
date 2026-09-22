@@ -128,7 +128,7 @@ async fn run() -> Result<(), BoxError> {
         db: db.clone(),
         config: Arc::new(config.clone()),
         auth: auth_state,
-        upload_service,
+        upload_service: upload_service.clone(),
         storage,
         catalog_events: catalog_events.clone(),
     };
@@ -146,6 +146,14 @@ async fn run() -> Result<(), BoxError> {
         metrics_listener.local_addr()?
     );
 
+    lifecycle.service(
+        "upload-validation",
+        lellostore_backend::services::upload_jobs::run(
+            db.clone(),
+            upload_service,
+            lifecycle.shutdown(),
+        ),
+    )?;
     lifecycle.service(
         "http",
         simple_server::http::serve(listener, app, lifecycle.shutdown()),

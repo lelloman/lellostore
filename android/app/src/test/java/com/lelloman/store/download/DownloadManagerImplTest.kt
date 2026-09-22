@@ -64,6 +64,16 @@ class DownloadManagerImplTest {
         installationCoordinator = mockk(relaxed = true)
         foregroundServiceStarter = mockk(relaxed = true)
 
+        coEvery { remoteApiClient.acquireApk(any(), any(), any()) } coAnswers {
+            val packageName = firstArg<String>()
+            val versionCode = secondArg<Int>()
+            val version = appsRepository.refreshApp(packageName).getOrThrow().versions.first { it.versionCode == versionCode }
+            Result.success(com.lelloman.store.domain.model.ApkAcquisition(packageName, packageName, versionCode, version.size, version.sha256!!))
+        }
+        coEvery { remoteApiClient.downloadAcquisition(any()) } coAnswers {
+            remoteApiClient.downloadApk(firstArg(), 1)
+        }
+
         val cacheDir = tempFolder.newFolder("cache")
         every { context.cacheDir } returns cacheDir
         every { context.packageName } returns "com.lelloman.store"

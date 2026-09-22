@@ -1,9 +1,12 @@
 <template>
   <v-dialog v-model="model" max-width="500" persistent>
     <v-card>
-      <v-card-title>Upload Application</v-card-title>
+      <v-card-title>Upload draft</v-card-title>
 
       <v-card-text>
+        <v-alert type="info" variant="tonal" class="mb-4">
+          Uploads create a draft. Review and publish it from the app’s Releases page when it is ready. Saved uploads continue validating on the server; check Uploads for results.
+        </v-alert>
         <!-- Drop zone -->
         <div
           class="drop-zone pa-8 text-center rounded-lg mb-4"
@@ -66,8 +69,8 @@
 
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" :disabled="isUploading" @click="close">
-          Cancel
+        <v-btn variant="text" @click="close">
+          {{ isUploading ? 'Hide' : 'Cancel' }}
         </v-btn>
         <v-btn
           color="primary"
@@ -75,7 +78,7 @@
           :loading="isUploading"
           @click="upload"
         >
-          Upload
+          Upload and validate
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -180,7 +183,7 @@ function reset() {
 
 // Reset when dialog closes
 watch(model, (open) => {
-  if (!open) reset()
+  if (!open && !isUploading.value) reset()
 })
 </script>
 

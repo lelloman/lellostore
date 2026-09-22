@@ -114,7 +114,7 @@ async function request<T>(
           break
         case 409:
           error.error = 'conflict'
-          error.message = 'Version already exists. Delete it first to re-upload.'
+          error.message = 'The release changed or its identity is already in use. Refresh the review.'
           break
         case 413:
           error.error = 'payload_too_large'
@@ -153,12 +153,17 @@ export interface AppVersion {
   uploaded_at: string
   apk_url: string
   is_beta?: boolean
+  publication_state?: 'draft' | 'published' | 'withdrawn'
+  distribution_mode?: 'normal' | 'paravoid'
+  release_notes?: string
+  published_at?: string | null
 }
 
 export type AccessLevel = 'stable' | 'beta'
 
 // Version info in list endpoint (subset of full version)
 export interface LatestVersionInfo {
+  publication_state?: 'draft' | 'published' | 'withdrawn'
   version_code: number
   version_name: string
   size: number
@@ -176,6 +181,8 @@ export interface AppListItem {
   total_size: number
   latest_version?: LatestVersionInfo
   access_level?: AccessLevel
+  distribution_mode?: 'normal' | 'paravoid'
+  publication_revision?: number
 }
 
 // App in detail response
@@ -186,6 +193,8 @@ export interface App {
   icon_url: string
   versions: AppVersion[]
   access_level?: AccessLevel
+  distribution_mode?: 'normal' | 'paravoid'
+  publication_revision?: number
 }
 
 export interface KnownUser {
@@ -221,12 +230,47 @@ export interface AppsResponse {
   apps: AppListItem[]
 }
 
+export interface UploadJob {
+  id: string
+  file_name: string
+  actor_subject: string
+  status: 'queued' | 'validating' | 'ready' | 'failed'
+  result_json: string | null
+  error: string | null
+  created_at: string
+}
+
 export interface UploadResponse {
   package_name: string
   name: string
   description?: string
   icon_url: string
   version: AppVersion
+}
+
+export interface PublicationEvent {
+  id: number
+  version_code: number
+  revision: number
+  actor_subject: string
+  action: 'publish' | 'withdraw'
+  created_at: string
+}
+
+export interface PublicationResult {
+  package_name: string
+  version_code: number
+  publication_revision: number
+  publication_state: 'published' | 'withdrawn'
+}
+
+export interface ApkAcquisition {
+  id: string
+  package_name: string
+  version_code: number
+  size: number
+  sha256: string
+  expires_at: number
 }
 
 // API Methods
@@ -249,12 +293,30 @@ export const api = {
   },
 
   async downloadApk(packageName: string, versionCode: number): Promise<Blob> {
-    return request(
-      `/api/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/apk`,
-      {},
+    const acquisition = await api.acquireApk(packageName, versionCode)
+    if (acquisition.package_name !== packageName || acquisition.version_code !== versionCode ||
+      !/^[a-zA-Z0-9_-]{1,128}$/.test(acquisition.id) ||
+      !/^[a-fA-F0-9]{64}$/.test(acquisition.sha256) || !Number.isSafeInteger(acquisition.size) || acquisition.size <= 0) {
+      throw new Error('The server returned invalid acquisition metadata')
+    }
+    const blob = await request<Blob>(
+      `/api/acquisitions/${encodeURIComponent(acquisition.id)}/apk`,
+      { redirect: 'error' },
       false,
       (response) => response.blob()
     )
+    if (blob.size !== acquisition.size) throw new Error('Downloaded APK size does not match its acquisition')
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
+    const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+    if (sha256 !== acquisition.sha256.toLowerCase()) throw new Error('Downloaded APK failed integrity verification')
+    return blob
+  },
+
+  async acquireApk(packageName: string, versionCode: number): Promise<ApkAcquisition> {
+    return request(`/api/apps/${encodeURIComponent(packageName)}/acquisitions`, {
+      method: 'POST', redirect: 'error',
+      body: JSON.stringify({ version_code: versionCode, purpose: 'install', idempotency_key: crypto.randomUUID() }),
+    })
   },
 
   // Admin endpoints
@@ -349,14 +411,59 @@ export const api = {
   ): Promise<UploadResponse> {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('publication', 'draft')
+    formData.append('distribution_mode', 'normal')
     if (name) formData.append('name', name)
     if (description) formData.append('description', description)
     formData.append('is_beta', String(isBeta))
 
-    return request('/api/admin/apps', {
-      method: 'POST',
-      body: formData,
+    let job = await request<UploadJob>('/api/admin/apps?asynchronous=true', {
+      method: 'POST', body: formData,
     })
+    const id = job.id
+    const deadline = Date.now() + 10 * 60 * 1000
+    while (job.status === 'queued' || job.status === 'validating') {
+      if (Date.now() > deadline) throw new Error(`Upload ${id} is still validating. Check Uploads for its result.`)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      job = await request<UploadJob>(`/api/admin/uploads/${encodeURIComponent(id)}`)
+    }
+    if (job.status === 'failed') throw new Error(`Upload ${id}: ${job.error || 'Validation failed'}. See Uploads to retry.`)
+    const identity = JSON.parse(job.result_json || '{}') as { package_name: string; version_code: number }
+    const app = await api.getAdminApp(identity.package_name)
+    const version = app.versions.find(v => v.version_code === identity.version_code)
+    if (!version) throw new Error('The validated draft was removed. Check Uploads for details.')
+    return { package_name: app.package_name, name: app.name, description: app.description, icon_url: app.icon_url, version }
+
+  },
+
+  async getUploads(): Promise<UploadJob[]> {
+    return request('/api/admin/uploads')
+  },
+
+  async retryUpload(id: string): Promise<UploadJob> {
+    return request(`/api/admin/uploads/${encodeURIComponent(id)}/retry`, { method: 'POST' })
+  },
+
+  async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false): Promise<PublicationResult> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/publications`, {
+      method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, replace_latest: replaceLatest }),
+    })
+  },
+
+  async withdrawRelease(packageName: string, versionCode: number, expectedRevision: number): Promise<PublicationResult> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/withdraw`, {
+      method: 'POST', body: JSON.stringify({ expected_revision: expectedRevision }),
+    })
+  },
+
+  async saveDraft(packageName: string, versionCode: number, releaseNotes: string, isBeta: boolean): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/versions/${versionCode}/draft`, {
+      method: 'PUT', body: JSON.stringify({ release_notes: releaseNotes, is_beta: isBeta }),
+    })
+  },
+
+  async getPublicationHistory(packageName: string): Promise<PublicationEvent[]> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/publications`)
   },
 
   async updateApp(

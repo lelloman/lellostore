@@ -26,6 +26,7 @@
           Access
         </v-btn>
 
+        <v-btn v-if="authStore.isAdmin" :to="{ name: 'uploads-admin' }" variant="text" aria-label="Upload history">Uploads</v-btn>
         <v-spacer />
 
         <v-chip

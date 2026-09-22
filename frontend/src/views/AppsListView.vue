@@ -89,7 +89,7 @@
       <h2 class="text-h5 font-weight-bold mb-2">Your catalog is ready</h2>
       <p class="text-body-1 text-medium-emphasis mb-6">
         {{ authStore.isAdmin
-          ? 'Upload an APK or AAB to publish the first application.'
+          ? 'Upload an APK or AAB to prepare the first release.'
           : 'There are no applications available yet.' }}
       </p>
       <v-btn
@@ -98,7 +98,7 @@
         prepend-icon="mdi-cloud-upload-outline"
         @click="showUploadDialog = true"
       >
-        Upload first app
+        Upload first draft
       </v-btn>
     </v-card>
 
@@ -153,6 +153,7 @@
               variant="tonal"
             >
               v{{ item.latest_version.version_name }}
+              <span v-if="item.latest_version.publication_state && item.latest_version.publication_state !== 'published'" class="ml-1">· {{ item.latest_version.publication_state }}</span>
             </v-chip>
           </div>
 
@@ -210,6 +211,7 @@
         <span v-if="item.latest_version">
           {{ item.latest_version.version_name }}
           <span class="text-medium-emphasis">({{ item.latest_version.version_code }})</span>
+          <span v-if="item.latest_version.publication_state && item.latest_version.publication_state !== 'published'"> · {{ item.latest_version.publication_state }}</span>
         </span>
         <span v-else class="text-medium-emphasis">—</span>
       </template>

@@ -1,6 +1,8 @@
 pub mod access;
+pub mod acquisitions;
 pub mod admin;
 pub mod models;
+pub mod publications;
 
 use sqlx::sqlite::{SqliteConnection, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
@@ -74,6 +76,15 @@ pub async fn get_latest_version(
     .fetch_optional(pool)
     .await
     .map_err(AppError::Database)
+}
+
+pub async fn get_published_versions(
+    pool: &SqlitePool,
+    package_name: &str,
+) -> Result<Vec<AppVersion>, AppError> {
+    sqlx::query_as::<_, AppVersion>(
+        "SELECT * FROM app_versions WHERE package_name = ? AND publication_state = 'published' ORDER BY version_code DESC",
+    ).bind(package_name).fetch_all(pool).await.map_err(AppError::Database)
 }
 
 /// Insert a new app
