@@ -19,11 +19,21 @@ pub struct ComponentInspection {
     pub entries: Vec<ComponentEntry>,
 }
 
-struct Region<'a, R> {
+pub(super) struct Region<'a, R> {
     reader: &'a mut R,
     start: u64,
     length: u64,
     position: u64,
+}
+impl<'a, R> Region<'a, R> {
+    pub(super) fn new(reader: &'a mut R, start: u64, length: u64) -> Self {
+        Self {
+            reader,
+            start,
+            length,
+            position: 0,
+        }
+    }
 }
 impl<R: Read + Seek> Read for Region<'_, R> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
@@ -156,7 +166,7 @@ pub(super) fn scan<R: Read + Seek>(
         }
         let flags = u16_at(&header, 8);
         let method = u16_at(&header, 10);
-        if ![10, 20].contains(&u16_at(&header, 6))
+        if u16_at(&header, 6) > 20
             || flags & !0x080e != 0
             || ![0, 8].contains(&method)
             || (method == 0 && flags & 6 != 0)
@@ -259,7 +269,7 @@ pub(super) fn scan<R: Read + Seek>(
         region
             .read_exact(&mut central_name)
             .map_err(|_| InspectionError::Read)?;
-        if central_name != local_name {
+        if central_name != local_name || std::str::from_utf8(&central_name).is_err() {
             return Err(InspectionError::Archive);
         }
         region
@@ -270,7 +280,12 @@ pub(super) fn scan<R: Read + Seek>(
         return Err(InspectionError::Archive);
     }
     ranges.sort_unstable();
-    if ranges.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+    if ranges.first().is_some_and(|range| range.0 != 0)
+        || ranges
+            .last()
+            .map_or(central != 0, |range| range.1 != central)
+        || ranges.windows(2).any(|pair| pair[0].1 != pair[1].0)
+    {
         return Err(InspectionError::Archive);
     }
     let mut archive = zip::ZipArchive::new(region).map_err(|_| InspectionError::Archive)?;

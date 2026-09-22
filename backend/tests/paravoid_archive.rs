@@ -212,6 +212,9 @@ fn rejects_signed_scope_inventory_ledger_and_abi_mismatches() {
         ("applicationId", json!("other.app")),
         ("runtimeAbi", json!(2)),
         ("payloadVersion", json!(0)),
+        ("minSdk", json!(29)),
+        ("minSdk", json!(2_147_483_648_u64)),
+        ("maxSdk", json!(2_147_483_648_u64)),
         ("maxSdk", json!(29)),
         ("ledgerSha256", json!("0".repeat(64))),
         ("abis", json!(["arm64-v8a"])),
@@ -387,4 +390,321 @@ fn rejects_duplicate_raw_names_in_outer_and_nested_archives() {
     assert!(f
         .inspect(zip(&f.signed(files, |_| {}), CompressionMethod::Stored))
         .is_err());
+}
+
+#[test]
+fn rejects_hidden_nested_bytes_and_non_utf8_names() {
+    let f = Fixture::new();
+    let nested = zip(
+        &BTreeMap::from([("asset.txt".into(), b"content".to_vec())]),
+        CompressionMethod::Stored,
+    );
+    let directory = central(&nested);
+    for insertion in [0, directory] {
+        let mut bad = nested.clone();
+        bad.splice(insertion..insertion, b"hidden".iter().copied());
+        let end = bad.len() - 22;
+        let shifted = directory + 6;
+        bad[end + 16..end + 20].copy_from_slice(&(shifted as u32).to_le_bytes());
+        if insertion == 0 {
+            bad[shifted + 42..shifted + 46].copy_from_slice(&6_u32.to_le_bytes());
+        }
+        let mut files = f.files();
+        files.insert("java-resources.jar".into(), bad);
+        assert!(f
+            .inspect(zip(&f.signed(files, |_| {}), CompressionMethod::Stored))
+            .is_err());
+    }
+    let mut bad = nested;
+    bad[30] = 0xff;
+    bad[directory + 46] = 0xff;
+    let mut files = f.files();
+    files.insert("java-resources.jar".into(), bad);
+    assert!(f
+        .inspect(zip(&f.signed(files, |_| {}), CompressionMethod::Stored))
+        .is_err());
+}
+
+fn format_valid_files(f: &Fixture) -> BTreeMap<String, Vec<u8>> {
+    // Structurally valid headers/checksums, deliberately not executable Android content.
+    let mut files = f.files();
+    let mut dex = vec![0; 112];
+    dex[..8].copy_from_slice(b"dex\n035\0");
+    dex[32..36].copy_from_slice(&112_u32.to_le_bytes());
+    dex[36..40].copy_from_slice(&112_u32.to_le_bytes());
+    dex[40..44].copy_from_slice(&0x12345678_u32.to_le_bytes());
+    let signature = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, &dex[32..]);
+    dex[12..32].copy_from_slice(signature.as_ref());
+    let mut adler = adler2::Adler32::new();
+    adler.write_slice(&dex[12..]);
+    dex[8..12].copy_from_slice(&adler.checksum().to_le_bytes());
+    files.insert("code/classes.dex".into(), dex);
+    let mut table = vec![0; 12];
+    table[..4].copy_from_slice(&0x000c0002_u32.to_le_bytes());
+    table[4..8].copy_from_slice(&12_u32.to_le_bytes());
+    files.insert(
+        "resources.apk".into(),
+        zip(
+            &BTreeMap::from([("resources.arsc".into(), table)]),
+            CompressionMethod::Deflated,
+        ),
+    );
+    files.insert("resource-ledger.json".into(),serde_json::to_vec(&json!({"version":1,"applicationId":"example.app","entries":[{"name":"string/title","id":"0x7f010001","removed":false}]})).unwrap());
+    files
+}
+#[test]
+fn checks_component_formats_and_pinned_resource_reservations() {
+    let f = Fixture::new();
+    let files = format_valid_files(&f);
+    let reservations = BTreeMap::from([("string/title".into(), "0x7f010001".into())]);
+    let verify = |files| {
+        let bytes = zip(&f.signed(files, |_| {}), CompressionMethod::Stored);
+        if let Ok(classes) = std::env::var("PARAVOID_VPK_JAVA_CLASSES") {
+            let archive = f.directory.path().join("candidate.vpk");
+            let pinned = f.directory.path().join("reservations.json");
+            std::fs::write(&archive, &bytes).unwrap();
+            std::fs::write(&pinned, serde_json::to_vec(&reservations).unwrap()).unwrap();
+            let java = Command::new("java")
+                .args(["-cp", &classes, "StoreVpkCheck"])
+                .arg(&archive)
+                .arg(f.directory.path().join("trust.json"))
+                .arg("a".repeat(64))
+                .arg(&pinned)
+                .output()
+                .unwrap();
+            let rust = lellostore_backend::paravoid::compatibility::inspect(
+                &mut Cursor::new(bytes.clone()),
+                &f.trust,
+                &"a".repeat(64),
+                &reservations,
+            );
+            assert_eq!(
+                rust.is_ok(),
+                java.status.success(),
+                "Java/Rust VPK verdict disagrees"
+            );
+        }
+        lellostore_backend::paravoid::compatibility::inspect(
+            &mut Cursor::new(bytes),
+            &f.trust,
+            &"a".repeat(64),
+            &reservations,
+        )
+    };
+    let report = verify(files.clone()).unwrap();
+    assert_eq!(report.dex_files, 1);
+    assert_eq!(report.resource_reservations, 1);
+    // Re-signing malicious content cannot make a corrupt DEX acceptable.
+    for index in [0, 8, 12, 32, 36, 40, 111] {
+        let mut bad = files.clone();
+        bad.get_mut("code/classes.dex").unwrap()[index] ^= 1;
+        assert!(verify(bad).is_err(), "DEX byte {index}");
+    }
+    let mut bad = files.clone();
+    bad.insert(
+        "resource-ledger.json".into(),
+        br#"{"version":1,"applicationId":"example.app","entries":[]}"#.to_vec(),
+    );
+    assert!(verify(bad).is_err());
+    let mut bad = files.clone();
+    bad.insert("resource-ledger.json".into(),br#"{"version":1,"applicationId":"example.app","entries":[{"name":"string/title","id":"0x7f010001","removed":true},{"name":"string/other","id":"0x7f010001","removed":false}]}"#.to_vec());
+    assert!(verify(bad).is_err());
+    let mut bad = files.clone();
+    bad.insert("native/arm64-v8a/libbad.so".into(), vec![0; 20]);
+    assert!(verify(bad).is_err());
+    let mut bad = files;
+    bad.insert(
+        "resources.apk".into(),
+        zip(
+            &BTreeMap::from([("resources.arsc".into(), vec![0; 12])]),
+            CompressionMethod::Stored,
+        ),
+    );
+    assert!(verify(bad).is_err());
+}
+
+#[test]
+fn policy_preflight_checks_the_complete_contract_without_claiming_apk_verification() {
+    let f = Fixture::new();
+    let trust: Value =
+        serde_json::from_slice(&std::fs::read(f.directory.path().join("trust.json")).unwrap())
+            .unwrap();
+    let descriptor = json!({"profile":"complete-apk-v1","runtimeAbi":1,"trustPolicy":trust,
+        "installed":{"applicationId":"example.app","minSdk":30,"manifestSha256":"b".repeat(64),
+        "declarations":{},"pinnedResources":{},"runtimeClasses":{},"nativeAbis":{},
+        "ledgerReservations":{"string/title":"0x7f010001"},"apkSigners":["c".repeat(64)],"toolchain":{}},
+        "distribution":{"bootstrap":"embedded","enabled":false,"baseUrl":"","channel":"stable","authentication":"public","debugHttpAllowed":false}});
+    let contract = hash(&canonical_json(&descriptor).unwrap());
+    let policy = f.directory.path().join("shell-policy.json");
+    std::fs::write(
+        &policy,
+        canonical_json(&json!({"version":1,"contractId":contract,"descriptor":descriptor}))
+            .unwrap(),
+    )
+    .unwrap();
+    let archive = f.directory.path().join("policy.vpk");
+    for matching in [true, false] {
+        let bytes = zip(
+            &f.signed(format_valid_files(&f), |body| {
+                if matching {
+                    body["shellContractId"] = json!(contract);
+                }
+            }),
+            CompressionMethod::Stored,
+        );
+        std::fs::write(&archive, bytes).unwrap();
+        let result = Command::new(env!("CARGO_BIN_EXE_vpk_verify"))
+            .arg(&archive)
+            .arg("--shell-policy")
+            .arg(&policy)
+            .output()
+            .unwrap();
+        assert_eq!(
+            result.status.success(),
+            matching,
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        if matching {
+            let report: Value = serde_json::from_slice(&result.stdout).unwrap();
+            assert_eq!(report["apk_policy_verified"], false);
+            assert_eq!(report["publication_allowed"], false);
+            assert_eq!(report["inspection"]["resource_reservations"], 1);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires PARAVOID_ANDROID_COMPONENTS and PARAVOID_VPK_JAVA_CLASSES from interoperability script"]
+fn checks_real_android_components_against_upstream_java() {
+    let root = std::path::PathBuf::from(std::env::var("PARAVOID_ANDROID_COMPONENTS").unwrap());
+    let classes = std::env::var("PARAVOID_VPK_JAVA_CLASSES").unwrap();
+    let f = Fixture::new();
+    let files = BTreeMap::from([
+        (
+            "code/classes.dex".into(),
+            std::fs::read(root.join("dex/classes.dex")).unwrap(),
+        ),
+        (
+            "resources.apk".into(),
+            std::fs::read(root.join("resources.apk")).unwrap(),
+        ),
+        (
+            "java-resources.jar".into(),
+            std::fs::read(root.join("java-resources.jar")).unwrap(),
+        ),
+        (
+            "resource-ledger.json".into(),
+            std::fs::read(root.join("resource-ledger.json")).unwrap(),
+        ),
+    ]);
+    let ledger: Value = serde_json::from_slice(&files["resource-ledger.json"]).unwrap();
+    let reservations: BTreeMap<String, String> = ledger["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry["name"].as_str().unwrap().into(),
+                entry["id"].as_str().unwrap().into(),
+            )
+        })
+        .collect();
+    assert!(!reservations.is_empty());
+    let archive = f.directory.path().join("real.vpk");
+    let pinned = f.directory.path().join("reservations.json");
+    let bytes = zip(&f.signed(files, |_| {}), CompressionMethod::Stored);
+    std::fs::write(&archive, &bytes).unwrap();
+    std::fs::write(&pinned, serde_json::to_vec(&reservations).unwrap()).unwrap();
+    let rust = lellostore_backend::paravoid::compatibility::inspect(
+        &mut Cursor::new(bytes),
+        &f.trust,
+        &"a".repeat(64),
+        &reservations,
+    )
+    .unwrap();
+    assert_eq!(rust.dex_files, 1);
+    let java = Command::new("java")
+        .args(["-cp", &classes, "StoreVpkCheck"])
+        .arg(&archive)
+        .arg(f.directory.path().join("trust.json"))
+        .arg("a".repeat(64))
+        .arg(&pinned)
+        .output()
+        .unwrap();
+    assert!(
+        java.status.success(),
+        "Java rejected actual D8/AAPT2 components: {}",
+        String::from_utf8_lossy(&java.stderr)
+    );
+    let cli = Command::new(env!("CARGO_BIN_EXE_vpk_verify"))
+        .arg(&archive)
+        .arg(f.directory.path().join("trust.json"))
+        .arg("a".repeat(64))
+        .arg(&pinned)
+        .output()
+        .unwrap();
+    assert!(cli.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&cli.stdout).unwrap()["publication_allowed"],
+        false
+    );
+}
+
+#[allow(dead_code)]
+mod common;
+#[tokio::test]
+async fn durable_vpk_jobs_check_components_without_claiming_installed_policy_verification() {
+    use lellostore_backend::{
+        db::paravoid,
+        services::{upload_jobs, ApkParser, StorageService, UploadService},
+    };
+    let ctx = common::create_test_context().await;
+    let f = Fixture::new();
+    sqlx::query("INSERT INTO apps(package_name,name) VALUES ('example.app','Fixture')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,distribution_mode) VALUES ('example.app',1,'1','shell.apk',1,'hash',30,'paravoid')").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('example.app',?,1,'stable','public','embedded','https://example.test/',?,'{}','pending')").bind("a".repeat(64)).bind(std::fs::read_to_string(f.directory.path().join("trust.json")).unwrap()).execute(&ctx.pool).await.unwrap();
+    let service = UploadService::new(
+        StorageService::new(ctx.storage_path.clone()),
+        ApkParser::new("unused-aapt2".into()),
+        None,
+        ctx.pool.clone(),
+        1024 * 1024,
+    );
+    for valid in [false, true] {
+        let files = if valid {
+            format_valid_files(&f)
+        } else {
+            f.files()
+        };
+        let bytes = zip(&f.signed(files, |_| {}), CompressionMethod::Stored);
+        let input = f.directory.path().join("job.vpk");
+        std::fs::write(&input, bytes).unwrap();
+        let job = upload_jobs::enqueue_vpk(
+            &ctx.pool,
+            &ctx.storage_path,
+            "admin",
+            "job.vpk",
+            &input,
+            "example.app",
+            &"a".repeat(64),
+        )
+        .await
+        .unwrap();
+        assert!(upload_jobs::process_next(&ctx.pool, &service)
+            .await
+            .unwrap());
+        let completed = upload_jobs::get(&ctx.pool, &job.id).await.unwrap();
+        assert_eq!(completed.status, if valid { "ready" } else { "failed" });
+    }
+    let releases = paravoid::releases(&ctx.pool, "example.app").await.unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].validation_state, "inspected");
+    let report: Value = serde_json::from_str(&releases[0].validation_report).unwrap();
+    assert_eq!(report["dex_files"], 1);
+    assert_eq!(report["resource_reservations"], "pending");
+    assert!(!report["publication_ready"].as_bool().unwrap());
 }

@@ -43,7 +43,7 @@
           <p>{{ selected.release_id }} · {{ selected.publication_state }}</p>
           <p>Android API {{ selected.min_sdk }}{{ selected.max_sdk ? `–${selected.max_sdk}` : '+' }} · {{ selected.abis_json }}</p>
           <v-textarea v-model="notes" label="Release notes" :disabled="busy || selected.publication_state !== 'draft'" />
-          <v-alert v-if="selected.validation_state !== 'verified'" type="warning">Container inspection passed, but complete compatibility verification is pending. This payload cannot be published yet.</v-alert>
+          <v-alert v-if="selected.validation_state !== 'verified'" type="warning">Payload inspection passed, but verification against the installed shell is pending. This payload cannot be published yet.</v-alert>
           <details class="mt-3"><summary>Validation and signed identity</summary><pre class="hash">{{ selected.validation_report }}</pre><p class="hash">Contract: {{ selected.contract_id }}</p><p class="hash">Archive: {{ selected.archive_sha256 }}</p><p class="hash">Manifest: {{ selected.manifest_sha256 }}</p><p>Signing key: {{ selected.signing_key_id }}</p></details>
         </v-card-text>
         <v-card-actions><v-btn :disabled="busy" @click="selected = null">Close</v-btn><v-spacer />

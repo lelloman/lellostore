@@ -2,10 +2,12 @@
 //! authorization, durable replay admission, or complete VPK verification.
 pub mod apk_grant;
 pub mod archive;
+pub mod compatibility;
 mod components;
 pub use components::{ComponentEntry, ComponentInspection};
 mod json;
 mod metadata;
+pub mod shell_policy;
 pub mod signing;
 pub use json::{canonical_json, parse_json};
 pub use metadata::*;

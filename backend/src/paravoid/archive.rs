@@ -130,7 +130,8 @@ fn native_abi(path: &str) -> Option<&str> {
 fn validate_path(path: &str, size: u64) -> Result<()> {
     let limit = match path {
         "release.json" => MAX_RELEASE_BYTES as u64,
-        "resources.apk" | "java-resources.jar" | "resource-ledger.json" => MAX_ARCHIVE_BYTES,
+        "resources.apk" | "java-resources.jar" => MAX_ARCHIVE_BYTES,
+        "resource-ledger.json" => 16 * 1024 * 1024,
         p if dex_index(p).is_some() => 128 * 1024 * 1024,
         p if native_abi(p).is_some() => 256 * 1024 * 1024,
         _ => return Err(InspectionError::Archive),
@@ -346,7 +347,10 @@ pub fn inspect<R: Read + Seek>(
         || release.shell_contract_id != expected_contract
         || !identifier(&release.release_id)
         || release.payload_version == 0
-        || release.min_sdk == 0
+        || release.payload_version < trust.minimum_payload_version()
+        || release.min_sdk < 30
+        || release.min_sdk > i32::MAX as u64
+        || release.max_sdk > i32::MAX as u64
         || (release.max_sdk != 0 && release.max_sdk < release.min_sdk)
     {
         return Err(InspectionError::Incompatible);

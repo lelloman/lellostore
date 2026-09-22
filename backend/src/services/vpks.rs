@@ -2,7 +2,7 @@ use super::upload_jobs::UploadJob;
 use crate::{
     db::paravoid,
     error::AppError,
-    paravoid::{archive, TrustPolicy},
+    paravoid::{compatibility, TrustPolicy},
 };
 use sqlx::SqlitePool;
 use std::path::Path;
@@ -24,14 +24,22 @@ pub async fn process_job(
     let input = job.input_path.clone();
     let pinned = contract.trust_json.clone();
     let contract_hash = contract.contract_id.clone();
-    let inspection = tokio::task::spawn_blocking(move || {
+    let checked = tokio::task::spawn_blocking(move || {
         let trust = TrustPolicy::parse(pinned.as_bytes())
             .map_err(|e| AppError::BadRequest(e.to_string()))?;
-        archive::inspect(&mut std::fs::File::open(input)?, &trust, &contract_hash)
-            .map_err(|e| AppError::BadRequest(e.to_string()))
+        compatibility::inspect(
+            &mut std::fs::File::open(input)?,
+            &trust,
+            &contract_hash,
+            &std::collections::BTreeMap::new(),
+        )
+        .map_err(|e| AppError::BadRequest(e.to_string()))
     })
     .await
     .map_err(|_| AppError::Internal("VPK validation task failed".into()))??;
+    // Until APK policy export is integrated, format checks must not imply that
+    // the payload preserved the installed shell's resource reservations.
+    let inspection = checked.archive;
     if inspection.release.application_id != package {
         return Err(AppError::BadRequest(
             "VPK application differs from upload target".into(),
@@ -82,7 +90,7 @@ pub async fn process_job(
     let id = uuid::Uuid::new_v4().to_string();
     let manifest = serde_json::to_string(&inspection.release)
         .map_err(|_| AppError::Internal("VPK manifest serialization failed".into()))?;
-    let report = serde_json::json!({"container":"passed","signature":"passed","inventory":"passed","components":"passed","compatibility":"pending","publication_ready":false,"remaining":["Android executable/resource semantics","resource ledger and pinned shell compatibility","upstream complete VPK conformance"]});
+    let report = serde_json::json!({"container":"passed","signature":"passed","inventory":"passed","components":"passed","dex_files":checked.dex_files,"native_libraries":checked.native_libraries,"resource_reservations":"pending","compatibility":"pending","publication_ready":false,"remaining":["APK-pinned resource reservations and shell compatibility","installed shell policy verification"]});
     sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'inspected',?)")
         .bind(&id).bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(relative).bind(inspection.archive_size as i64).bind(&inspection.archive_sha256).bind(&inspection.manifest_sha256).bind(manifest).bind(inspection.release.min_sdk as i64).bind(inspection.release.max_sdk as i64).bind(serde_json::to_string(&inspection.release.abis).unwrap()).bind(&inspection.signing_key_id).bind(report.to_string()).execute(&mut *tx).await?;
     let result = serde_json::json!({"package_name":package,"vpk_id":id,"release_id":inspection.release.release_id,"payload_version":inspection.release.payload_version});
