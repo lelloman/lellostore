@@ -58,16 +58,22 @@ rollback, credential display, verification bypass or automatic data deletion.
 - Publisher draft upload, inspect, publish, withdraw and upload-and-publish flow.
 - Rust strict metadata parsing, role-separated RSA-3072 verification and canonical
   writing; all seven upstream Java metadata vectors agree at `d58457f`.
-- Bounded VPK container/signed-inventory inspection and nested APK/JAR scanning,
-  with an [offline preflight command](PARAVOID_VPK_INSPECTION.md). This is not
-  complete executable/resource compatibility verification or publication approval.
+- Bounded VPK container/signed-inventory inspection, nested APK/JAR scanning,
+  DEX/ELF/resource-table checks and resource-ledger reservation verification,
+  with an [offline preflight command](PARAVOID_VPK_INSPECTION.md). Rust and committed
+  upstream Java agree on real D8/AAPT2 content and malformed vectors. This is host
+  format interoperability, not Android execution acceptance or publication approval.
+- Strict `complete-apk-v1` shell-policy decoding with canonical contract binding,
+  trust-role and installed-boundary validation. Comparisons against upstream's
+  developing policy codec are separate from production APK registration.
 - Operator-configured online head/grant authorities, pinned-policy-checked signing,
   and admin Distribution UI/public key export. See [signing setup](PARAVOID_SIGNING.md).
 
 ### Implemented delivery and management (integration gated)
 
 - Durable VPK upload jobs targeting a registered contract; immutable files,
-  signed inventory inspection and explicit incomplete-compatibility reports.
+  signed inventory/component-format verification and explicit reports of pending
+  APK-pinned resource reservations and shell compatibility.
 - VPK review/notes/publish/withdraw/original-download UI and APIs. Publication
   requires complete verification; inspection alone never passes this gate.
 - Signed public/keyed heads, exact per-revision/scope snapshots, expiry refresh,
@@ -85,6 +91,9 @@ rollback, credential display, verification bypass or automatic data deletion.
   for verified shell registration and bootstrap publication integration.
 - Hourly bounded cleanup of expired personalized transfer copies and old successful
   upload inputs, retaining grant/job identities and immutable published artifacts.
+- Read-only restore verification of logical database state and retained artifacts,
+  with an isolated recovery test rejecting lost revocations, lower replay revisions
+  and corrupted APK bytes. See [backup and restore procedure](PARAVOID_RECOVERY.md).
 - Device SDK filtering keeps compatible historical installers available when
   the current distribution requires a newer Android release.
 - Android and browser explicit repair actions; Android retains distribution
@@ -96,15 +105,18 @@ rollback, credential display, verification bypass or automatic data deletion.
 
 ### Remaining Store work
 
-1. Shell parsing/registration, complete VPK verification and build interoperability
-   against upstream's final APK-pinned policy carrier and executable fixtures.
+1. Signed APK policy extraction/registration and production packaging interoperability
+   against upstream's final APK-pinned policy carrier. The stateless decoder and
+   component checks are implemented; registration must supply the actual installed
+   resource reservations before a VPK can become verified.
    There is intentionally no admin API to mark an unverified contract as verified.
 2. Connect the verified transition review to initial Paravoid publication, including
    embedded/empty bootstrap prerequisites and initial VPK publication. Shell
    upload/publication remains gated; existing streams are retired explicitly.
 3. Shell-controls deep link once
    upstream defines its installed management Activity contract.
-4. Device acceptance and tested backup/restore procedures. Failed inputs are
+4. Device acceptance and deployment-specific restore drills. The isolated backup
+   recovery test and operator procedure are implemented. Failed inputs are
    intentionally retained for inspection/retry; unreferenced generated transfer
    files are reclaimed after seven days. HTTP/storage metrics cover delivery traffic,
    VPKs, personalized copies and queued inputs. Keep one backend

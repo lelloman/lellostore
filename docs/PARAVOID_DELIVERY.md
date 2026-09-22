@@ -92,6 +92,8 @@ older revision/grant history under the same live endpoint without a recovery pla
 installed clients retain replay floors and copied APKs retain credentials. Contract
 and VPK identity records must survive retirement. Apps with retained contracts cannot
 be deleted through the catalog API; withdraw installers and retire streams instead.
+Use the [backup/restore procedure and checkpoint verifier](PARAVOID_RECOVERY.md)
+to check an isolated recovery before restoring traffic.
 
 Hourly cleanup removes personalized transfer directories one hour after their
 24-hour acquisition expiry, and successful upload inputs after seven days. It retains
