@@ -104,29 +104,35 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
     )
     .await
     .unwrap();
-    let acquired = server
+    let store_ui = std::env::var_os("PARAVOID_STORE_UI").is_some();
+    let (acquired, carrier) = if store_ui {
+        (Value::Null, scratch.path().join("unused.apk"))
+    } else {
+        let acquired = server
         .post(&format!("/api/apps/{package}/acquisitions"))
         .add_header("Authorization", &user)
         .json(&json!({"version_code":code,"purpose":"install","idempotency_key":"device-install"}))
         .await;
-    acquired.assert_status_ok();
-    let acquired: Value = acquired.json();
-    let delivered = server
-        .get(acquired["apk_url"].as_str().unwrap())
-        .add_header("Authorization", &user)
-        .await;
-    delivered.assert_status_ok();
-    assert_eq!(acquired["size"], delivered.as_bytes().len());
-    assert_eq!(
-        acquired["sha256"],
-        hex::encode(Sha256::digest(delivered.as_bytes()))
-    );
-    let carrier = scratch.path().join("acquired.apk");
-    std::fs::write(&carrier, delivered.as_bytes()).unwrap();
+        acquired.assert_status_ok();
+        let acquired: Value = acquired.json();
+        let delivered = server
+            .get(acquired["apk_url"].as_str().unwrap())
+            .add_header("Authorization", &user)
+            .await;
+        delivered.assert_status_ok();
+        assert_eq!(acquired["size"], delivered.as_bytes().len());
+        assert_eq!(
+            acquired["sha256"],
+            hex::encode(Sha256::digest(delivered.as_bytes()))
+        );
+        let carrier = scratch.path().join("acquired.apk");
+        std::fs::write(&carrier, delivered.as_bytes()).unwrap();
+        (acquired, carrier)
+    };
     let control = scratch.path().join("device.json");
     std::fs::write(&control, json!({"server":server.server_address().unwrap().as_str(),"admin":admin,"user":user,
         "package":package,"version":code,"release":release_id,"acquisition":acquired["id"],"apk":carrier,"source":source,
-        "fixture":fixture,"serial":serial}).to_string()).unwrap();
+        "fixture":fixture,"serial":serial,"store_ui":store_ui}).to_string()).unwrap();
     std::fs::set_permissions(&control, std::fs::Permissions::from_mode(0o600)).unwrap();
     // Keep the real durable worker running while the device publishes its update.
     let worker_pool = ctx.pool.clone();
@@ -160,4 +166,12 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
     assert_eq!(grants.len(), 2);
     assert_eq!(grants.iter().filter(|g| g.revoked_at.is_some()).count(), 1);
     assert!(grants.iter().all(|g| g.request_count > 0));
+    let mut purposes: Vec<String> =
+        sqlx::query_scalar("SELECT purpose FROM acquisitions WHERE package_name = ?")
+            .bind(package)
+            .fetch_all(&ctx.pool)
+            .await
+            .unwrap();
+    purposes.sort();
+    assert_eq!(purposes, ["install", "repair"]);
 }

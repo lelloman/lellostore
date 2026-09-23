@@ -146,9 +146,21 @@ The packaging and controls integration blockers are resolved. Store-backed keyed
 empty-shell HTTPS bootstrap, a second payload with unchanged APK, revocation,
 same-version repair and offline launch now pass on API 30 and API 36.1. See
 [device acceptance](PARAVOID_DEVICE_ACCEPTANCE.md) for exact scope and reproduction.
-Remaining work includes the Store Android client's install UI, physical ARM64 and
-real-app normal → shell → payload → normal data preservation, plus deployment
-configuration and restore drills. Upstream's device evidence is recorded in its
+The opt-in Android UI sequence also passes on API 30 and API 36.1. It uses the
+production HTTP client, download verifier,
+installer and Store screens. It found and fixed three client issues: omitted
+`install` acquisition purpose, reuse of an old installer completion task for the
+same APK URI, and reopening a payload screen instead of the exported update
+controls. Same-version repair must replace the installed APK and retain its active
+payload; old completion tasks are deliberately retained during this test.
+
+Remaining acceptance requires physical ARM64 and real-app normal → shell → payload
+→ normal data preservation, plus deployment configuration and restore drills.
+The available upstream Pezzottify fixture uses a separate `.paravoid` package and
+debug HTTP. It cannot establish an in-place migration from the published normal
+app. That gate needs author-supplied candidates with the same package/signing
+identity, HTTPS policy, and an approved test backend/account for authenticated
+playback and retained content. Upstream's device evidence is recorded in its
 `RELEASE-READINESS.md`; it is not a substitute for exercising LelloStore as the
 actual distributor. No production deployment or phone testing is claimed here.
 

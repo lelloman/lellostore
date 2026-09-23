@@ -19,5 +19,5 @@ internal data class ApkAcquisitionDto(
 internal data class AcquisitionRequestDto(
     @SerialName("version_code") val versionCode: Int,
     @SerialName("idempotency_key") val idempotencyKey: String,
-    val purpose: String = "install",
+    val purpose: String,
 )

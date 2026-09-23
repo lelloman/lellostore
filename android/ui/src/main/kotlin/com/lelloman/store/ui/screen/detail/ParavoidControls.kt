@@ -26,7 +26,9 @@ internal object ParavoidControls {
 
     private fun intent(context: Context, packageName: String): Intent? {
         val intent = Intent().setComponent(ComponentName(packageName, ACTIVITY))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Reopen the controls themselves when a payload Activity sits above the
+            // exported alias in the shell's existing task.
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val activity = try {
             context.packageManager.resolveActivity(intent, 0)?.activityInfo
         } catch (_: SecurityException) {

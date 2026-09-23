@@ -36,7 +36,10 @@ class PackageInstallerChannel @Inject constructor(
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, APK_MIME_TYPE)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // A same-version access repair reuses the APK URI. Reusing an older
+            // installer task can reopen its success screen without installing
+            // the newly acquired bytes, so each attempt needs a fresh task.
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)

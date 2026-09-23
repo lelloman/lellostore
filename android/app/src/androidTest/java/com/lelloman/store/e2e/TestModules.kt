@@ -102,7 +102,7 @@ object TestAppModule {
 
     @Provides
     @DefaultServerUrl
-    fun provideDefaultServerUrl(): String = "http://localhost:8080"
+    fun provideDefaultServerUrl(): String = StoreDeviceArguments.serverUrl ?: "http://localhost:8080"
 
     @Provides
     @Singleton
@@ -274,7 +274,12 @@ object TestRemoteApiModuleImpl {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient = OkHttpClient()
+    fun provideOkHttpClient(
+        authStore: AuthStore,
+        sessionExpiredHandler: SessionExpiredHandler,
+    ): OkHttpClient = if (StoreDeviceArguments.enabled) {
+        RemoteApiModule.provideOkHttpClient(authStore, sessionExpiredHandler)
+    } else OkHttpClient()
 
     @Provides
     @Singleton
@@ -285,7 +290,8 @@ object TestRemoteApiModuleImpl {
 
     @Provides
     @Singleton
-    fun provideHttpClient(json: Json): HttpClient = HttpClient(OkHttp) {
+    fun provideHttpClient(json: Json, okHttpClient: OkHttpClient): HttpClient = HttpClient(OkHttp) {
+        engine { preconfigured = okHttpClient }
         install(ContentNegotiation) {
             json(json)
         }
@@ -295,7 +301,10 @@ object TestRemoteApiModuleImpl {
     @Singleton
     fun provideRemoteApiClient(
         httpClient: HttpClient,
-    ): RemoteApiClient = TestRemoteApiClient(httpClient)
+        configStore: ConfigStore,
+    ): RemoteApiClient = if (StoreDeviceArguments.enabled) {
+        RemoteApiModule.provideRemoteApiClient(httpClient, configStore)
+    } else TestRemoteApiClient(httpClient)
 }
 
 /**
@@ -416,7 +425,7 @@ class FakeAuthStore : AuthStore {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Authenticated("test@example.com"))
     override val authState: StateFlow<AuthState> = _authState
 
-    override suspend fun getAccessToken(): String = "test-access-token"
+    override suspend fun getAccessToken(): String = StoreDeviceArguments.token ?: "test-access-token"
 
     override suspend fun logout() {
         _authState.value = AuthState.NotAuthenticated

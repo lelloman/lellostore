@@ -4,6 +4,10 @@ import com.google.common.truth.Truth.assertThat
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import com.lelloman.store.domain.model.AcquisitionPurpose
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -25,6 +29,28 @@ class RemoteApiClientImplTest {
             }
         }
         return RemoteApiClientImpl(httpClient) { baseUrl }
+    }
+
+    @Test
+    fun `acquisitions always send required purpose including install`() = runTest {
+        for (purpose in AcquisitionPurpose.entries) {
+            val mockEngine = MockEngine { request ->
+                assertThat(request.url.toString()).isEqualTo("$baseUrl/api/apps/com.example.app/acquisitions")
+                assertThat(request.method.value).isEqualTo("POST")
+                val body = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject
+                assertThat(body.keys).containsExactly("version_code", "idempotency_key", "purpose")
+                assertThat(body.getValue("purpose").jsonPrimitive.content).isEqualTo(purpose.wireValue)
+                assertThat(body.getValue("version_code").jsonPrimitive.content).isEqualTo("7")
+                assertThat(body.getValue("idempotency_key").jsonPrimitive.content).isEqualTo("attempt-1")
+                respond(
+                    content = """{"id":"copy-1","package_name":"com.example.app","version_code":7,"size":1234,"sha256":"delivered-hash"}""",
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            }
+            val acquired = createClient(mockEngine).acquireApk("com.example.app", 7, "attempt-1", purpose).getOrThrow()
+            assertThat(acquired.size).isEqualTo(1234)
+            assertThat(acquired.sha256).isEqualTo("delivered-hash")
+        }
     }
 
     @Test
