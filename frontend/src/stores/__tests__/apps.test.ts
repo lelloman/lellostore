@@ -59,6 +59,21 @@ describe('Apps Store', () => {
   })
 
   describe('fetchApp', () => {
+    it('keeps the current review mounted during a background refresh', async () => {
+      const store = useAppsStore()
+      const app = { package_name: 'com.test.app', name: 'Test App', icon_url: '', versions: [], publication_revision: 1 }
+      store.currentApp = app
+      let complete!: (value: typeof app) => void
+      vi.mocked(api.getApp).mockImplementation(() => new Promise(resolve => { complete = resolve }))
+      const refresh = store.fetchApp(app.package_name, true)
+      expect(store.currentApp).toEqual(app)
+      expect(store.isLoading).toBe(false)
+      complete({ ...app, publication_revision: 2 })
+      await refresh
+      expect(store.currentApp?.publication_revision).toBe(2)
+      expect(store.isLoading).toBe(false)
+    })
+
     it('fetches single app and updates currentApp', async () => {
       const mockApp = {
         package_name: 'com.test.app',

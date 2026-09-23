@@ -94,8 +94,11 @@
             <v-checkbox v-model="migration.authentication_preserved" label="Existing authentication is preserved" :disabled="busy" hide-details />
             <v-checkbox v-model="migration.files_preserved" label="App files are preserved" :disabled="busy" hide-details />
             <v-textarea v-model="migration.evidence" label="Migration test evidence" hint="Record builds, devices and test results or a report link" :disabled="busy" counter="8192" />
-            <v-btn :disabled="busy || dirty || isBeta || !migrationReady" @click="verifyTransition">Verify transition</v-btn>
-            <p v-if="transitionReview" class="hash mt-2">Signing continuity verified: {{ transitionSigner }}</p>
+            <v-btn :loading="busy" :disabled="busy || dirty || isBeta || !migrationReady || !!transitionReview" @click="verifyTransition">Verify transition</v-btn>
+            <v-alert v-if="transitionReview" type="success" variant="tonal" class="mt-3" role="status">
+              Transition verified. This release is still a draft. Click Publish release below to make the installer and payload available.
+              <details class="mt-2"><summary>Signing certificate</summary><p class="hash">{{ transitionSigner }}</p></details>
+            </v-alert>
             <p class="text-caption mt-2">Existing shell streams keep their current status. Retire them explicitly from Paravoid → Shells and streams when appropriate.</p>
           </section>
           <v-checkbox v-model="replaceLatest" label="Withdraw the previous latest release in this channel" :disabled="busy" hide-details />

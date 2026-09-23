@@ -32,10 +32,11 @@ export const useAppsStore = defineStore('apps', () => {
     }
   }
 
-  async function fetchApp(packageName: string) {
-    isLoading.value = true
+  async function fetchApp(packageName: string, background = false) {
+    const keepCurrent = background && currentApp.value?.package_name === packageName
+    if (!keepCurrent) isLoading.value = true
     error.value = null
-    currentApp.value = null
+    if (!keepCurrent) currentApp.value = null
     try {
       currentApp.value = useAuthStore().isAdmin
         ? await api.getAdminApp(packageName)
@@ -44,7 +45,7 @@ export const useAppsStore = defineStore('apps', () => {
       error.value = e instanceof Error ? e.message : 'Failed to fetch app'
       throw e
     } finally {
-      isLoading.value = false
+      if (!keepCurrent) isLoading.value = false
     }
   }
 

@@ -130,7 +130,7 @@
           </v-col>
         </v-row>
 
-        <ReleaseManagement v-if="authStore.isAdmin" :app="app" @changed="appsStore.fetchApp(packageName)" @upload="showUploadDialog = true" />
+        <ReleaseManagement v-if="authStore.isAdmin" :app="app" @changed="appsStore.fetchApp(packageName, true)" @upload="showUploadDialog = true" />
 
         <v-card v-else class="versions-card surface-panel">
           <div class="versions-heading">
