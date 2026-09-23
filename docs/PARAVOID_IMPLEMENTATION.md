@@ -118,38 +118,40 @@ rollback, credential display, verification bypass or automatic data deletion.
 - Runtime container includes Python, apksigner and the independent Rust grant
   verifier. See [delivery operations](PARAVOID_DELIVERY.md).
 
-### Remaining Store work
+### Integration checkpoint — 2026-09-23
 
-1. Production packaging/runtime integration against upstream's finalized policy
-   carrier. Store signature/policy registration, verified VPK admission and empty
-   bootstrap publication are implemented and tested with real signed APKs. The
-   upstream now produces complete VPKs at `9cc8a63`; APK carrier embedding and
-   installed runtime wiring remain in progress.
-2. Embedded complete-VPK bootstrap ingestion/publication once upstream defines and
-   wires its APK carrier. Legacy module.zip/resource carriers must not be relabeled
-   complete VPKs. Embedded policies can register, but publication fails explicitly.
-3. Finish upstream exported management Activity/recovery-process wiring. The Store
-   conditionally opens the concrete shell-owned Activity only when the installed
-   APK exposes it, and handles removal/permission changes without crashing.
-4. Device acceptance and deployment-specific restore drills. The isolated backup
-   recovery test and operator procedure are implemented. Failed inputs are
-   intentionally retained for inspection/retry; unreferenced generated transfer
-   files are reclaimed after seven days. HTTP/storage metrics cover delivery traffic,
-   VPKs, personalized copies and queued inputs. Keep one backend
-   instance: durable jobs currently use a single worker and personalization mutex.
+Upstream `42d40c8` supplies complete embedded/empty packaging, installed runtime
+loading and recovery controls. Store uploads consume the signed policy at
+`assets/paravoid/shell-policy.json` and, for embedded shells, the complete VPK at
+`assets/paravoid/payload.vpk`. Extraction is bounded and the embedded archive goes
+through the same signature, inventory, component and reservation checks as uploads.
+The installer and its fixed bootstrap draft are registered atomically. Exact bytes
+may be reused by multiple installers; conflicting payload identities are rejected.
+Publication commits the embedded payload and installer together and rechecks stored
+integrity. Empty installers still require an explicit bootstrap selection.
 
-### Upstream integration boundary
+The Store controls action targets the exported shell-owned
+`com.lelloman.paravoidandroid.runtime.UpdatesLauncher` alias. The underlying updates
+Activity stays private. If the author disables the alias, the Store action stays
+hidden. Availability is rechecked on resume and before opening.
 
-Paravoid is concurrently developing packaging/verification, delivery/controls and
-runtime lifecycle under `PARALLEL-IMPLEMENTATION.md`. Its shared foundation first
-appeared at `7ace172`; signed metadata and conformance vectors followed at
-`d58457f`. The Store consumes those metadata vectors independently in Rust. Do not replace those interfaces or use experimental fixture
-formats as production VPKs. Empty-shell publication is implemented in the Store;
-production readiness still requires finalized packaging/runtime integration and
-device acceptance. Embedded-shell publication remains gated.
+Signed HTTP acceptance covers public/keyed × embedded/empty, malformed/missing
+embedded content, exact acquisition bytes, revocation and both distribution-mode
+transitions. The current unchanged upstream non-debuggable release APK and its VPK
+also pass Store admission. Rust/Java conformance passes against the current checkout.
 
-Paravoid additionally needs the planned APK-pinned distributor acquisition URL
-and management Activity/shortcut contract, agreed with its owning track.
+### Remaining acceptance
+
+The packaging and controls integration blockers are resolved. Remaining work is
+Store-backed installed-device acceptance on API 30/36.1, physical ARM64 and real-app
+normal → shell → payload → normal data preservation, plus deployment configuration
+and restore drills. Upstream's device evidence is recorded in its
+`RELEASE-READINESS.md`; it is not a substitute for exercising LelloStore as the
+actual distributor. No production deployment or phone testing is claimed here.
+
+Keep one backend instance: durable jobs currently use a single worker and
+personalization mutex. Retained APKs/VPKs and issuer keys need the documented backup
+procedure. Failed upload inputs remain available for inspection/retry.
 
 ## Acceptance gates
 

@@ -113,15 +113,29 @@ pub async fn publish(
                 "Installer channel differs from pinned shell policy".into(),
             ));
         }
-        if contract.bootstrap != "empty" {
-            return Err(AppError::Conflict(
-                "Embedded shell publication awaits upstream's complete-VPK APK carrier integration"
-                    .into(),
-            ));
-        }
-        let id = request.bootstrap_vpk.as_deref().ok_or_else(|| {
-            AppError::Conflict("Select a verified bootstrap payload for this empty shell".into())
-        })?;
+        let embedded: Option<String> = sqlx::query_scalar("SELECT embedded_vpk_id FROM paravoid_installers WHERE package_name=? AND installer_version=?")
+            .bind(package).bind(version.version_code).fetch_one(&mut *tx).await?;
+        let id = if contract.bootstrap == "embedded" {
+            let id = embedded.as_deref().ok_or_else(|| {
+                AppError::Conflict("Verified embedded payload registration is required".into())
+            })?;
+            if request
+                .bootstrap_vpk
+                .as_deref()
+                .is_some_and(|selected| selected != id)
+            {
+                return Err(AppError::Conflict(
+                    "The embedded bootstrap is fixed by the signed APK".into(),
+                ));
+            }
+            id
+        } else {
+            request.bootstrap_vpk.as_deref().ok_or_else(|| {
+                AppError::Conflict(
+                    "Select a verified bootstrap payload for this empty shell".into(),
+                )
+            })?
+        };
         let release: super::paravoid::VpkRelease = sqlx::query_as("SELECT * FROM vpk_releases WHERE package_name = ? AND id = ? AND contract_id = ? AND validation_state = 'verified'")
             .bind(package).bind(id).bind(&contract.contract_id).fetch_optional(&mut *tx).await?
             .ok_or_else(|| AppError::Conflict("Bootstrap payload must be verified for the exact shell contract".into()))?;
@@ -163,7 +177,7 @@ pub async fn publish(
         let retired: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM paravoid_streams WHERE package_name = ? AND contract_id = ? AND status = 'retired')").bind(package).bind(&contract.contract_id).fetch_one(&mut *tx).await?;
         if retired {
             return Err(AppError::Conflict(
-                "Reactivate the shell stream before publishing an empty installer".into(),
+                "Reactivate the shell stream before publishing a shell installer".into(),
             ));
         }
     } else if request.bootstrap_vpk.is_some() {

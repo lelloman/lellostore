@@ -68,7 +68,9 @@ pub async fn publish(
                 "Configure APK personalization before publishing a keyed shell".into(),
             ));
         }
-        if let Some(id) = &request.bootstrap_vpk {
+        let embedded: Option<String> = sqlx::query_scalar("SELECT embedded_vpk_id FROM paravoid_installers WHERE package_name=? AND installer_version=?")
+            .bind(&package).bind(version.version_code).fetch_one(&state.db).await?;
+        if let Some(id) = embedded.as_ref().or(request.bootstrap_vpk.as_ref()) {
             let release = db::paravoid::release(&state.db, &package, id).await?;
             let file = state.config.storage_path.join(&release.archive_path);
             if crate::services::upload::calculate_sha256_file(&file).await?

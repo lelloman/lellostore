@@ -1,6 +1,6 @@
 //! Authenticated HTTP acceptance using ephemeral signing keys and real Android content.
 //! This validates Store delivery, not installed Android lifecycle behavior.
-use super::signed_shell::{apk, document, run};
+use super::signed_shell::{apk, apk_with_payload, document, run};
 use axum_test::{
     multipart::{MultipartForm, Part},
     TestServer,
@@ -148,7 +148,12 @@ async fn signed_shell_to_authenticated_http_delivery() {
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/tests/build-vpk-components.sh"))
         .arg(root.path().join("components")));
 
-    for authentication in ["public", "apkKey"] {
+    for (authentication, bootstrap) in [
+        ("public", "empty"),
+        ("apkKey", "empty"),
+        ("public", "embedded"),
+        ("apkKey", "embedded"),
+    ] {
         let mut policy: Value = serde_json::from_slice(&document(&certificate)).unwrap();
         let ledger: Value = serde_json::from_slice(
             &std::fs::read(root.path().join("components/resource-ledger.json")).unwrap(),
@@ -167,15 +172,17 @@ async fn signed_shell_to_authenticated_http_delivery() {
         policy["descriptor"]["trustPolicy"]["releaseKeys"] = json!({"release":STANDARD.encode(std::fs::read(root.path().join("release.der")).unwrap())});
         policy["descriptor"]["distribution"]["baseUrl"] = json!(public.base_url);
         policy["descriptor"]["distribution"]["authentication"] = json!(authentication);
+        policy["descriptor"]["distribution"]["bootstrap"] = json!(bootstrap);
         let contract = hex::encode(Sha256::digest(
             canonical_json(&policy["descriptor"]).unwrap(),
         ));
         policy["contractId"] = json!(contract);
         let policy = ShellPolicyDocument::parse(&canonical_json(&policy).unwrap()).unwrap();
         let policy_bytes = canonical_json(&json!({"version":1,"contractId":contract,"descriptor":serde_json::from_slice::<Value>(&policy.descriptor_bytes).unwrap()})).unwrap();
-        let source = apk(root.path(), &sdk, 1, &policy_bytes);
-        let source_bytes = std::fs::read(&source).unwrap();
         let vpk = payload(root.path(), &contract);
+        let embedded = (bootstrap == "embedded").then_some(vpk.as_slice());
+        let source = apk_with_payload(root.path(), &sdk, 1, &policy_bytes, embedded);
+        let source_bytes = std::fs::read(&source).unwrap();
         let (ctx, oidc) = super::create_auth_test_context_options(
             Default::default(),
             Some(signing.clone()),
@@ -189,6 +196,42 @@ async fn signed_shell_to_authenticated_http_delivery() {
             ctx.pool.clone(),
             100 * 1024 * 1024,
         );
+        // A signed APK must not register if its embedded bytes are absent,
+        // damaged, or signed for another contract. No partial draft may survive.
+        if bootstrap == "embedded" {
+            let wrong = payload(root.path(), &"a".repeat(64));
+            for candidate in [None, Some(&b"corrupt"[..]), Some(wrong.as_slice())] {
+                let invalid = apk_with_payload(root.path(), &sdk, 9, &policy_bytes, candidate);
+                assert!(worker
+                    .process_distribution_draft_upload(
+                        "invalid.apk",
+                        &invalid,
+                        None,
+                        None,
+                        false,
+                        "paravoid"
+                    )
+                    .await
+                    .is_err());
+                assert!(db::get_app(&ctx.pool, "example.app")
+                    .await
+                    .unwrap()
+                    .is_none());
+            }
+        } else {
+            let invalid = apk_with_payload(root.path(), &sdk, 9, &policy_bytes, Some(&vpk));
+            assert!(worker
+                .process_distribution_draft_upload(
+                    "invalid.apk",
+                    &invalid,
+                    None,
+                    None,
+                    false,
+                    "paravoid"
+                )
+                .await
+                .is_err());
+        }
         let server = TestServer::new(ctx.router).unwrap();
         let admin = format!("Bearer {}", oidc.get_admin_token());
         let user = format!("Bearer {}", oidc.get_user_token());
@@ -222,23 +265,25 @@ async fn signed_shell_to_authenticated_http_delivery() {
             .add_header("Authorization", &user)
             .await
             .assert_status_not_found();
-        let uploaded = server
-            .post(&format!(
-                "/api/admin/apps/example.app/contracts/{contract}/vpks"
-            ))
-            .add_header("Authorization", &admin)
-            .multipart(
-                MultipartForm::new()
-                    .add_part("file", Part::bytes(vpk.clone()).file_name("payload.vpk")),
-            )
-            .await;
-        uploaded.assert_status(StatusCode::ACCEPTED);
-        upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
-        let completed =
-            upload_jobs::get(&ctx.pool, uploaded.json::<Value>()["id"].as_str().unwrap())
-                .await
-                .unwrap();
-        assert_eq!(completed.status, "ready", "{:?}", completed.error);
+        if bootstrap == "empty" {
+            let uploaded = server
+                .post(&format!(
+                    "/api/admin/apps/example.app/contracts/{contract}/vpks"
+                ))
+                .add_header("Authorization", &admin)
+                .multipart(
+                    MultipartForm::new()
+                        .add_part("file", Part::bytes(vpk.clone()).file_name("payload.vpk")),
+                )
+                .await;
+            uploaded.assert_status(StatusCode::ACCEPTED);
+            upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
+            let completed =
+                upload_jobs::get(&ctx.pool, uploaded.json::<Value>()["id"].as_str().unwrap())
+                    .await
+                    .unwrap();
+            assert_eq!(completed.status, "ready", "{:?}", completed.error);
+        }
         let overview = server
             .get("/api/admin/apps/example.app/distribution")
             .add_header("Authorization", &admin)
@@ -250,7 +295,12 @@ async fn signed_shell_to_authenticated_http_delivery() {
         );
         assert_eq!(overview["releases"][0]["publication_state"], "draft");
         let id = overview["releases"][0]["id"].as_str().unwrap();
-        let publish = json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk":id});
+        if bootstrap == "embedded" {
+            assert_eq!(overview["installers"][0]["embedded_vpk_id"], id);
+            server.post("/api/admin/apps/example.app/publications").add_header("Authorization", &admin)
+                .json(&json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk":"different-payload"})).await.assert_status_conflict();
+        }
+        let publish = json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk": if bootstrap == "embedded" { Value::Null } else { json!(id) }});
         server
             .post("/api/admin/apps/example.app/publications")
             .add_header("Authorization", &admin)
@@ -390,7 +440,11 @@ async fn signed_shell_to_authenticated_http_delivery() {
             } else {
                 policy_bytes.as_slice()
             };
-            let path = apk(root.path(), &sdk, code, bytes);
+            let path = if mode == "normal" {
+                apk(root.path(), &sdk, code, bytes)
+            } else {
+                apk_with_payload(root.path(), &sdk, code, bytes, embedded)
+            };
             server
                 .post("/api/admin/apps")
                 .add_header("Authorization", &admin)

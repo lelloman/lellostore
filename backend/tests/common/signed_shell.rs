@@ -22,6 +22,16 @@ pub fn run(command: &mut Command) {
     );
 }
 pub fn apk(root: &Path, sdk: &Path, code: i64, policy: &[u8]) -> std::path::PathBuf {
+    apk_with_payload(root, sdk, code, policy, None)
+}
+
+pub fn apk_with_payload(
+    root: &Path,
+    sdk: &Path,
+    code: i64,
+    policy: &[u8],
+    payload: Option<&[u8]>,
+) -> std::path::PathBuf {
     let manifest = root.join("AndroidManifest.xml");
     std::fs::write(&manifest,format!(r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="example.app" android:versionCode="{code}" android:versionName="{code}"><uses-sdk android:minSdkVersion="30" android:targetSdkVersion="36"/><application android:label="Registration fixture"/></manifest>"#)).unwrap();
     let unsigned = root.join(format!("unsigned-{code}.apk"));
@@ -47,6 +57,14 @@ pub fn apk(root: &Path, sdk: &Path, code: i64, policy: &[u8]) -> std::path::Path
         )
         .unwrap();
         zip.write_all(policy).unwrap();
+        if let Some(payload) = payload {
+            zip.start_file(
+                "assets/paravoid/payload.vpk",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(payload).unwrap();
+        }
         zip.finish().unwrap();
     }
     run(Command::new(tools.join("apksigner"))

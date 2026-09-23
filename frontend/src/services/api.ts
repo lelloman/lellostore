@@ -252,7 +252,7 @@ export interface DistributionReview {
 }
 export interface AppDistribution {
   distribution_mode: string; publication_revision: number; contracts: ShellContract[]; releases: VpkRelease[]
-  installers?: { installer_version: number; contract_id: string }[]
+  installers?: { installer_version: number; contract_id: string; embedded_vpk_id?: string | null }[]
   streams: { contract_id: string; revision: number; status: string }[]
   grants: ParavoidGrant[]
   events: { id: number; action: string; actor_subject: string; created_at: string; revision: number }[]

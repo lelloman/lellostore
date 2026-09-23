@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 
 /** A capability of the installed APK, never an Activity name received from the server. */
 internal object ParavoidControls {
-    private const val ACTIVITY = "com.lelloman.paravoidandroid.delivery.ShellUpdatesActivity"
+    private const val ACTIVITY = "com.lelloman.paravoidandroid.runtime.UpdatesLauncher"
 
     fun available(context: Context, packageName: String): Boolean = intent(context, packageName) != null
 

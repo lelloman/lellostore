@@ -1,10 +1,9 @@
 # Paravoid Store delivery operations
 
 The Store supports signed shell registration, verified VPK uploads and atomic
-empty-shell/bootstrap publication. Production deployment still needs final upstream
-packaging/runtime and device acceptance. Embedded complete-VPK publication remains
-gated until upstream wires its APK carrier; legacy embedded module archives are
-not accepted as complete VPK bootstrap evidence.
+publication for both empty and embedded bootstrap, integrated against Paravoid
+`42d40c8`. Production acceptance still includes Store-backed installed-device and
+real-app migration tests. Legacy embedded module archives are not complete VPKs.
 
 ## Runtime configuration
 
@@ -84,9 +83,10 @@ the review, signer fingerprint and evidence. Signing certificate rotation is not
 supported by this conservative continuity check. Existing streams are unchanged;
 retire them explicitly when that is the intended rollout.
 
-Upload the signed installer with `distribution_mode=paravoid`, then upload its VPK
-against the registered contract. In installer review, choose the verified bootstrap
-payload; publication atomically publishes both. The initial payload must cover the
+Upload the signed installer with `distribution_mode=paravoid`. For an empty shell,
+upload its VPK against the registered contract and choose it in installer review.
+For an embedded shell, the upload registers its included VPK and review fixes the
+selection to those signed bytes. Publication atomically publishes both. The initial payload must cover the
 installer's SDK/ABI range, the stream must be active, and configured head/grant keys
 and endpoint must match the APK. Keyed shells also require personalization tools.
 Further installer versions may reuse a published bootstrap for the same contract.
@@ -95,7 +95,7 @@ The publisher exposes `upload shell.apk --distribution-mode paravoid`, followed 
 `upload-vpk`, and `publish PACKAGE APK_VERSION --expected-revision REV
 --bootstrap-vpk VPK_ID`. Mode transitions also take `--transition-review REVIEW_ID`.
 Shell `upload --publish` is rejected because bootstrap selection needs a separate
-review after registration. Embedded publication remains explicitly gated.
+review after registration. Embedded publication uses the registered included payload.
 
 ## Persistence and recovery limits
 
@@ -163,11 +163,10 @@ Android runtime acceptance app.
 
 The Android app details page offers **Manage app updates** only when the installed
 package exposes the enabled, exported
-`com.lelloman.paravoidandroid.delivery.ShellUpdatesActivity` and any required
+`com.lelloman.paravoidandroid.runtime.UpdatesLauncher` and any required
 permission is held. It uses an explicit component in that package, refreshes the
-capability on resume, and handles replacement/removal gracefully. Upstream still
-needs to wire/export the Activity in the shell recovery process; the Store does not
-claim that manifest/device gate is complete.
+capability on resume, and handles replacement/removal gracefully. The alias opens Paravoid's private updates Activity in its recovery process.
+If the author disables the alias, the Store action stays hidden.
 
 The signed HTTP gate runs against the production authenticated router and an isolated
 mock OIDC issuer. It uploads a real signed shell and real D8/AAPT2 VPK through HTTP,
@@ -190,3 +189,26 @@ in addition to its regular tests. No deployment or device installation occurs.
 Both authenticated and test-only canonical APK routes reject keyed/unverified
 shells with `acquisition_required`; they cannot supply a grantless installer to
 legacy clients, including via ranged downloads.
+
+Embedded installers must contain `assets/paravoid/payload.vpk`, matching the signed
+bootstrap policy. Uploading the APK extracts and verifies this archive, registers
+its immutable VPK draft and binds it to that installer in one database transaction.
+A repeated exact embedded payload may be shared across installers; altered bytes
+cannot reuse an existing release ID or version. Admin review displays the fixed
+payload and publishes both together. CLI `publish` needs no `--bootstrap-vpk` for
+embedded installers; supplying a different ID is rejected. Empty installers must
+not contain a payload carrier and continue to require `--bootstrap-vpk`.
+
+An opt-in admission test accepts unchanged upstream production artifacts:
+
+```sh
+ANDROID_HOME=/path/to/sdk APKSIGNER_PATH=/path/to/sdk/build-tools/36.0.0/apksigner \
+PARAVOID_UPSTREAM_APK=/absolute/path/to/shell.apk \
+PARAVOID_UPSTREAM_VPK=/absolute/path/to/payload.vpk \
+  cargo test --manifest-path backend/Cargo.toml --test upstream_paravoid -- --ignored
+```
+
+The external VPK is needed only for empty shells. This check creates an isolated
+Store database, verifies the APK signature and policy, and validates the real
+producer VPK without repacking or changing the artifacts. Production Store policy
+requires HTTPS; debug HTTP artifacts are intentionally rejected.

@@ -48,19 +48,40 @@ pub async fn process_job(
     .await
     .map_err(|_| AppError::Internal("VPK validation task failed".into()))??;
     // Only signature-verified APK registration supplies authoritative reservations.
-    let inspection = checked.archive;
+    let inspection = &checked.archive;
     if inspection.release.application_id != package {
         return Err(AppError::BadRequest(
             "VPK application differs from upload target".into(),
         ));
     }
+    store_file(storage, Path::new(&job.input_path), inspection).await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ?",
+    )
+    .bind(package)
+    .execute(&mut *tx)
+    .await?;
+    let id = insert_release(&mut tx, package, contract_id, &checked, verified, false).await?;
+    let result = serde_json::json!({"package_name":package,"vpk_id":id,"release_id":inspection.release.release_id,"payload_version":inspection.release.payload_version});
+    sqlx::query("UPDATE upload_jobs SET status = 'ready', result_json = ?, updated_at = datetime('now') WHERE id = ? AND status = 'validating'")
+        .bind(result.to_string()).bind(&job.id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub(crate) async fn store_file(
+    storage: &Path,
+    input: &Path,
+    inspection: &crate::paravoid::archive::ArchiveInspection,
+) -> Result<(), AppError> {
     let relative = format!("vpks/{}.vpk", inspection.archive_sha256);
     let destination = storage.join(&relative);
     tokio::fs::create_dir_all(storage.join("vpks")).await?;
     // Link a fully synced temporary file into its immutable content address.
     // A crash during copying cannot leave a truncated canonical artifact.
     let staging = tempfile::NamedTempFile::new_in(storage.join("vpks"))?;
-    tokio::fs::copy(&job.input_path, staging.path()).await?;
+    tokio::fs::copy(input, staging.path()).await?;
     tokio::fs::File::open(staging.path())
         .await?
         .sync_all()
@@ -82,15 +103,28 @@ pub async fn process_job(
             "Stored VPK failed checksum verification".into(),
         ));
     }
-    let mut tx = pool.begin().await?;
-    sqlx::query(
-        "UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ?",
-    )
-    .bind(package)
-    .execute(&mut *tx)
-    .await?;
+    Ok(())
+}
+
+pub(crate) async fn insert_release(
+    conn: &mut sqlx::SqliteConnection,
+    package: &str,
+    contract_id: &str,
+    checked: &compatibility::CompatibilityInspection,
+    verified: bool,
+    reuse_exact: bool,
+) -> Result<String, AppError> {
+    let inspection = &checked.archive;
+    let relative = format!("vpks/{}.vpk", inspection.archive_sha256);
+    if reuse_exact {
+        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM vpk_releases WHERE package_name=? AND contract_id=? AND release_id=? AND payload_version=? AND archive_sha256=? AND validation_state='verified'")
+            .bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(&inspection.archive_sha256).fetch_optional(&mut *conn).await?;
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+    }
     let used: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM published_vpk_identities WHERE package_name = ? AND (payload_version = ? OR release_id = ?)) OR EXISTS(SELECT 1 FROM vpk_releases WHERE package_name = ? AND (payload_version = ? OR release_id = ?))")
-        .bind(package).bind(inspection.release.payload_version as i64).bind(&inspection.release.release_id).bind(package).bind(inspection.release.payload_version as i64).bind(&inspection.release.release_id).fetch_one(&mut *tx).await?;
+        .bind(package).bind(inspection.release.payload_version as i64).bind(&inspection.release.release_id).bind(package).bind(inspection.release.payload_version as i64).bind(&inspection.release.release_id).fetch_one(&mut *conn).await?;
     if used {
         return Err(AppError::Conflict(
             "Payload version or release ID is already reserved; use a new identity".into(),
@@ -101,10 +135,6 @@ pub async fn process_job(
         .map_err(|_| AppError::Internal("VPK manifest serialization failed".into()))?;
     let report = serde_json::json!({"container":"passed","signature":"passed","inventory":"passed","components":"passed","dex_files":checked.dex_files,"native_libraries":checked.native_libraries,"resource_reservations":if verified {"passed"} else {"pending"},"compatibility":if verified {"passed"} else {"pending"},"publication_ready":verified,"remaining":if verified {vec![]} else {vec!["installed shell policy verification"]}});
     sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(&id).bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(relative).bind(inspection.archive_size as i64).bind(&inspection.archive_sha256).bind(&inspection.manifest_sha256).bind(manifest).bind(inspection.release.min_sdk as i64).bind(inspection.release.max_sdk as i64).bind(serde_json::to_string(&inspection.release.abis).unwrap()).bind(&inspection.signing_key_id).bind(if verified {"verified"} else {"inspected"}).bind(report.to_string()).execute(&mut *tx).await?;
-    let result = serde_json::json!({"package_name":package,"vpk_id":id,"release_id":inspection.release.release_id,"payload_version":inspection.release.payload_version});
-    sqlx::query("UPDATE upload_jobs SET status = 'ready', result_json = ?, updated_at = datetime('now') WHERE id = ? AND status = 'validating'")
-        .bind(result.to_string()).bind(&job.id).execute(&mut *tx).await?;
-    tx.commit().await?;
-    Ok(())
+        .bind(&id).bind(package).bind(contract_id).bind(&inspection.release.release_id).bind(inspection.release.payload_version as i64).bind(relative).bind(inspection.archive_size as i64).bind(&inspection.archive_sha256).bind(&inspection.manifest_sha256).bind(manifest).bind(inspection.release.min_sdk as i64).bind(inspection.release.max_sdk as i64).bind(serde_json::to_string(&inspection.release.abis).unwrap()).bind(&inspection.signing_key_id).bind(if verified {"verified"} else {"inspected"}).bind(report.to_string()).execute(&mut *conn).await?;
+    Ok(id)
 }

@@ -8,6 +8,10 @@ use std::path::Path;
 pub struct VerifiedShell {
     pub policy: ShellPolicyDocument,
     pub signer: String,
+    pub embedded: Option<(
+        tempfile::NamedTempFile,
+        crate::paravoid::compatibility::CompatibilityInspection,
+    )>,
 }
 /// Verify the developer APK before trusting its public policy. Never accept a
 /// previously personalized copy as the canonical installer.
@@ -18,7 +22,7 @@ pub async fn verify(
 ) -> Result<VerifiedShell, AppError> {
     let signer = apk_signatures::verified_signer(path).await?;
     let path = path.to_owned();
-    let policy = tokio::task::spawn_blocking(move || {
+    let (policy, embedded) = tokio::task::spawn_blocking(move || {
         let mut file = std::fs::File::open(path)?;
         let carrier =
             apk_grant::inspect(&mut file).map_err(|e| AppError::BadRequest(e.to_string()))?;
@@ -36,7 +40,49 @@ pub async fn verify(
                 "Keyed shell signing layout is not supported by the personalization tool".into(),
             ));
         }
-        Ok(policy)
+        // Policy parsing already rejected duplicate APK entry names.
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|_| AppError::BadRequest("Invalid shell APK".into()))?;
+        let embedded = archive
+            .file_names()
+            .any(|name| name == "assets/paravoid/payload.vpk");
+        if embedded != (policy.descriptor.distribution.bootstrap == "embedded") {
+            return Err(AppError::BadRequest(
+                "APK payload carrier differs from its bootstrap policy".into(),
+            ));
+        }
+        let embedded = if embedded {
+            use std::io::{Read, Seek};
+            let entry = archive
+                .by_name("assets/paravoid/payload.vpk")
+                .map_err(|_| AppError::BadRequest("Missing embedded VPK".into()))?;
+            let size = entry.size();
+            if size == 0
+                || size > crate::paravoid::MAX_ARCHIVE_BYTES
+                || entry.is_dir()
+                || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000)
+            {
+                return Err(AppError::BadRequest(
+                    "Invalid embedded VPK size or entry type".into(),
+                ));
+            }
+            let mut extracted = tempfile::NamedTempFile::new()?;
+            if std::io::copy(&mut entry.take(size + 1), &mut extracted)? != size {
+                return Err(AppError::BadRequest("Invalid embedded VPK length".into()));
+            }
+            extracted.rewind()?;
+            let checked = crate::paravoid::compatibility::inspect(
+                &mut extracted,
+                &policy.trust,
+                &policy.contract_id,
+                &policy.descriptor.installed.ledger_reservations,
+            )
+            .map_err(|e| AppError::BadRequest(e.to_string()))?;
+            Some((extracted, checked))
+        } else {
+            None
+        };
+        Ok((policy, embedded))
     })
     .await
     .map_err(|_| AppError::Internal("Shell verification task failed".into()))??;
@@ -50,7 +96,11 @@ pub async fn verify(
     {
         return Err(AppError::BadRequest("Shell policy must match APK package, SDK, signer and selected channel, with updates enabled".into()));
     }
-    Ok(VerifiedShell { policy, signer })
+    Ok(VerifiedShell {
+        policy,
+        signer,
+        embedded,
+    })
 }
 
 pub async fn register(
@@ -81,6 +131,13 @@ pub async fn register(
             .bind(serde_json::json!({"apk_signature":"passed","apk_policy":"passed","signer_sha256":shell.signer,"runtime_acceptance":"not_evaluated"}).to_string()).execute(&mut *conn).await?;
     }
     sqlx::query("INSERT INTO paravoid_installers(package_name,installer_version,contract_id,signer_sha256) VALUES (?,?,?,?) ON CONFLICT(package_name,installer_version) DO UPDATE SET signer_sha256 = excluded.signer_sha256 WHERE contract_id = excluded.contract_id").bind(package).bind(version).bind(&policy.contract_id).bind(&shell.signer).execute(&mut *conn).await?;
+    if let Some((_, checked)) = &shell.embedded {
+        let id =
+            super::vpks::insert_release(conn, package, &policy.contract_id, checked, true, true)
+                .await?;
+        sqlx::query("UPDATE paravoid_installers SET embedded_vpk_id=? WHERE package_name=? AND installer_version=?")
+            .bind(id).bind(package).bind(version).execute(&mut *conn).await?;
+    }
     sqlx::query("UPDATE app_versions SET distribution_mode = 'paravoid' WHERE package_name = ? AND version_code = ?").bind(package).bind(version).execute(&mut *conn).await?;
     sqlx::query(
         "UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ?",

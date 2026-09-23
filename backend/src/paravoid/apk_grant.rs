@@ -95,6 +95,9 @@ pub fn inspect<R: Read + Seek>(reader: &mut R) -> Result<Carrier, Error> {
             return Err(Error::Malformed);
         }
         let id = u32_at(&block, at + 8);
+        if ids.len() >= 1024 {
+            return Err(Error::LimitExceeded);
+        }
         if !ids.insert(id) {
             return Err(Error::Malformed);
         }
@@ -123,4 +126,33 @@ pub fn inspect<R: Read + Seek>(reader: &mut R) -> Result<Carrier, Error> {
         signatures,
         personalization_compatible,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn bounds_signing_block_entry_count_before_allocating_an_unbounded_index() {
+        for count in [1024, 1025] {
+            // Carrier-only fixture; APK developer signatures are checked separately.
+            let size = (count * 12 + 24) as u64;
+            let mut apk = size.to_le_bytes().to_vec();
+            for i in 0..count {
+                apk.extend_from_slice(&4_u64.to_le_bytes());
+                apk.extend_from_slice(&(if i == 0 { 0x7109871a } else { i as u32 }).to_le_bytes());
+            }
+            apk.extend_from_slice(&size.to_le_bytes());
+            apk.extend_from_slice(MAGIC);
+            let mut end = [0; 22];
+            end[..4].copy_from_slice(b"PK\x05\x06");
+            end[16..20].copy_from_slice(&(apk.len() as u32).to_le_bytes());
+            apk.extend_from_slice(&end);
+            let result = inspect(&mut std::io::Cursor::new(apk));
+            if count == 1024 {
+                assert!(result.is_ok());
+            } else {
+                assert!(matches!(result, Err(Error::LimitExceeded)));
+            }
+        }
+    }
 }

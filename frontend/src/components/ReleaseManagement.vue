@@ -84,8 +84,8 @@
           <v-textarea v-model="notes" label="Release notes" rows="4" :disabled="busy" counter="65536" />
           <v-alert type="info" variant="tonal" class="mb-3">The APK was parsed and checksummed. Publication rechecks its stored bytes and version ordering. App behavior must be tested before publishing.</v-alert>
           <template v-if="selected.distribution_mode === 'paravoid'">
-            <v-alert v-if="bootstrapMode !== 'empty'" type="warning" class="mb-3">Embedded-shell publication is waiting for the complete VPK carrier in Paravoid packaging.</v-alert>
-            <v-select v-else v-model="bootstrapVpk" label="Bootstrap payload" :items="bootstrapChoices" :disabled="busy" hint="The selected payload and installer publish together. Upload and validate a compatible VPK in the Paravoid tab first." persistent-hint class="mb-4" />
+            <v-alert v-if="bootstrapMode === 'embedded'" type="info" class="mb-3">This installer includes its verified bootstrap payload. The payload and installer publish together.</v-alert>
+            <v-select v-model="bootstrapVpk" label="Bootstrap payload" :items="bootstrapChoices" :disabled="busy || bootstrapMode === 'embedded'" :hint="bootstrapMode === 'embedded' ? 'Verified from the signed installer; this selection cannot be changed.' : 'The selected payload and installer publish together. Upload and validate a compatible VPK in the Paravoid tab first.'" persistent-hint class="mb-4" />
           </template>
           <section v-if="changesMode" class="my-4">
             <v-alert type="warning">This stable installer changes distribution from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }}. Test an in-place upgrade with real app data before publishing.</v-alert>
@@ -110,7 +110,7 @@
         <v-spacer />
         <template v-if="state(selected) === 'draft'">
           <v-btn :disabled="busy || !dirty" @click="save">Save draft</v-btn>
-          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview) || (selected.distribution_mode === 'paravoid' && (bootstrapMode !== 'empty' || !bootstrapVpk))" @click="publish">Publish release</v-btn>
+          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview) || (selected.distribution_mode === 'paravoid' && !bootstrapVpk)" @click="publish">Publish release</v-btn>
         </template>
         <v-btn v-else color="warning" :loading="busy" :disabled="busy" @click="withdraw">Withdraw release</v-btn>
       </v-card-actions>
@@ -169,9 +169,11 @@ async function review(version: AppVersion) {
     if (release.distribution_mode === 'paravoid') {
       const distribution = await api.getAppDistribution(props.app.package_name)
       if (distribution.publication_revision !== (fresh.publication_revision ?? 0)) throw new Error('Distribution changed. Review the installer again.')
-      const contractId = distribution.installers?.find(i => i.installer_version === release.version_code)?.contract_id
+      const installer = distribution.installers?.find(i => i.installer_version === release.version_code)
+      const contractId = installer?.contract_id
       const contract = distribution.contracts.find(c => c.contract_id === contractId)
       bootstrapMode.value = contract?.bootstrap ?? ''
+      if (bootstrapMode.value === 'embedded') bootstrapVpk.value = installer?.embedded_vpk_id ?? undefined
       bootstrapChoices.value = distribution.releases.filter(v => v.contract_id === contractId && v.validation_state === 'verified' && ['draft', 'published'].includes(v.publication_state))
         .map(v => ({ title: `Payload ${v.payload_version} · ${v.release_id} · ${v.publication_state}`, value: v.id }))
     }

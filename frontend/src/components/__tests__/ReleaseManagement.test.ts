@@ -63,15 +63,15 @@ describe('release review', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
 
-  it('requires an explicit bootstrap payload and publishes it with the reviewed installer', async () => {
+  it.each(['empty', 'embedded'])('publishes the reviewed %s bootstrap with its installer', async (bootstrap) => {
     const shell = structuredClone(draft)
     shell.versions[0]!.distribution_mode = 'paravoid'
     vi.mocked(api.getAdminApp).mockResolvedValue(shell)
     vi.mocked(api.getAppDistribution).mockResolvedValue({
       distribution_mode: 'normal', publication_revision: 7,
-      installers: [{ installer_version: 2, contract_id: 'contract' }],
+      installers: [{ installer_version: 2, contract_id: 'contract', embedded_vpk_id: bootstrap === 'embedded' ? 'bootstrap' : null }],
       contracts: [{ package_name: 'example.app', contract_id: 'contract', installer_version: 2,
-        channel: 'stable', authentication: 'public', bootstrap: 'empty', base_url: 'https://example.test/', verification_state: 'verified', validation_report: '{}' }],
+        channel: 'stable', authentication: 'public', bootstrap, base_url: 'https://example.test/', verification_state: 'verified', validation_report: '{}' }],
       releases: [{ id: 'bootstrap', package_name: 'example.app', contract_id: 'contract', release_id: 'r1', payload_version: 1,
         archive_size: 1, archive_sha256: 'hash', manifest_sha256: 'manifest', manifest_json: '{}', min_sdk: 30, max_sdk: 0,
         abis_json: '[]', signing_key_id: 'release', validation_state: 'verified', validation_report: '{}', publication_state: 'draft', release_notes: '' }],
@@ -81,8 +81,12 @@ describe('release review', () => {
     await wrapper.findAll('button').find(b => b.text() === 'Review draft')!.trigger('click')
     await flushPromises()
     const publish = wrapper.findAll('button').find(b => b.text() === 'Publish release')!
-    expect(publish.attributes('disabled')).toBeDefined()
-    await wrapper.find('select[aria-label="Bootstrap payload"]').setValue('bootstrap')
+    if (bootstrap === 'empty') {
+      expect(publish.attributes('disabled')).toBeDefined()
+      await wrapper.find('select[aria-label="Bootstrap payload"]').setValue('bootstrap')
+    } else {
+      expect(wrapper.text()).toContain('includes its verified bootstrap payload')
+    }
     expect(publish.attributes('disabled')).toBeUndefined()
     await publish.trigger('click')
     await flushPromises()

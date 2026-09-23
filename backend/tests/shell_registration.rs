@@ -168,6 +168,7 @@ async fn installer(pool: &sqlx::SqlitePool, code: i64, policy: &[u8]) {
     let shell = lellostore_backend::services::shells::VerifiedShell {
         policy: ShellPolicyDocument::parse(policy).unwrap(),
         signer: "c".repeat(64),
+        embedded: None,
     };
     let mut tx = pool.begin().await.unwrap();
     lellostore_backend::services::shells::register(&mut tx, "example.app", code, &shell)

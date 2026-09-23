@@ -353,6 +353,9 @@ impl UploadService {
             None
         };
 
+        if let Some((file, checked)) = shell.as_ref().and_then(|shell| shell.embedded.as_ref()) {
+            super::vpks::store_file(self.storage.root(), file.path(), &checked.archive).await?;
+        }
         // 7. Check for existing version
         if db::version_exists(&self.db, &metadata.package_name, metadata.version_code).await? {
             return Err(UploadError::VersionExists {
