@@ -236,9 +236,10 @@ Deploy the backend before the new browser, Android client and publisher.
 
 Acquisitions bind a user to exact APK bytes for 24 hours and recheck live access
 on every download. Browser and Android downloads verify the acquisition's size
-and checksum. Paravoid shell/VPK publication remains disabled pending upstream
-verification and personalization integration; see
-[implementation status](docs/PARAVOID_IMPLEMENTATION.md).
+and checksum. Paravoid shell/VPK publication requires verified artifacts and the
+configured signing authorities; see [signing setup](docs/PARAVOID_SIGNING.md),
+[device acceptance](docs/PARAVOID_DEVICE_ACCEPTANCE.md) and
+[implementation status](docs/PARAVOID_IMPLEMENTATION.md) for remaining release gates.
 
 Only pass `--yes` after the upload has already been authorized; without it the
 publisher asks for interactive confirmation immediately before authentication

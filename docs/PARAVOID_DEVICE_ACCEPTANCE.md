@@ -20,7 +20,7 @@ keyed, non-debuggable release pinned to `https://127.0.0.1:18765/`. Do not regen
 its TLS certificate without rebuilding its APK.
 
 Start a **fresh disposable emulator** on API 30 or 36.1 with an AVD name beginning
-`LelloStoreParavoid`. The runner refuses physical devices, other AVD names, an
+`LelloStoreParavoid`. The runner refuses physical devices, other AVD names,
 existing user-installed apps and an existing reverse mapping on port 18765.
 It does not boot, wipe or stop emulators automatically. The default mode does not uninstall apps; the UI mode has the narrow fixture reset described below.
 
@@ -134,6 +134,42 @@ These runs exposed and verified fixes for three production client bugs:
 Validation also passed: 197 Android app/API/UI unit tests, 25 Python tests,
 Rust all-target/all-feature Clippy with warnings denied, and formatting checks.
 The emulators were stopped after completion. No production service was changed.
+
+### Full regression rerun — 2026-09-23
+
+Store revision `a63a449`, upstream `42d40c8`, unchanged source hashes below.
+Fresh dedicated AVDs `LelloStoreParavoidFull30` (emulator-5620) and
+`LelloStoreParavoidFull36` (emulator-5622) passed the complete Store UI sequence
+in 131.33 and 272.61 seconds respectively. Both were stopped after testing.
+
+| Check | Result |
+| --- | --- |
+| Frontend lint, type checking, tests and production build | Passed; 63 tests |
+| Android `lint test`, debug app and instrumentation builds | Passed; 668 tests, plus two initially skipped live-ADB tests |
+| Optional debug/release live-ADB checks against emulator-5620 port 5621 | Both passed; 20 sequential commands each |
+| Backend all-features standard suite | 187 passed; six environment-dependent scenarios exercised separately; two documentation examples remain ignored |
+| Signed delivery gate | Passed: shell registration, signature-preserving acquisition/repair, authenticated HTTP delivery and both mode transitions |
+| Rust/Java interoperability | Passed: personalized grants/heads, installed policy, real Android VPK components and malformed/reservation checks |
+| Current upstream producer artifacts | Unchanged signed release APK/VPK admitted successfully |
+| Backup/restore regression | Passed as part of backend suite |
+| Python tests | 25 passed |
+| Rust formatting and all-target/all-feature Clippy, warnings denied | Passed |
+
+Commands used were the repository CI sequence (`frontend` lint/type-check/test/build,
+`cargo test --all-features --locked --offline`, Android `./gradlew lint test --offline`,
+and Python discovery), followed by `scripts/check-paravoid-delivery.sh`,
+`scripts/check-paravoid-interop.sh`, `scripts/check-paravoid-vpk-interop.sh`,
+the ignored `upstream_paravoid` test, and UI mode above on each fresh emulator.
+The interoperability scripts require `ANDROID_HOME`; signing checks also set
+`APKSIGNER_PATH`. The upstream admission test received `PARAVOID_UPSTREAM_APK`
+and `PARAVOID_UPSTREAM_VPK` pointing to the fixture artifacts. Live-ADB checks used
+`LELLOSTORE_TEST_ADB_PORT=5621` with the two `:remote-adb:test*UnitTest` tasks.
+
+No new product failures were found. Vitest initially hit sandbox localhost
+resolution restrictions and passed outside the sandbox. One interoperability
+invocation omitted `ANDROID_HOME` and passed after supplying it. The frontend
+build reports a non-failing bundle-size warning. This rerun does not close the
+physical-device, real-app/account or production deployment gates below.
 
 ## Scope
 
