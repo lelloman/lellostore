@@ -212,3 +212,10 @@ The external VPK is needed only for empty shells. This check creates an isolated
 Store database, verifies the APK signature and policy, and validates the real
 producer VPK without repacking or changing the artifacts. Production Store policy
 requires HTTPS; debug HTTP artifacts are intentionally rejected.
+
+Store-backed installed HTTPS acceptance now passes on disposable API 30 and API
+36.1 emulators: empty/keyed bootstrap, a distinct payload update without replacing
+the APK, revocation, same-version repair and offline cold launch. The test uses
+the production Store router and Paravoid runtime. See
+[device acceptance](PARAVOID_DEVICE_ACCEPTANCE.md) for reproduction, artifact hashes
+and the remaining Store-client, physical-device and real-app migration limits.

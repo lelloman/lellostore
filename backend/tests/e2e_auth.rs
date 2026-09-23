@@ -1458,3 +1458,6 @@ mod signed_shell;
 
 #[path = "support/paravoid_http.rs"]
 mod paravoid_http;
+
+#[path = "support/paravoid_device.rs"]
+mod paravoid_device;

@@ -142,10 +142,13 @@ also pass Store admission. Rust/Java conformance passes against the current chec
 
 ### Remaining acceptance
 
-The packaging and controls integration blockers are resolved. Remaining work is
-Store-backed installed-device acceptance on API 30/36.1, physical ARM64 and real-app
-normal → shell → payload → normal data preservation, plus deployment configuration
-and restore drills. Upstream's device evidence is recorded in its
+The packaging and controls integration blockers are resolved. Store-backed keyed,
+empty-shell HTTPS bootstrap, a second payload with unchanged APK, revocation,
+same-version repair and offline launch now pass on API 30 and API 36.1. See
+[device acceptance](PARAVOID_DEVICE_ACCEPTANCE.md) for exact scope and reproduction.
+Remaining work includes the Store Android client's install UI, physical ARM64 and
+real-app normal → shell → payload → normal data preservation, plus deployment
+configuration and restore drills. Upstream's device evidence is recorded in its
 `RELEASE-READINESS.md`; it is not a substitute for exercising LelloStore as the
 actual distributor. No production deployment or phone testing is claimed here.
 
