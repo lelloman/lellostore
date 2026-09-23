@@ -36,17 +36,22 @@ describe('release review', () => {
     vi.mocked(api.getDistributionReviews).mockResolvedValue([])
   })
 
-  it('requires migration review before switching an installed distribution', async () => {
+  it('publishes a distribution change without a manual migration checklist', async () => {
     const changed = structuredClone(draft)
     changed.distribution_mode = 'paravoid'
     vi.mocked(api.getAdminApp).mockResolvedValue(changed)
     const wrapper = mountView()
     await wrapper.findAll('button').find(b => b.text() === 'Review draft')!.trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('changes distribution from paravoid to normal')
+    expect(wrapper.text()).toContain('switches this app from paravoid to normal')
+    expect(wrapper.text()).not.toContain('Verify transition')
+    expect(wrapper.text()).not.toContain('Migration test evidence')
     const publish = wrapper.findAll('button').find(b => b.text() === 'Publish release')!
-    expect(publish.attributes('disabled')).toBeDefined()
-    expect(api.publishRelease).not.toHaveBeenCalled()
+    expect(publish.attributes('disabled')).toBeUndefined()
+    await publish.trigger('click')
+    await flushPromises()
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, undefined)
+
   })
 
   it('does not publish until the administrator reviews and explicitly publishes', async () => {

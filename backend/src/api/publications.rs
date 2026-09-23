@@ -83,7 +83,57 @@ pub async fn publish(
             }
         }
     }
-    let result = db::publications::publish(&state.db, &package, &admin.0.subject, &request).await?;
+    let app = db::get_app(&state.db, &package)
+        .await?
+        .ok_or_else(|| AppError::NotFound("App not found".into()))?;
+    let mut transition_signer = None;
+    if app.distribution_mode != version.distribution_mode {
+        let previous = db::get_app_versions(&state.db, &package)
+            .await?
+            .into_iter()
+            .filter(|v| v.publication_state != "draft")
+            .max_by_key(|v| v.version_code);
+        if let Some(previous) = previous {
+            let previous_path = state.config.storage_path.join(&previous.apk_path);
+            if crate::services::upload::calculate_sha256_file(&previous_path).await?
+                != previous.sha256
+            {
+                return Err(AppError::Conflict(
+                    "Previous installer failed integrity verification".into(),
+                ));
+            }
+            let previous_signer =
+                crate::services::apk_signatures::verified_signer(&previous_path).await?;
+            let target_signer = crate::services::apk_signatures::verified_signer(&path).await?;
+            if previous_signer != target_signer {
+                return Err(AppError::Conflict(
+                    "APK signing identities differ; in-place distribution switching is unavailable"
+                        .into(),
+                ));
+            }
+            let highest: Option<i64> = sqlx::query_scalar(
+                "SELECT MAX(version_code) FROM published_apk_identities WHERE package_name = ?",
+            )
+            .bind(&package)
+            .fetch_one(&state.db)
+            .await?;
+            if highest != Some(previous.version_code) {
+                return Err(AppError::Conflict(
+                    "Retain the latest published installer for signer continuity verification"
+                        .into(),
+                ));
+            }
+            transition_signer = Some(target_signer);
+        }
+    }
+    let result = db::publications::publish_checked(
+        &state.db,
+        &package,
+        &admin.0.subject,
+        &request,
+        transition_signer.as_deref(),
+    )
+    .await?;
     state.catalog_events.notify_catalog_changed();
     Ok(Json(result))
 }

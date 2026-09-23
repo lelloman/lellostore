@@ -54,7 +54,7 @@
           </v-list>
           <p v-else class="mt-4 text-medium-emphasis">No publication actions recorded yet. Existing releases were preserved during migration.</p>
           <details v-for="review in migrationHistory" :key="review.id" class="mt-4">
-            <summary>Migration review: {{ review.from_mode }} → {{ review.to_mode }} · APK {{ review.from_version }} → {{ review.target_version }}</summary>
+            <summary>Distribution change: {{ review.from_mode }} → {{ review.to_mode }} · APK {{ review.from_version }} → {{ review.target_version }}</summary>
             <p>{{ review.actor_subject }} · {{ review.created_at }} · revision {{ review.review_revision }}</p>
             <p class="hash">Target SHA-256: {{ review.target_sha256 }}</p>
             <p class="hash">Signer SHA-256: {{ review.signer_sha256 }}</p>
@@ -87,20 +87,9 @@
             <v-alert v-if="bootstrapMode === 'embedded'" type="info" class="mb-3">This installer includes its verified bootstrap payload. The payload and installer publish together.</v-alert>
             <v-select v-model="bootstrapVpk" label="Bootstrap payload" :items="bootstrapChoices" :disabled="busy || bootstrapMode === 'embedded'" :hint="bootstrapMode === 'embedded' ? 'Verified from the signed installer; this selection cannot be changed.' : 'The selected payload and installer publish together. Upload and validate a compatible VPK in the Paravoid tab first.'" persistent-hint class="mb-4" />
           </template>
-          <section v-if="changesMode" class="my-4">
-            <v-alert type="warning">This stable installer changes distribution from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }}. Test an in-place upgrade with real app data before publishing.</v-alert>
-            <v-checkbox v-model="migration.tested_upgrade" label="I tested the in-place upgrade from the previous published installer" :disabled="busy" hide-details />
-            <v-checkbox v-model="migration.database_preserved" label="Database and saved settings are preserved" :disabled="busy" hide-details />
-            <v-checkbox v-model="migration.authentication_preserved" label="Existing authentication is preserved" :disabled="busy" hide-details />
-            <v-checkbox v-model="migration.files_preserved" label="App files are preserved" :disabled="busy" hide-details />
-            <v-textarea v-model="migration.evidence" label="Migration test evidence" hint="Record builds, devices and test results or a report link" :disabled="busy" counter="8192" />
-            <v-btn :loading="busy" :disabled="busy || dirty || isBeta || !migrationReady || !!transitionReview" @click="verifyTransition">Verify transition</v-btn>
-            <v-alert v-if="transitionReview" type="success" variant="tonal" class="mt-3" role="status">
-              Transition verified. This release is still a draft. Click Publish release below to make the installer and payload available.
-              <details class="mt-2"><summary>Signing certificate</summary><p class="hash">{{ transitionSigner }}</p></details>
-            </v-alert>
-            <p class="text-caption mt-2">Existing shell streams keep their current status. Retire them explicitly from Paravoid → Shells and streams when appropriate.</p>
-          </section>
+          <v-alert v-if="changesMode" type="info" variant="tonal" class="my-4">
+            Publishing switches this app from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }} distribution. The Store checks APK signing continuity and release compatibility automatically.
+          </v-alert>
           <v-checkbox v-model="replaceLatest" label="Withdraw the previous latest release in this channel" :disabled="busy" hide-details />
           <p class="text-caption mb-3">Its artifact and published identity remain retained.</p>
           <details><summary>Artifact verification details</summary><p class="hash mt-2">SHA-256: {{ selected.sha256 }}</p></details>
@@ -113,7 +102,7 @@
         <v-spacer />
         <template v-if="state(selected) === 'draft'">
           <v-btn :disabled="busy || !dirty" @click="save">Save draft</v-btn>
-          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (changesMode && !transitionReview) || (selected.distribution_mode === 'paravoid' && !bootstrapVpk)" @click="publish">Publish release</v-btn>
+          <v-btn color="primary" :loading="busy" :disabled="dirty || busy || (selected.distribution_mode === 'paravoid' && !bootstrapVpk)" @click="publish">Publish release</v-btn>
         </template>
         <v-btn v-else color="warning" :loading="busy" :disabled="busy" @click="withdraw">Withdraw release</v-btn>
       </v-card-actions>
@@ -136,13 +125,7 @@ const hasPublished = ref(false)
 const bootstrapMode = ref('')
 const bootstrapVpk = ref<string>()
 const bootstrapChoices = ref<{ title: string; value: string }[]>([])
-const transitionReview = ref<string | undefined>()
-const transitionSigner = ref('')
-const emptyMigration = () => ({ tested_upgrade: false, database_preserved: false, authentication_preserved: false, files_preserved: false, evidence: '' })
-const migration = ref(emptyMigration())
-const migrationReady = computed(() => migration.value.tested_upgrade && migration.value.database_preserved && migration.value.authentication_preserved && migration.value.files_preserved && migration.value.evidence.trim().length > 0)
 const changesMode = computed(() => (hasPublished.value || reviewedMode.value === 'paravoid') && !!selected.value && (selected.value.distribution_mode ?? 'normal') !== reviewedMode.value)
-watch(migration, () => { transitionReview.value = undefined }, { deep: true })
 const notes = ref('')
 const isBeta = ref(false)
 const replaceLatest = ref(false)
@@ -183,8 +166,6 @@ async function review(version: AppVersion) {
     hasPublished.value = fresh.versions.some(v => state(v) !== 'draft')
     selected.value = release
     reviewedMode.value = fresh.distribution_mode ?? 'normal'
-    migration.value = emptyMigration()
-    transitionReview.value = undefined
     revision.value = fresh.publication_revision ?? 0
     notes.value = release.release_notes ?? ''
     isBeta.value = !!release.is_beta
@@ -199,7 +180,6 @@ async function save() {
   busy.value = true
   dialogError.value = ''
   try {
-    transitionReview.value = undefined
     await api.saveDraft(props.app.package_name, selected.value.version_code, notes.value, isBeta.value)
     const fresh = await api.getAdminApp(props.app.package_name)
     selected.value = fresh.versions.find(v => v.version_code === selected.value?.version_code) ?? null
@@ -209,26 +189,9 @@ async function save() {
   finally { busy.value = false }
 }
 
-async function verifyTransition() {
-  if (!selected.value || !migrationReady.value || dirty.value || isBeta.value || busy.value) return
-  busy.value = true
-  dialogError.value = ''
-  try {
-    const result = await api.reviewDistributionTransition(props.app.package_name, selected.value.version_code, revision.value, migration.value)
-    transitionReview.value = result.id
-    transitionSigner.value = result.signer_sha256
-    revision.value = result.publication_revision
-    emit('changed')
-  } catch (cause) { dialogError.value = message(cause) }
-  finally { busy.value = false }
-}
-
 async function publish() {
   if (!selected.value || dirty.value || busy.value) return
-  if (changesMode.value && !transitionReview.value) return
-  await mutate(() => changesMode.value
-    ? api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, transitionReview.value, bootstrapVpk.value)
-    : api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, undefined, bootstrapVpk.value))
+  await mutate(() => api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, undefined, bootstrapVpk.value))
 }
 async function withdraw() {
   if (!selected.value || busy.value) return

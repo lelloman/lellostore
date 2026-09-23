@@ -54,6 +54,17 @@ pub async fn publish(
     actor: &str,
     request: &PublishRequest,
 ) -> Result<PublicationResult, AppError> {
+    publish_checked(pool, package, actor, request, None).await
+}
+
+// The signer comes only from server-side verification, never from request JSON.
+pub(crate) async fn publish_checked(
+    pool: &SqlitePool,
+    package: &str,
+    actor: &str,
+    request: &PublishRequest,
+    verified_transition_signer: Option<&str>,
+) -> Result<PublicationResult, AppError> {
     let mut tx = pool.begin().await?;
     // First statement acquires the write lock. No read-then-write race between publishers.
     let updated = sqlx::query("UPDATE apps SET publication_revision = publication_revision + 1 WHERE package_name = ? AND publication_revision = ?")
@@ -99,8 +110,21 @@ pub async fn publish(
             || current_mode != "normal"
             || version.distribution_mode != "paravoid")
             && !approved
+            && verified_transition_signer.is_none()
         {
-            return Err(AppError::Conflict("Verify signing continuity and review the data migration before changing distribution mode".into()));
+            return Err(AppError::Conflict(
+                "APK signing continuity must be verified before changing distribution mode".into(),
+            ));
+        }
+    }
+    if current_mode != version.distribution_mode {
+        if let (Some(signer), Some(previous)) = (verified_transition_signer, highest) {
+            sqlx::query("INSERT INTO distribution_reviews(id,package_name,from_mode,to_mode,from_version,target_version,target_sha256,signer_sha256,review_revision,migration_evidence,actor_subject) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                .bind(uuid::Uuid::new_v4().to_string()).bind(package).bind(&current_mode)
+                .bind(&version.distribution_mode).bind(previous).bind(version.version_code)
+                .bind(&version.sha256).bind(signer).bind(request.expected_revision + 1)
+                .bind(r#"{"verification":"automatic","checks":["stored_apk_integrity","apk_signature_continuity","version_ordering"]}"#)
+                .bind(actor).execute(&mut *tx).await?;
         }
     }
     if version.distribution_mode == "paravoid" {

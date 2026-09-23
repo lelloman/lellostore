@@ -68,20 +68,20 @@ python3 scripts/publish-to-lellostore.py withdraw-vpk PACKAGE VPK_ID --expected-
 A queued upload is not a published release. Keep its returned job ID if the client
 stops waiting. Validation reports and original inputs remain available for diagnosis.
 
-## Distribution migration reviews
+## Distribution changes
 
-A stable draft in a different distribution mode requires a separate review before
-publication. The API verifies source/target stored hashes and apksigner evidence,
-requires an unchanged single v2/v3 signer and a newer APK version, and records the
-administrator's migration test evidence. The UI asks for confirmation that the tested
-upgrade preserved database/settings, authentication and files. This is recorded
-human test evidence, not automated proof of application data compatibility.
+Publish a stable draft to change the app's distribution mode. Publication checks
+source and target stored hashes, APK signatures, an unchanged single v2/v3 signer,
+and a version code newer than every published installer. These checks run on the
+server as part of publishing; administrators do not complete a migration checklist
+or submit test evidence. App runtime and data-preservation testing belongs in the
+app author's release process.
 
-The review is tied to the exact draft hash and optimistic app revision. Publication
-cannot use an old review after the app changes. The publication history UI retains
-the review, signer fingerprint and evidence. Signing certificate rotation is not
-supported by this conservative continuity check. Existing streams are unchanged;
-retire them explicitly when that is the intended rollout.
+Automatic signing checks are recorded with the publication in one database
+transaction and tied to the reviewed app revision. Existing historical migration
+reviews remain available. The legacy review API is retained for older clients,
+but current browser and CLI publication do not require it. Existing streams are
+unchanged; retire them explicitly when that is the intended rollout.
 
 Upload the signed installer with `distribution_mode=paravoid`. For an empty shell,
 upload its VPK against the registered contract and choose it in installer review.
@@ -93,7 +93,7 @@ Further installer versions may reuse a published bootstrap for the same contract
 
 The publisher exposes `upload shell.apk --distribution-mode paravoid`, followed by
 `upload-vpk`, and `publish PACKAGE APK_VERSION --expected-revision REV
---bootstrap-vpk VPK_ID`. Mode transitions also take `--transition-review REVIEW_ID`.
+--bootstrap-vpk VPK_ID`. The legacy `--transition-review` option remains accepted but is not required.
 Shell `upload --publish` is rejected because bootstrap selection needs a separate
 review after registration. Embedded publication uses the registered included payload.
 

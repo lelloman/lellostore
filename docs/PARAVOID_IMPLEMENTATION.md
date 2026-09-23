@@ -1,3 +1,8 @@
+> Updated 2026-09-24: distribution changes now verify signing continuity
+> automatically during publication. The earlier manual migration checklist and
+> separate verification step described below are superseded; app behavior testing
+> remains the author’s release responsibility.
+
 # Paravoid distribution implementation
 
 Approved design: 2026-09-22. This document tracks implementation, not production

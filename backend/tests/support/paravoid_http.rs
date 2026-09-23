@@ -432,8 +432,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .assert_status_forbidden();
         }
 
-        // Verify migration review and signer continuity through both mode changes.
-        // The evidence is an API fixture, never a claim of installed-device acceptance.
+        // Publishing automatically verifies signing continuity in both directions.
         for (code, mode) in [(2, "normal"), (3, "paravoid")] {
             let bytes = if mode == "normal" {
                 &[][..]
@@ -470,19 +469,18 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 Value::Null
             };
             server.post("/api/admin/apps/example.app/publications").add_header("Authorization", &admin)
-                .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"bootstrap_vpk":bootstrap}))
-                .await.assert_status_conflict();
-            let review = server.post("/api/admin/apps/example.app/distribution-reviews").add_header("Authorization", &admin)
-                .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"migration":{
-                    "tested_upgrade":true,"database_preserved":true,"authentication_preserved":true,"files_preserved":true,
-                    "evidence":"HTTP test fixture only; installed-device migration has not been evaluated"}}))
-                .await;
-            review.assert_status_ok();
-            let review = review.json::<Value>();
-            assert_eq!(review["signer_sha256"], certificate);
-            server.post("/api/admin/apps/example.app/publications").add_header("Authorization", &admin)
-                .json(&json!({"version_code":code,"expected_revision":review["publication_revision"],"bootstrap_vpk":bootstrap,"transition_review":review["id"],"replace_latest":true}))
+                .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"bootstrap_vpk":bootstrap,"replace_latest":true}))
                 .await.assert_status_ok();
+            let reviews = server
+                .get("/api/admin/apps/example.app/distribution-reviews")
+                .add_header("Authorization", &admin)
+                .await
+                .json::<Value>();
+            assert_eq!(reviews[0]["signer_sha256"], certificate);
+            let evidence: Value =
+                serde_json::from_str(reviews[0]["migration_evidence"].as_str().unwrap()).unwrap();
+            assert_eq!(evidence["verification"], "automatic");
+            assert!(evidence.get("tested_upgrade").is_none());
             let app = server
                 .get("/api/apps/example.app")
                 .add_header("Authorization", &user)
