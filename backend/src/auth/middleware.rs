@@ -1,7 +1,10 @@
+use simple_server::auth::{
+    AsyncAccess, CredentialError, HeaderCredential, RepeatedHeaders, SchemeCase,
+};
 use simple_server::axum::{
     body::Body,
     extract::State,
-    http::{header::AUTHORIZATION, Request},
+    http::{header::AUTHORIZATION, request::Parts, HeaderMap, Request},
     middleware::Next,
     response::Response,
 };
@@ -12,73 +15,68 @@ use super::user::User;
 use super::AuthState;
 
 /// Extract Bearer token from Authorization header
+#[cfg(test)]
 fn extract_bearer_token(request: &Request<Body>) -> Result<&str, AuthError> {
-    let auth_header = request
-        .headers()
-        .get(AUTHORIZATION)
-        .ok_or(AuthError::MissingToken)?
-        .to_str()
-        .map_err(|_| AuthError::InvalidAuthHeader)?;
+    extract_bearer_header(request.headers())
+}
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .or_else(|| auth_header.strip_prefix("bearer "))
-        .ok_or(AuthError::InvalidAuthHeader)?;
+fn extract_bearer_header(headers: &HeaderMap) -> Result<&str, AuthError> {
+    let bearer = HeaderCredential::new(AUTHORIZATION)
+        .with_scheme("Bearer", SchemeCase::Exact)
+        .repeated(RepeatedHeaders::First);
+    let lowercase = HeaderCredential::new(AUTHORIZATION)
+        .with_scheme("bearer", SchemeCase::Exact)
+        .repeated(RepeatedHeaders::First);
+    let credential = bearer.extract(headers).or_else(|error| {
+        if error == CredentialError::InvalidScheme {
+            lowercase.extract(headers)
+        } else {
+            Err(error)
+        }
+    });
+    credential
+        .map(|value| value.expose())
+        .map_err(|error| match error {
+            CredentialError::Missing => AuthError::MissingToken,
+            _ => AuthError::InvalidAuthHeader,
+        })
+}
 
-    if token.is_empty() {
-        return Err(AuthError::InvalidAuthHeader);
-    }
-
-    Ok(token)
+fn authenticated_access(auth: AuthState) -> AsyncAccess<Parts, User, AuthError> {
+    AsyncAccess::new(move |parts: &Parts| {
+        let auth = auth.clone();
+        Box::pin(async move {
+            let path = parts.uri.path();
+            let token = extract_bearer_header(&parts.headers).map_err(|error| {
+                warn!(path = %path, error = %error, "Authentication failed: missing or invalid token");
+                error
+            })?;
+            let claims = auth.validator.validate(token).await.map_err(|error| {
+                warn!(path = %path, error = %error, "Authentication failed: token validation error");
+                error
+            })?;
+            let user = User::from_claims(&claims, &auth.role_claim_path, &auth.admin_role);
+            if let Some(pool) = &auth.user_registry {
+                crate::db::admin::observe_user(pool, &user)
+                    .await
+                    .map_err(|error| AuthError::UserRegistryUnavailable(error.to_string()))?;
+            }
+            debug!(user = %user.subject, is_admin = user.is_admin, path = %path, "User authenticated");
+            Ok(user)
+        })
+    })
 }
 
 /// Authentication middleware that validates tokens and attaches User to request
 pub async fn auth_middleware(
     State(auth): State<AuthState>,
-    mut request: Request<Body>,
+    request: Request<Body>,
     next: Next,
 ) -> Result<Response, AuthError> {
-    let path = request.uri().path().to_string();
-
-    // Extract Bearer token
-    let token = match extract_bearer_token(&request) {
-        Ok(t) => t,
-        Err(e) => {
-            warn!(path = %path, error = %e, "Authentication failed: missing or invalid token");
-            return Err(e);
-        }
-    };
-
-    // Validate token
-    let claims = match auth.validator.validate(token).await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(path = %path, error = %e, "Authentication failed: token validation error");
-            return Err(e);
-        }
-    };
-
-    // Create user from claims
-    let user = User::from_claims(&claims, &auth.role_claim_path, &auth.admin_role);
-
-    if let Some(pool) = &auth.user_registry {
-        crate::db::admin::observe_user(pool, &user)
-            .await
-            .map_err(|error| AuthError::UserRegistryUnavailable(error.to_string()))?;
-    }
-
-    debug!(
-        user = %user.subject,
-        is_admin = user.is_admin,
-        path = %path,
-        "User authenticated"
-    );
-
-    // Attach user to request extensions
-    request.extensions_mut().insert(user);
-
-    // Continue to handler
-    Ok(next.run(request).await)
+    let (mut parts, body) = request.into_parts();
+    let user = authenticated_access(auth).evaluate(&parts).await?;
+    parts.extensions.insert(user);
+    Ok(next.run(Request::from_parts(parts, body)).await)
 }
 
 #[cfg(test)]
@@ -130,5 +128,54 @@ mod tests {
         let request = make_request_with_auth("Bearer ");
         let result = extract_bearer_token(&request);
         assert!(matches!(result, Err(AuthError::InvalidAuthHeader)));
+    }
+
+    #[test]
+    fn bearer_compatibility_contract() {
+        for value in ["Bearer token", "bearer token"] {
+            assert_eq!(
+                extract_bearer_token(&make_request_with_auth(value)).unwrap(),
+                "token"
+            );
+        }
+        for value in [
+            "BEARER token",
+            "BeArEr token",
+            "Basic token",
+            "Bearer ",
+            "Bearer",
+        ] {
+            assert!(matches!(
+                extract_bearer_token(&make_request_with_auth(value)),
+                Err(AuthError::InvalidAuthHeader)
+            ));
+        }
+        assert_eq!(
+            extract_bearer_token(&make_request_with_auth("Bearer  token")).unwrap(),
+            " token"
+        );
+
+        let mut request = make_request_with_auth("Bearer first");
+        request
+            .headers_mut()
+            .append(AUTHORIZATION, "Bearer second".parse().unwrap());
+        assert_eq!(extract_bearer_token(&request).unwrap(), "first");
+        let mut request = make_request_with_auth("Basic first");
+        request
+            .headers_mut()
+            .append(AUTHORIZATION, "Bearer second".parse().unwrap());
+        assert!(matches!(
+            extract_bearer_token(&request),
+            Err(AuthError::InvalidAuthHeader)
+        ));
+        let mut request = make_request_without_auth();
+        request.headers_mut().insert(
+            AUTHORIZATION,
+            simple_server::axum::http::HeaderValue::from_bytes(b"Bearer \xff").unwrap(),
+        );
+        assert!(matches!(
+            extract_bearer_token(&request),
+            Err(AuthError::InvalidAuthHeader)
+        ));
     }
 }

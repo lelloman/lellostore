@@ -1,3 +1,4 @@
+use simple_server::auth::Access;
 use simple_server::axum::{extract::FromRequestParts, http::request::Parts};
 use tracing::warn;
 
@@ -49,22 +50,18 @@ where
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let user = parts
-            .extensions
-            .get::<User>()
-            .cloned()
-            .ok_or(AuthError::MissingToken)?;
-
-        if user.is_admin {
-            Ok(AdminUser(user))
-        } else {
-            warn!(
-                user = %user.subject,
-                path = %parts.uri.path(),
-                "Authorization denied: user is not admin"
-            );
-            Err(AuthError::Forbidden)
-        }
+        let access = Access::new(|parts: &Parts| {
+            parts.extensions.get::<User>().cloned().ok_or(AuthError::MissingToken)
+        })
+        .with_check(|user, parts| {
+            if user.is_admin {
+                Ok(())
+            } else {
+                warn!(user = %user.subject, path = %parts.uri.path(), "Authorization denied: user is not admin");
+                Err(AuthError::Forbidden)
+            }
+        });
+        access.evaluate(parts).map(AdminUser)
     }
 }
 

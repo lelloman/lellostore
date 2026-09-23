@@ -676,6 +676,76 @@ async fn test_token_expiration_handling() {
 }
 
 #[tokio::test]
+async fn shared_auth_preserves_http_policy_and_registry_outage() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(ctx.router)
+        .unwrap();
+    let user = oidc.get_user_token();
+    let admin = oidc.get_admin_token();
+
+    assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+    assert_eq!(
+        server.get("/api/apps").await.status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    for value in [format!("Bearer {user}"), format!("bearer {user}")] {
+        assert_eq!(
+            server
+                .get("/api/apps")
+                .add_header("Authorization", value)
+                .await
+                .status_code(),
+            StatusCode::OK
+        );
+    }
+    for value in [
+        format!("BEARER {user}"),
+        format!("Basic {user}"),
+        "Bearer ".to_string(),
+    ] {
+        let response = server
+            .get("/api/apps")
+            .add_header("Authorization", value)
+            .await;
+        assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.json::<serde_json::Value>()["error"],
+            "Unauthorized"
+        );
+    }
+    assert_eq!(
+        server
+            .get("/api/admin/apps")
+            .add_header("Authorization", format!("Bearer {user}"))
+            .await
+            .status_code(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        server
+            .get("/api/admin/apps")
+            .add_header("Authorization", format!("Bearer {admin}"))
+            .await
+            .status_code(),
+        StatusCode::OK
+    );
+
+    ctx.pool.close().await;
+    let response = server
+        .get("/api/apps")
+        .add_header("Authorization", format!("Bearer {user}"))
+        .await;
+    assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        response.json::<serde_json::Value>()["error"],
+        "Authentication error"
+    );
+    assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn failed_database_delete_does_not_remove_app_files() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
     let apk_dir = ctx.storage_path.join("apks/com.example.atomic");
