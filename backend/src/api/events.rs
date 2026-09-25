@@ -13,13 +13,13 @@ use crate::auth::AuthenticatedUser;
 #[derive(Clone)]
 pub struct CatalogEventHub {
     sender: broadcast::Sender<CatalogEvent>,
-    shutdown: Shutdown,
+    pub(super) shutdown: Shutdown,
     connections: WorkTracker,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum CatalogEvent {
+pub(super) enum CatalogEvent {
     CatalogChanged,
 }
 
@@ -39,7 +39,7 @@ impl CatalogEventHub {
         }
     }
 
-    fn admit_connection(&self) -> Option<WorkGuard> {
+    pub(super) fn admit_connection(&self) -> Option<WorkGuard> {
         if self.shutdown.is_requested() {
             return None;
         }
@@ -59,7 +59,7 @@ impl CatalogEventHub {
         let _ = self.sender.send(CatalogEvent::CatalogChanged);
     }
 
-    fn subscribe(&self) -> broadcast::Receiver<CatalogEvent> {
+    pub(super) fn subscribe(&self) -> broadcast::Receiver<CatalogEvent> {
         self.sender.subscribe()
     }
 }

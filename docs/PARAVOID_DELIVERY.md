@@ -219,3 +219,29 @@ the APK, revocation, same-version repair and offline cold launch. The test uses
 the production Store router and Paravoid runtime. See
 [device acceptance](PARAVOID_DEVICE_ACCEPTANCE.md) for reproduction, artifact hashes
 and the remaining Store-client, physical-device and real-app migration limits.
+
+
+## Paravoid push adapter
+
+`/api/paravoid/v1/events` implements the store-neutral `paravoid.updates.v1`
+WebSocket subprotocol. Shells opt in through their APK update policy; Paravoid has
+no dependency on LelloStore. A foreground connection uses the same installed delivery
+bearer as head/download requests (public contracts need no bearer), independently of
+browser OIDC. Send a `subscribe` object with version 1, applicationId,
+shellContractId and channel. The server replies with `updates_changed` hints containing
+the same scope and a unique eventId. It sends an initial hint on every connection,
+then hints when catalog publication changes. Clients must fetch signed discovery;
+a hint never authorizes an install. Access is rechecked before hints and periodically.
+
+For background notifications, an integration can subscribe to this stream and forward
+the identical event JSON through its notification provider. The downstream shell adapter
+passes those bytes to `ParavoidPush.receive(context, bytes)`. Registration, addressing
+and provider credentials belong to that integration; neither project mandates a
+notification vendor. Shell build policy chooses `prompt` or `automatic`, with activation
+on the next cold start. Policy envelope version 2 carries the updater/push configuration;
+version 1 remains accepted for existing shells.
+
+Shell policy `updates.restartBehavior` independently selects `manual` (default),
+`prompt`, or `automatic` restart after staging. Automatic restart waits for a visible
+app Activity; background completion waits for the next foreground entry. Downstream
+apps may instead own timing/confirmation using the shell restart command.

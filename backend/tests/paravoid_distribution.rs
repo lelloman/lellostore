@@ -625,3 +625,55 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
         .await
         .is_err());
 }
+
+#[tokio::test]
+async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let signing = keys(dir.path());
+    let ctx = common::create_paravoid_test_context(signing.clone()).await;
+    seed(&ctx.pool, &signing, "public").await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(ctx.router)
+        .unwrap();
+    let subscription = json!({"version":1,"type":"subscribe","applicationId":"test.app","shellContractId":"a".repeat(64),"channel":"stable"});
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let mut socket = server
+            .get_websocket("/api/paravoid/v1/events")
+            .add_header(
+                simple_server::axum::http::header::SEC_WEBSOCKET_PROTOCOL,
+                "paravoid.updates.v1",
+            )
+            .await
+            .into_websocket()
+            .await;
+        socket.send_json(&subscription).await;
+        let hint: Value =
+            tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_json())
+                .await
+                .unwrap();
+        assert_eq!(hint["type"], "updates_changed");
+        assert_eq!(hint["version"], 1);
+        assert_eq!(hint["applicationId"], "test.app");
+        assert_eq!(hint["shellContractId"], "a".repeat(64));
+        assert_eq!(hint["channel"], "stable");
+        ids.push(hint["eventId"].clone());
+    }
+    assert_ne!(ids[0], ids[1]);
+    let mut socket = server
+        .get_websocket("/api/paravoid/v1/events")
+        .await
+        .into_websocket()
+        .await;
+    let mut wrong = subscription;
+    wrong["channel"] = json!("beta");
+    socket.send_json(&wrong).await;
+    let message = tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_text())
+        .await
+        .unwrap();
+    assert!(
+        message.is_empty(),
+        "wrong scope must close without an event"
+    );
+}

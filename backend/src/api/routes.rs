@@ -31,6 +31,7 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
     );
 
     router = router
+        .route("/api/paravoid/v1/events", get(super::delivery::push_events))
         .route(
             "/api/paravoid/v1/apps/{package}/head",
             get(super::delivery::head),

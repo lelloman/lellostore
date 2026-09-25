@@ -132,3 +132,23 @@ fn rejects_untrusted_shapes_tampering_and_conflicting_reservations() {
     unknown["distribution"]["credential"] = json!("unexpected");
     agrees(&envelope(unknown), false);
 }
+
+#[test]
+fn accepts_version_two_update_configuration_and_rejects_bad_push_policy() {
+    let mut d = descriptor();
+    d["distribution"]["updates"] = json!({"mode":"api","pushEnabled":"true","pushWebSocketUrl":"wss://updates.example.test/v1/events","updateBehavior":"prompt","restartBehavior":"automatic"});
+    let make = |descriptor: Value| {
+        let hash = hex::encode(Sha256::digest(canonical_json(&descriptor).unwrap()));
+        canonical_json(&json!({"version":2,"contractId":hash,"descriptor":descriptor})).unwrap()
+    };
+    agrees(&make(d.clone()), true);
+    d["distribution"]["updates"]["restartBehavior"] = json!("invalid");
+    agrees(&make(d.clone()), false);
+    d["distribution"]["updates"]["restartBehavior"] = json!("automatic");
+    agrees(&envelope(d.clone()), false);
+    d["distribution"]["updates"]["updateBehavior"] = json!("anything");
+    agrees(&make(d.clone()), false);
+    d["distribution"]["updates"]["updateBehavior"] = json!("automatic");
+    d["distribution"]["updates"]["pushWebSocketUrl"] = json!("ws://updates.example.test/v1/events");
+    agrees(&make(d), false);
+}

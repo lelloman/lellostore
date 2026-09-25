@@ -57,6 +57,8 @@ pub struct Distribution {
     pub channel: String,
     pub authentication: String,
     pub debug_http_allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updates: Option<BTreeMap<String, String>>,
 }
 pub struct ShellPolicyDocument {
     pub contract_id: String,
@@ -78,7 +80,7 @@ impl ShellPolicyDocument {
         super::json::ordinary_strings(&value)?;
         let envelope: Envelope = serde_json::from_value(value).map_err(|_| Error::Malformed)?;
         let descriptor_bytes = canonical_json(&envelope.descriptor)?;
-        if envelope.version != 1
+        if ![1, 2].contains(&envelope.version)
             || !hash(&envelope.contract_id)
             || hex::encode(Sha256::digest(&descriptor_bytes)) != envelope.contract_id
         {
@@ -86,6 +88,20 @@ impl ShellPolicyDocument {
         }
         let descriptor: Descriptor =
             serde_json::from_value(envelope.descriptor).map_err(|_| Error::Malformed)?;
+        if (envelope.version == 2) != descriptor.distribution.updates.is_some() {
+            return Err(Error::Incompatible);
+        }
+        if let Some(updates) = &descriptor.distribution.updates {
+            validate_updates(updates)?;
+            // Store implements the API distribution protocol. Static-feed hosting is external.
+            if updates.get("mode").is_some_and(|v| v != "api")
+                || updates
+                    .get("pushWebSocketUrl")
+                    .is_some_and(|v| !v.is_empty() && !v.starts_with("wss://"))
+            {
+                return Err(Error::Incompatible);
+            }
+        }
         let b = &descriptor.installed;
         let d = &descriptor.distribution;
         if descriptor.profile != "complete-apk-v1"
@@ -175,6 +191,135 @@ pub(super) fn validate_reservations(reservations: &BTreeMap<String, String>) -> 
             || type_ids.insert(type_id, kind).is_some_and(|v| v != kind)
         {
             return Err(Error::Malformed);
+        }
+    }
+    Ok(())
+}
+
+fn validate_updates(values: &BTreeMap<String, String>) -> Result<(), Error> {
+    let keys = [
+        "mode",
+        "metadataUrl",
+        "payloadUrlTemplate",
+        "checkerClass",
+        "updaterClass",
+        "policyClass",
+        "intervalSeconds",
+        "flexSeconds",
+        "jobIdBase",
+        "checks",
+        "downloads",
+        "checkUnmetered",
+        "downloadUnmetered",
+        "charging",
+        "batteryNotLow",
+        "deviceIdle",
+        "retrySeconds",
+        "maxRetrySeconds",
+        "maxRetries",
+        "pushEnabled",
+        "pushWebSocketUrl",
+        "pushTransportClass",
+        "pushAuthenticationClass",
+        "updateBehavior",
+        "pushComponentClasses",
+        "restartBehavior",
+    ];
+    if values.keys().any(|key| !keys.contains(&key.as_str())) {
+        return Err(Error::Malformed);
+    }
+    for key in [
+        "checks",
+        "downloads",
+        "checkUnmetered",
+        "downloadUnmetered",
+        "charging",
+        "batteryNotLow",
+        "deviceIdle",
+        "pushEnabled",
+    ] {
+        if values.get(key).is_some_and(|v| v != "true" && v != "false") {
+            return Err(Error::Malformed);
+        }
+    }
+    let number = |key: &str, default: u64, min: u64, max: u64| -> Result<u64, Error> {
+        let value = match values.get(key) {
+            Some(v) => v.parse::<u64>().map_err(|_| Error::Malformed)?,
+            None => default,
+        };
+        if value < min || value > max {
+            return Err(Error::Malformed);
+        }
+        Ok(value)
+    };
+    let interval = number("intervalSeconds", 21600, 900, 365 * 86400)?;
+    number("flexSeconds", 3600, 300, interval)?;
+    let retry = number("retrySeconds", 30, 30, 3600)?;
+    number("maxRetrySeconds", 3600, retry, 3600)?;
+    number("maxRetries", 3, 0, 10)?;
+    number("jobIdBase", 0x50560000, 1, i32::MAX as u64 - 4)?;
+    if values
+        .get("updateBehavior")
+        .is_some_and(|v| v != "automatic" && v != "prompt")
+    {
+        return Err(Error::Malformed);
+    }
+    if values
+        .get("restartBehavior")
+        .is_some_and(|v| !["manual", "prompt", "automatic"].contains(&v.as_str()))
+    {
+        return Err(Error::Malformed);
+    }
+    let empty = |key: &str| values.get(key).is_none_or(|v| v.is_empty());
+    if !empty("metadataUrl") || !empty("payloadUrlTemplate") {
+        return Err(Error::Incompatible);
+    }
+    if values.get("pushEnabled").is_some_and(|v| v == "true")
+        && empty("pushWebSocketUrl")
+        && empty("pushTransportClass")
+        && empty("pushComponentClasses")
+    {
+        return Err(Error::Malformed);
+    }
+    if let Some(endpoint) = values.get("pushWebSocketUrl").filter(|v| !v.is_empty()) {
+        let url = reqwest::Url::parse(endpoint).map_err(|_| Error::Malformed)?;
+        if url.scheme() != "wss"
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+            || url.query().is_some()
+        {
+            return Err(Error::Incompatible);
+        }
+    }
+    for key in [
+        "checkerClass",
+        "updaterClass",
+        "policyClass",
+        "pushTransportClass",
+        "pushAuthenticationClass",
+        "pushComponentClasses",
+    ] {
+        if let Some(names) = values.get(key) {
+            for name in names.split(';').filter(|v| !v.is_empty()) {
+                if !name.contains('.')
+                    || name.split('.').any(|part| {
+                        part.is_empty()
+                            || !part.bytes().enumerate().all(|(i, b)| {
+                                b.is_ascii_alphabetic()
+                                    || b == b'_'
+                                    || b == b'$'
+                                    || i > 0 && b.is_ascii_digit()
+                            })
+                    })
+                {
+                    return Err(Error::Malformed);
+                }
+            }
+            if key != "pushComponentClasses" && names.contains(';') {
+                return Err(Error::Malformed);
+            }
         }
     }
     Ok(())

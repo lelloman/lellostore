@@ -282,3 +282,87 @@ pub async fn download(
     )
     .await
 }
+
+/// Store adapter for the transport-neutral Paravoid update hint protocol.
+/// Authentication uses the installed shell grant, independently of browser OIDC.
+pub async fn push_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ws: simple_server::axum::extract::ws::WebSocketUpgrade,
+) -> Response {
+    let Some(guard) = state.catalog_events.admit_connection() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let mut changes = state.catalog_events.subscribe();
+    let shutdown = state.catalog_events.shutdown.clone();
+    ws.protocols(["paravoid.updates.v1"])
+        .max_message_size(4096)
+        .max_frame_size(4096)
+        .on_upgrade(move |mut socket| async move {
+            use simple_server::axum::extract::ws::Message;
+            use std::time::Duration;
+            let _guard = guard;
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Subscription {
+                version: u32,
+                #[serde(rename = "type")]
+                kind: String,
+                application_id: String,
+                shell_contract_id: String,
+                channel: String,
+            }
+            let subscription = tokio::select! {
+                _ = shutdown.requested() => return,
+                message = tokio::time::timeout(Duration::from_secs(15),socket.recv()) => {
+                    let Ok(Some(Ok(Message::Text(text)))) = message else { return; };
+                    let Ok(value) = serde_json::from_str::<Subscription>(&text) else { return; };
+                    if value.version != 1 || value.kind != "subscribe" { return; }
+                    value
+                }
+            };
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            let mut announce = true;
+            loop {
+                // Recheck revocation and stream ownership before every hint and periodically.
+                let authorized = async {
+                    let mut conn = state.db.acquire().await?;
+                    let contract: Contract = sqlx::query_as("SELECT * FROM paravoid_contracts WHERE package_name = ? AND contract_id = ?")
+                        .bind(&subscription.application_id).bind(&subscription.shell_contract_id)
+                        .fetch_optional(&mut *conn).await?
+                        .ok_or(AppError::Forbidden)?;
+                    if contract.channel != subscription.channel { return Err(AppError::Forbidden); }
+                    authorize(&mut conn, &contract, &headers).await
+                };
+                let result = tokio::select! {
+                    _ = shutdown.requested() => return,
+                    result = authorized => result,
+                };
+                if result.is_err() { break; }
+                if announce {
+                    // Also sent on subscription/reconnect: missed messages need no replay log.
+                    let payload = json!({"version":1,"type":"updates_changed",
+                        "applicationId":subscription.application_id,"shellContractId":subscription.shell_contract_id,
+                        "channel":subscription.channel,"eventId":uuid::Uuid::new_v4().to_string()}).to_string();
+                    if !matches!(tokio::time::timeout(Duration::from_secs(10),socket.send(Message::Text(payload.into()))).await, Ok(Ok(()))) { break; }
+                }
+                announce = false;
+                tokio::select! {
+                    _ = shutdown.requested() => break,
+                    _ = interval.tick() => {},
+                    event = changes.recv() => {
+                        if matches!(event,Err(tokio::sync::broadcast::error::RecvError::Closed)) { break; }
+                        announce = true;
+                    },
+                    message = socket.recv() => match message {
+                        Some(Ok(Message::Ping(payload))) => {
+                            if !matches!(tokio::time::timeout(Duration::from_secs(10),socket.send(Message::Pong(payload))).await, Ok(Ok(()))) { break; }
+                        },
+                        Some(Ok(Message::Pong(_))) => {},
+                        _ => break,
+                    }
+                }
+            }
+            let _ = tokio::time::timeout(Duration::from_secs(1),socket.send(Message::Close(None))).await;
+        })
+}
