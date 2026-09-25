@@ -358,8 +358,8 @@ def upload_artifact(
 ) -> dict:
     if distribution_mode not in ("normal", "paravoid"):
         raise PublisherError("Distribution mode must be normal or paravoid")
-    if distribution_mode == "paravoid" and publish:
-        raise PublisherError("Upload the shell draft first, then its VPK; publish the installer with --bootstrap-vpk after review")
+    if distribution_mode == "paravoid" and (publish or replace_latest):
+        raise PublisherError("Upload the shell draft first, then publish the validated installer after review")
     artifact_info = validate_artifact(artifact)
     artifact = Path(artifact_info["artifact"])
     boundary = f"LelloStore-{secrets.token_hex(16)}"
@@ -494,6 +494,8 @@ def store_request(config: PublisherConfig, token: str, path: str, data: dict | N
         raw = response.read().decode(errors="replace")
         if not 200 <= response.status < 300:
             raise PublisherError(f"Store request failed (HTTP {response.status}): {raw}")
+        if response.status == 204 and not raw:
+            return {"status": "success"}
         result = json.loads(raw)
         if not isinstance(result, dict):
             raise PublisherError("Unexpected Store response")

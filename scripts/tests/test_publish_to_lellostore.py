@@ -135,6 +135,12 @@ class UploadTest(unittest.TestCase):
             "publisher-client",
         )
 
+    def test_paravoid_upload_rejects_immediate_publication_flags(self):
+        for flag in ({"publish": True}, {"replace_latest": True}):
+            with self.subTest(flag=flag):
+                with self.assertRaisesRegex(publisher.PublisherError, "Upload the shell draft first"):
+                    publisher.upload_artifact(Path("shell.apk"), "token", self.config, distribution_mode="paravoid", **flag)
+
     def test_vpk_upload_returns_durable_job_without_publishing(self):
         connection = FakeConnection(FakeHttpResponse({"id": "saved-job", "status": "queued"}, 202))
         with tempfile.TemporaryDirectory() as directory:
@@ -284,6 +290,28 @@ class UploadTest(unittest.TestCase):
         self.assertIn(b'name="publication"', body)
         self.assertIn(b"draft", body)
         self.assertEqual(publication.call_args.args[3], {"version_code": 20, "expected_revision": 7, "replace_latest": True})
+
+
+class StoreRequestTest(unittest.TestCase):
+    def test_no_content_publication_response_is_success(self):
+        config = publisher.PublisherConfig("https://store.example.com", "https://auth.example.com", "client")
+        connection = mock.Mock()
+        connection.getresponse.return_value.status = 204
+        connection.getresponse.return_value.read.return_value = b""
+        with mock.patch.object(publisher, "_open_connection", return_value=connection):
+            result = publisher.store_request(config, "token", "/api/admin/apps/example/vpks/vpk/publish", {"expected_revision": 4})
+        self.assertEqual(result, {"status": "success"})
+        connection.request.assert_called_once()
+        connection.close.assert_called_once()
+
+    def test_empty_json_response_is_still_an_error(self):
+        config = publisher.PublisherConfig("https://store.example.com", "https://auth.example.com", "client")
+        connection = mock.Mock()
+        connection.getresponse.return_value.status = 200
+        connection.getresponse.return_value.read.return_value = b""
+        with mock.patch.object(publisher, "_open_connection", return_value=connection):
+            with self.assertRaisesRegex(publisher.PublisherError, "Store request failed"):
+                publisher.store_request(config, "token", "/api/admin/apps/example")
 
 
 class CommandLineTest(unittest.TestCase):
