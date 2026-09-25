@@ -31,8 +31,12 @@ impl Contract {
             crate::paravoid::MAX_RELEASE_BYTES,
         )
         .map_err(|e| AppError::Conflict(e.to_string()))?;
-        let envelope =
-            serde_json::json!({"version":1,"contractId":self.contract_id,"descriptor":descriptor});
+        let version = if descriptor["distribution"].get("updates").is_some() {
+            2
+        } else {
+            1
+        };
+        let envelope = serde_json::json!({"version":version,"contractId":self.contract_id,"descriptor":descriptor});
         let policy = crate::paravoid::shell_policy::ShellPolicyDocument::parse(
             &serde_json::to_vec(&envelope).unwrap(),
         )
@@ -72,6 +76,68 @@ impl Contract {
             },
         )
         .map_err(|_| AppError::Conflict("Invalid installed distribution policy".into()))
+    }
+}
+
+#[cfg(test)]
+mod shell_policy_tests {
+    use super::Contract;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn reopens_registered_version_two_shell_policy() {
+        let trust: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/paravoid-metadata/trust.json"
+        ))
+        .unwrap();
+        let application_id = trust["applicationId"].as_str().unwrap();
+        let descriptor = json!({
+            "profile": "complete-apk-v1",
+            "runtimeAbi": 1,
+            "trustPolicy": trust,
+            "installed": {
+                "applicationId": application_id,
+                "minSdk": 30,
+                "manifestSha256": "b".repeat(64),
+                "declarations": {"application": "example.App"},
+                "pinnedResources": {},
+                "runtimeClasses": {},
+                "nativeAbis": {},
+                "ledgerReservations": {},
+                "apkSigners": ["e".repeat(64)],
+                "toolchain": {}
+            },
+            "distribution": {
+                "bootstrap": "embedded",
+                "enabled": true,
+                "baseUrl": "https://updates.example.test/",
+                "channel": "stable",
+                "authentication": "apkKey",
+                "debugHttpAllowed": false,
+                "updates": {"mode": "api", "pushEnabled": "true", "pushWebSocketUrl": "wss://updates.example.test/v1/events"}
+            }
+        });
+        let contract = Contract {
+            package_name: application_id.to_string(),
+            contract_id: hex::encode(Sha256::digest(
+                crate::paravoid::canonical_json(&descriptor).unwrap(),
+            )),
+            installer_version: 8,
+            channel: "stable".to_string(),
+            authentication: "apkKey".to_string(),
+            bootstrap: "embedded".to_string(),
+            base_url: "https://updates.example.test/".to_string(),
+            trust_json: descriptor["trustPolicy"].to_string(),
+            descriptor_json: descriptor.to_string(),
+            verification_state: "verified".to_string(),
+            validation_report: String::new(),
+            created_at: String::new(),
+        };
+        assert_eq!(
+            contract.shell_policy().unwrap().contract_id,
+            contract.contract_id
+        );
     }
 }
 #[derive(Clone, Serialize, sqlx::FromRow)]
