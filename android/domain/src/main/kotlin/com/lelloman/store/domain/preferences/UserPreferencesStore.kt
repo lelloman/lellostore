@@ -7,6 +7,9 @@ interface UserPreferencesStore {
     val themeMode: StateFlow<ThemeMode>
     val updateCheckInterval: StateFlow<UpdateCheckInterval>
     val wifiOnlyDownloads: StateFlow<Boolean>
+    val keepUpdateConnection: StateFlow<Boolean>
+    suspend fun setKeepUpdateConnection(enabled: Boolean)
+
     val autoUpdateDefault: StateFlow<Boolean>
     val releaseChannelDefault: StateFlow<ReleaseChannel>
     val installationChannels: StateFlow<List<InstallationChannelPreference>>

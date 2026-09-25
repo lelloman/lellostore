@@ -100,6 +100,7 @@ fun SettingsScreen(
         onThemeModeChanged = viewModel::onThemeModeChanged,
         onUpdateCheckIntervalChanged = viewModel::onUpdateCheckIntervalChanged,
         onWifiOnlyDownloadsChanged = viewModel::onWifiOnlyDownloadsChanged,
+        onKeepUpdateConnectionChanged = viewModel::onKeepUpdateConnectionChanged,
         onAutoUpdateDefaultChanged = viewModel::onAutoUpdateDefaultChanged,
         onReleaseChannelDefaultChanged = viewModel::onReleaseChannelDefaultChanged,
         onInstallationChannelEnabledChanged = viewModel::onInstallationChannelEnabledChanged,
@@ -123,6 +124,7 @@ internal fun SettingsContent(
     onThemeModeChanged: (ThemeModeOption) -> Unit,
     onUpdateCheckIntervalChanged: (UpdateCheckIntervalOption) -> Unit,
     onWifiOnlyDownloadsChanged: (Boolean) -> Unit,
+    onKeepUpdateConnectionChanged: (Boolean) -> Unit,
     onAutoUpdateDefaultChanged: (Boolean) -> Unit,
     onReleaseChannelDefaultChanged: (ReleaseChannelOption) -> Unit,
     onInstallationChannelEnabledChanged: (String, Boolean) -> Unit,
@@ -160,6 +162,13 @@ internal fun SettingsContent(
             }
 
             SettingsSection(title = stringResource(R.string.settings_updates)) {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.settings_keep_update_connection),
+                    subtitle = stringResource(R.string.settings_keep_update_connection_subtitle),
+                    checked = state.keepUpdateConnection,
+                    onCheckedChange = onKeepUpdateConnectionChanged,
+                )
+                SettingsDivider()
                 SettingsSwitchItem(
                     title = stringResource(R.string.settings_auto_update_default),
                     subtitle = stringResource(R.string.settings_auto_update_default_subtitle),

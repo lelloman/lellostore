@@ -52,6 +52,12 @@ class SettingsInteractorImpl @Inject constructor(
         return userPreferencesStore.wifiOnlyDownloads
     }
 
+    override fun keepUpdateConnection() = userPreferencesStore.keepUpdateConnection
+
+    override suspend fun setKeepUpdateConnection(enabled: Boolean) {
+        userPreferencesStore.setKeepUpdateConnection(enabled)
+    }
+
     override fun autoUpdateDefault(): StateFlow<Boolean> = userPreferencesStore.autoUpdateDefault
 
     override fun releaseChannelDefault(): StateFlow<ReleaseChannelOption> =

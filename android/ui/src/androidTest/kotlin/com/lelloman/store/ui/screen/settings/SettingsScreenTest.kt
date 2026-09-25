@@ -33,6 +33,7 @@ class SettingsScreenTest {
                         onThemeModeChanged = {},
                         onUpdateCheckIntervalChanged = {},
                         onWifiOnlyDownloadsChanged = {},
+                        onKeepUpdateConnectionChanged = {},
                         onAutoUpdateDefaultChanged = { newValue = it },
                         onReleaseChannelDefaultChanged = {},
                         onInstallationChannelEnabledChanged = { _, _ -> },
@@ -83,6 +84,7 @@ class SettingsScreenTest {
                         onThemeModeChanged = {},
                         onUpdateCheckIntervalChanged = {},
                         onWifiOnlyDownloadsChanged = {},
+                        onKeepUpdateConnectionChanged = {},
                         onAutoUpdateDefaultChanged = {},
                         onReleaseChannelDefaultChanged = {},
                         onInstallationChannelEnabledChanged = { id, enabled ->

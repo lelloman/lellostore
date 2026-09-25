@@ -8,6 +8,7 @@ import com.lelloman.store.di.ApplicationScope
 import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
+import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.logger.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -88,6 +89,7 @@ class ForegroundCatalogEventConnection @Inject constructor(
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 openedAt = SystemClock.elapsedRealtime()
                 logger.i(TAG, "Connected to catalog event stream")
+                catalogChanges.trySend(Unit) // Repair publications missed while disconnected.
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -144,6 +146,9 @@ class ForegroundCatalogEventConnection @Inject constructor(
 class ForegroundUpdateLifecycleObserver @Inject constructor(
     private val authStore: AuthStore,
     private val configStore: ConfigStore,
+    private val preferences: UserPreferencesStore,
+    private val service: UpdateConnectionServiceController,
+    private val logger: Logger,
     private val warmUpdateScheduler: WarmUpdateScheduler,
     private val connection: ForegroundCatalogEventConnection,
     private val workManagerInitializer: WorkManagerInitializer,
@@ -153,30 +158,65 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
 
     fun initialize() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
-        scope.launch {
-            combine(foreground, authStore.authState, configStore.serverUrl) { isForeground, auth, url ->
-                ConnectionState(isForeground && auth is AuthState.Authenticated, url)
-            }
-                .distinctUntilChanged()
-                .collect { state ->
-                    if (state.active) {
-                        warmUpdateScheduler.cancel()
-                        workManagerInitializer.enqueueImmediateUpdateCheck()
-                        connection.start(state.serverUrl)
-                    } else {
-                        connection.stop()
+        observeConnection()
+    }
+
+    internal fun observeConnection(): Job = scope.launch {
+        var connectionActive = false
+        combine(foreground, authStore.authState, configStore.serverUrl,
+            preferences.keepUpdateConnection, service.running) { visible, auth, url, keep, running ->
+            ConnectionState(visible, auth is AuthState.Authenticated, url, keep, running)
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                if (!state.authenticated || !state.keep) {
+                    service.stop()
+                } else if (state.foreground) {
+                    try {
+                        service.start()
+                    } catch (error: RuntimeException) {
+                        logger.w("UpdateConnection", "Cannot start update connection service", error)
+                        preferences.setKeepUpdateConnection(false)
                     }
                 }
-        }
+                val active = shouldKeepCatalogConnection(state.foreground, state.authenticated,
+                    state.keep, state.serviceRunning)
+                if (active) {
+                    warmUpdateScheduler.cancel()
+                    connection.start(state.serverUrl)
+                } else {
+                    connection.stop()
+                    if (connectionActive && state.authenticated && !state.foreground) {
+                        warmUpdateScheduler.start()
+                    }
+                }
+                connectionActive = active
+            }
     }
 
     override fun onStart(owner: LifecycleOwner) {
         foreground.value = true
+        if (authStore.authState.value is AuthState.Authenticated) {
+            workManagerInitializer.enqueueImmediateUpdateCheck()
+        }
     }
 
     override fun onStop(owner: LifecycleOwner) {
         foreground.value = false
     }
 
-    private data class ConnectionState(val active: Boolean, val serverUrl: String)
+    private data class ConnectionState(
+        val foreground: Boolean,
+        val authenticated: Boolean,
+        val serverUrl: String,
+        val keep: Boolean,
+        val serviceRunning: Boolean,
+    )
 }
+
+internal fun shouldKeepCatalogConnection(
+    foreground: Boolean,
+    authenticated: Boolean,
+    keepInBackground: Boolean,
+    serviceRunning: Boolean,
+): Boolean = authenticated && (foreground || (keepInBackground && serviceRunning))

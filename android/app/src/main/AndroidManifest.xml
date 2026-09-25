@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
@@ -30,6 +31,14 @@
             android:name=".remote.RemoteDeviceService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync" />
+        <service
+            android:name=".worker.UpdateConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled persistent store update event connection for rapid development iterations while using other apps" />
+        </service>
         <service
             android:name=".download.DownloadForegroundService"
             android:exported="false"

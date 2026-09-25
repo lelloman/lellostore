@@ -25,6 +25,11 @@ class SettingsViewModel @Inject constructor(
     val events: SharedFlow<SettingsScreenEvent> = mutableEvents.asSharedFlow()
 
     init {
+        viewModelScope.launch {
+            interactor.keepUpdateConnection().collect { enabled ->
+                mutableState.value = mutableState.value.copy(keepUpdateConnection = enabled)
+            }
+        }
         observeSettings()
         observeUpdatePolicy()
     }
@@ -97,6 +102,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             interactor.setWifiOnlyDownloads(enabled)
         }
+    }
+
+    fun onKeepUpdateConnectionChanged(enabled: Boolean) {
+        viewModelScope.launch { interactor.setKeepUpdateConnection(enabled) }
     }
 
     fun onAutoUpdateDefaultChanged(enabled: Boolean) {
@@ -216,6 +225,8 @@ class SettingsViewModel @Inject constructor(
         fun themeMode(): StateFlow<ThemeModeOption>
         fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption>
         fun wifiOnlyDownloads(): StateFlow<Boolean>
+        fun keepUpdateConnection(): StateFlow<Boolean>
+        suspend fun setKeepUpdateConnection(enabled: Boolean)
         fun autoUpdateDefault(): StateFlow<Boolean>
         fun releaseChannelDefault(): StateFlow<ReleaseChannelOption>
         fun installationChannels(): StateFlow<List<InstallationChannelOption>>
@@ -245,6 +256,7 @@ data class SettingsScreenState(
     val themeMode: ThemeModeOption = ThemeModeOption.System,
     val updateCheckInterval: UpdateCheckIntervalOption = UpdateCheckIntervalOption.Hours24,
     val wifiOnlyDownloads: Boolean = true,
+    val keepUpdateConnection: Boolean = false,
     val autoUpdateDefault: Boolean = true,
     val releaseChannelDefault: ReleaseChannelOption = ReleaseChannelOption.Stable,
     val installationChannels: List<InstallationChannelOption> = emptyList(),

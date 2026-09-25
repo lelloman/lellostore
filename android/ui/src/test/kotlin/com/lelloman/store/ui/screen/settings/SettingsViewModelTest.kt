@@ -38,6 +38,20 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `update connection toggle reflects stored setting`() = runTest {
+        createViewModel()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.keepUpdateConnection).isFalse()
+        viewModel.onKeepUpdateConnectionChanged(true)
+        advanceUntilIdle()
+        assertThat(fakeInteractor.mutableKeepUpdateConnection.value).isTrue()
+        assertThat(viewModel.state.value.keepUpdateConnection).isTrue()
+        fakeInteractor.mutableKeepUpdateConnection.value = false
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.keepUpdateConnection).isFalse()
+    }
+
+    @Test
     fun `initial state reflects interactor values`() = runTest {
         fakeInteractor.mutableThemeMode.value = ThemeModeOption.Dark
         fakeInteractor.mutableUpdateCheckInterval.value = UpdateCheckIntervalOption.Hours12
@@ -338,6 +352,11 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     override fun themeMode(): StateFlow<ThemeModeOption> = mutableThemeMode
     override fun updateCheckInterval(): StateFlow<UpdateCheckIntervalOption> = mutableUpdateCheckInterval
     override fun wifiOnlyDownloads(): StateFlow<Boolean> = mutableWifiOnlyDownloads
+    val mutableKeepUpdateConnection = MutableStateFlow(false)
+    override fun keepUpdateConnection(): StateFlow<Boolean> = mutableKeepUpdateConnection
+    override suspend fun setKeepUpdateConnection(enabled: Boolean) {
+        mutableKeepUpdateConnection.value = enabled
+    }
     override fun autoUpdateDefault(): StateFlow<Boolean> = mutableAutoUpdateDefault
     override fun releaseChannelDefault(): StateFlow<ReleaseChannelOption> = mutableReleaseChannelDefault
     override fun installationChannels(): StateFlow<List<InstallationChannelOption>> =

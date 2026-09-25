@@ -187,3 +187,20 @@ Instrumented tests require an emulator or device:
 The application compiles against SDK 36, targets SDK 36, supports API 24 and
 newer, and uses Java 11 bytecode. Development and CI use JDK 17 to run Gradle and
 the Android Gradle Plugin.
+
+## Persistent update connection
+
+Settings → Updates → Keep update connection open is off by default. When enabled
+while signed in, a `specialUse` foreground service protects the existing authenticated
+catalog WebSocket while the user switches to other apps. The service starts while
+LelloStore is visible and displays an ongoing notification with a Stop action that
+also clears the preference. Signing out stops it; signing back in while visible
+starts it again if the preference remains enabled. Server changes reconnect the socket.
+There is only one socket, shared across foreground and background operation.
+
+Catalog events and successful reconnections enqueue update checks, including any
+publications missed during a network outage. Existing download and auto-install
+preferences still apply. Disabling the service in the background resumes warm polling.
+The service is not sticky and does not start at boot: reopen LelloStore to resume
+after Android stops it. A foreground service does not bypass Doze, network availability,
+or package-installer confirmation requirements.

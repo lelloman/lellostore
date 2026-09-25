@@ -25,4 +25,8 @@
     <string name="audit_exported">Registro esportato</string>
     <string name="audit_error">Impossibile leggere o esportare la diagnostica. Riprova.</string>
     <string name="audit_summary">Byte conservati: %1$d (capacità: 4 MiB)\nEventi: %2$d\nOperazioni terminate: %3$d\nCompletate: %4$d\nDurata media totale: %5$d ms\nStatistiche relative ai soli record conservati. Ultimi 100 eventi di seguito.</string>
+    <string name="notification_connection_channel">Connessione aggiornamenti</string>
+    <string name="notification_connection_title">Aggiornamenti rapidi attivi</string>
+    <string name="notification_connection_text">Connessione allo store mantenuta aperta, con riconnessione quando necessario.</string>
+    <string name="notification_connection_stop">Interrompi</string>
 </resources>

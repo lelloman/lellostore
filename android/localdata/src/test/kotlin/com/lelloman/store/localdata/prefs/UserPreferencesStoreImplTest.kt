@@ -44,6 +44,17 @@ class UserPreferencesStoreImplTest {
     }
 
     @Test
+    fun `persistent update connection defaults off and can be toggled`() = testScope.runTest {
+        preferencesStore.keepUpdateConnection.test {
+            assertThat(awaitItem()).isFalse()
+            preferencesStore.setKeepUpdateConnection(true)
+            assertThat(awaitItem()).isTrue()
+            preferencesStore.setKeepUpdateConnection(false)
+            assertThat(awaitItem()).isFalse()
+        }
+    }
+
+    @Test
     fun `themeMode defaults to System`() = testScope.runTest {
         assertThat(preferencesStore.themeMode.value).isEqualTo(ThemeMode.System)
     }

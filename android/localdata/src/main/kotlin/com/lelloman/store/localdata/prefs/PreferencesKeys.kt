@@ -8,6 +8,7 @@ internal object PreferencesKeys {
     val THEME_MODE = stringPreferencesKey("theme_mode")
     val UPDATE_CHECK_INTERVAL = stringPreferencesKey("update_check_interval")
     val WIFI_ONLY_DOWNLOADS = booleanPreferencesKey("wifi_only_downloads")
+    val KEEP_UPDATE_CONNECTION = booleanPreferencesKey("keep_update_connection")
     val AUTO_UPDATE_DEFAULT = booleanPreferencesKey("auto_update_default")
     val RELEASE_CHANNEL_DEFAULT = stringPreferencesKey("release_channel_default")
     val INSTALLATION_CHANNELS = stringPreferencesKey("installation_channels")

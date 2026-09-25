@@ -25,4 +25,8 @@
     <string name="audit_exported">Audit log exported</string>
     <string name="audit_error">Could not read or export diagnostics. Try again.</string>
     <string name="audit_summary">Retained bytes: %1$d (capacity: 4 MiB)\nEvents: %2$d\nFinished operations: %3$d\nCompleted: %4$d\nAverage total duration: %5$d ms\nStatistics cover only retained records. Latest 100 events below.</string>
+    <string name="notification_connection_channel">Update connection</string>
+    <string name="notification_connection_title">Fast updates enabled</string>
+    <string name="notification_connection_text">Keeping the store connection open; reconnecting when needed.</string>
+    <string name="notification_connection_stop">Stop</string>
 </resources>

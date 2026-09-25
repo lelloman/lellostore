@@ -207,4 +207,6 @@
     <string name="paravoid_repair_confirm">Reinstall</string>
     <string name="paravoid_manage_updates">Manage app updates</string>
     <string name="paravoid_controls_unavailable">Update controls are unavailable. Open the app to manage its updates.</string>
+    <string name="settings_keep_update_connection">Keep update connection open</string>
+    <string name="settings_keep_update_connection_subtitle">Receive updates quickly while using other apps. Shows an ongoing notification and uses more battery. Auto-update settings still apply.</string>
 </resources>

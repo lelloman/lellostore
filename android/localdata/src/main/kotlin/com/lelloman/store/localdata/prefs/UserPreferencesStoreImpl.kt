@@ -43,6 +43,14 @@ class UserPreferencesStoreImpl(
         }
         .stateIn(scope, SharingStarted.Eagerly, true)
 
+    override val keepUpdateConnection: StateFlow<Boolean> = dataStore.data
+        .map { it[PreferencesKeys.KEEP_UPDATE_CONNECTION] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    override suspend fun setKeepUpdateConnection(enabled: Boolean) {
+        dataStore.edit { it[PreferencesKeys.KEEP_UPDATE_CONNECTION] = enabled }
+    }
+
     override val autoUpdateDefault: StateFlow<Boolean> = dataStore.data
         .map { preferences -> preferences[PreferencesKeys.AUTO_UPDATE_DEFAULT] ?: true }
         .stateIn(scope, SharingStarted.Eagerly, true)
