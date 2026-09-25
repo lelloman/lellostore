@@ -1,5 +1,5 @@
 use serde_json::json;
-use simple_server::axum::{
+use simple_server::web::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,

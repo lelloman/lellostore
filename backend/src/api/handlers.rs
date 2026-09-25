@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use simple_server::axum::{
+use simple_server::web::{
     extract::{multipart::Field, Multipart, Path, Query, State},
     http::{header::RANGE, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -512,9 +512,7 @@ pub struct UploadOptions {
 
 pub async fn upload_app(
     admin: AdminUser,
-    simple_server::axum::extract::Query(options): simple_server::axum::extract::Query<
-        UploadOptions,
-    >,
+    simple_server::web::extract::Query(options): simple_server::web::extract::Query<UploadOptions>,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {

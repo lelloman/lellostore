@@ -1,4 +1,4 @@
-use simple_server::axum::{
+use simple_server::web::{
     body::{to_bytes, Body},
     http::Request,
 };

@@ -7,7 +7,7 @@ use crate::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use simple_server::axum::{
+use simple_server::web::{
     body::Body,
     extract::{Path, RawQuery, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -288,7 +288,7 @@ pub async fn download(
 pub async fn push_events(
     State(state): State<AppState>,
     headers: HeaderMap,
-    ws: simple_server::axum::extract::ws::WebSocketUpgrade,
+    ws: simple_server::web::compat::WebSocketUpgrade,
 ) -> Response {
     let Some(guard) = state.catalog_events.admit_connection() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();

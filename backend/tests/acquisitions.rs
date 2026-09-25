@@ -145,7 +145,7 @@ async fn draft_and_unauthorized_beta_cannot_be_acquired() {
 
 #[tokio::test]
 async fn conditional_transfer_uses_strong_validators_and_does_not_append_on_mismatch() {
-    use simple_server::axum::http::{HeaderMap, HeaderValue, StatusCode};
+    use simple_server::web::http::{HeaderMap, HeaderValue, StatusCode};
     let ctx = fixture().await;
     let file = ctx.storage_path.join("test.apk");
     std::fs::write(&file, b"apk").unwrap();

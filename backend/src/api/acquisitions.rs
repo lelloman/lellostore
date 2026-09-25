@@ -5,7 +5,7 @@ use crate::{
     error::AppError,
 };
 use serde::Serialize;
-use simple_server::axum::{
+use simple_server::web::{
     extract::{Path, State},
     http::HeaderMap,
     response::Response,

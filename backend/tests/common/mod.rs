@@ -1,5 +1,5 @@
-use simple_server::axum::routing::get;
-use simple_server::axum::Router;
+use simple_server::web::routing::get;
+use simple_server::web::Router;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 use std::path::PathBuf;

@@ -9,7 +9,7 @@ embed-frontend = ["dep:rust-embed"]
 
 [dependencies]
 # Web framework
-simple-server = { path = "../../simple-server", features = ["body-limit", "multipart", "macros", "ws", "tasks", "lifecycle", "logging", "http-tracing", "cors", "health", "auth"] }
+simple-server = { path = "../../simple-server", features = ["web-compat", "body-limit", "multipart", "ws", "tasks", "lifecycle", "logging", "http-tracing", "cors", "health", "auth"] }
 tokio = { version = "1", features = ["full", "process"] }
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 tower = "0.4"

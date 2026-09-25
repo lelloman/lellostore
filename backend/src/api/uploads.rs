@@ -4,7 +4,7 @@ use crate::{
     error::AppError,
     services::upload_jobs::{self, UploadJob},
 };
-use simple_server::axum::{
+use simple_server::web::{
     extract::{Path, State},
     Json,
 };

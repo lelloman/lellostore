@@ -5,7 +5,7 @@
 //! one operation per test.
 
 use axum_test::TestServer;
-use simple_server::axum::http::StatusCode;
+use simple_server::web::http::StatusCode;
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -200,7 +200,7 @@ fn create_fake_aapt2(temp_dir: &std::path::Path) -> std::path::PathBuf {
 #[tokio::test]
 async fn test_complete_app_lifecycle_with_auth() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Get tokens
     let admin_token = mock_oidc.get_admin_token();
@@ -347,7 +347,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 #[tokio::test]
 async fn test_multi_app_database_operations() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
@@ -631,7 +631,7 @@ async fn test_multi_app_database_operations() {
 #[tokio::test]
 async fn test_token_expiration_handling() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Get a valid token
     let valid_token = mock_oidc.get_user_token();
@@ -680,7 +680,7 @@ async fn shared_auth_preserves_http_policy_and_registry_outage() {
     let (ctx, oidc) = create_auth_test_context().await;
     let server = TestServer::builder()
         .http_transport()
-        .build(ctx.router)
+        .build(simple_server::web::compat::into_axum_router(ctx.router))
         .unwrap();
     let user = oidc.get_user_token();
     let admin = oidc.get_admin_token();
@@ -776,13 +776,13 @@ async fn failed_database_delete_does_not_remove_app_files() {
     .await
     .unwrap();
 
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let response = server
         .delete("/api/admin/apps/com.example.atomic")
         .add_header(
             "Authorization",
             format!("Bearer {}", mock_oidc.get_admin_token())
-                .parse::<simple_server::axum::http::HeaderValue>()
+                .parse::<simple_server::web::http::HeaderValue>()
                 .unwrap(),
         )
         .await;
@@ -816,7 +816,7 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     .await
     .unwrap();
 
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
@@ -960,10 +960,10 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
         }
     }
 
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
-    let authorization: simple_server::axum::http::HeaderName = "Authorization".parse().unwrap();
+    let authorization: simple_server::web::http::HeaderName = "Authorization".parse().unwrap();
 
     // Register the OIDC user in the server's administration directory.
     assert_eq!(
@@ -1061,7 +1061,7 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
         .unwrap();
     }
 
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
@@ -1162,7 +1162,9 @@ async fn authenticated_websocket_receives_catalog_change_after_publication() {
     let (ctx, oidc) = create_auth_test_context().await;
     let server = TestServer::builder()
         .http_transport()
-        .build(ctx.router.clone())
+        .build(simple_server::web::compat::into_axum_router(
+            ctx.router.clone(),
+        ))
         .unwrap();
     server
         .get_websocket("/api/events")
@@ -1223,7 +1225,9 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
         let (ctx, oidc) = create_auth_test_context_with_events(hub.clone()).await;
         let server = TestServer::builder()
             .http_transport()
-            .build(ctx.router.clone())
+            .build(simple_server::web::compat::into_axum_router(
+                ctx.router.clone(),
+            ))
             .unwrap();
         let mut sockets = Vec::new();
         for _ in 0..3 {
@@ -1265,7 +1269,10 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
 #[tokio::test]
 async fn publication_replacement_withdraws_without_deleting_and_legacy_uploads_fail_explicitly() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router.clone()).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(
+        ctx.router.clone(),
+    ))
+    .unwrap();
     let authorization = format!("Bearer {}", oidc.get_admin_token());
     server
         .post("/api/admin/apps")
@@ -1314,7 +1321,7 @@ async fn publication_replacement_withdraws_without_deleting_and_legacy_uploads_f
 #[tokio::test]
 async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let admin = format!("Bearer {}", oidc.get_admin_token());
     let response = server
         .post("/api/admin/apps?asynchronous=true")
@@ -1374,7 +1381,7 @@ async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
 #[tokio::test]
 async fn paravoid_public_key_configuration_requires_administrator() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let path = "/api/admin/paravoid/configuration";
     server
         .get(path)
@@ -1403,7 +1410,7 @@ async fn paravoid_public_key_configuration_requires_administrator() {
 async fn canonical_download_requires_acquisition_for_keyed_and_unverified_shells() {
     use lellostore_backend::db::access::{set_direct_grant, AppAccessLevel};
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     sqlx::query("INSERT INTO apps(package_name,name,distribution_mode) VALUES ('test.shell','Shell','paravoid')").execute(&ctx.pool).await.unwrap();
     sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,distribution_mode) VALUES ('test.shell',1,'1','shell.apk',3,'hash',30,'paravoid')").execute(&ctx.pool).await.unwrap();
     std::fs::write(ctx.storage_path.join("shell.apk"), b"apk").unwrap();
@@ -1461,3 +1468,56 @@ mod paravoid_http;
 
 #[path = "support/paravoid_device.rs"]
 mod paravoid_device;
+
+#[tokio::test]
+async fn shared_multipart_preserves_upload_rejections_and_temp_cleanup() {
+    use axum_test::multipart::{MultipartForm, Part};
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(simple_server::web::compat::into_axum_router(ctx.router))
+        .unwrap();
+    let admin = format!("Bearer {}", oidc.get_admin_token());
+    for (form, status, message) in [
+        (
+            MultipartForm::new().add_text("name", "x".repeat(64 * 1024 + 1)),
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "File too large",
+        ),
+        (
+            MultipartForm::new()
+                .add_part("file", Part::bytes(vec![1]).file_name("first.apk"))
+                .add_part("file", Part::bytes(vec![2]).file_name("second.apk")),
+            StatusCode::BAD_REQUEST,
+            "Only one upload file is allowed",
+        ),
+        (
+            MultipartForm::new().add_text("name", "No file"),
+            StatusCode::BAD_REQUEST,
+            "No file provided",
+        ),
+        (
+            MultipartForm::new().add_part("name", Part::bytes(vec![0xff])),
+            StatusCode::BAD_REQUEST,
+            "Metadata must be UTF-8",
+        ),
+    ] {
+        let response = server
+            .post("/api/admin/apps")
+            .add_header("Authorization", &admin)
+            .multipart(form)
+            .await;
+        response.assert_status(status);
+        let json: serde_json::Value = response.json();
+        assert!(
+            json["message"].as_str().unwrap().contains(message),
+            "{json}"
+        );
+        assert_eq!(
+            std::fs::read_dir(ctx.storage_path.join("temp"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+}

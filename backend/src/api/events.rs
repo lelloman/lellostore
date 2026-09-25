@@ -1,11 +1,12 @@
 use serde::Serialize;
-use simple_server::axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use simple_server::axum::{
+use simple_server::axum::extract::ws::{Message, WebSocket};
+use simple_server::lifecycle::Shutdown;
+use simple_server::tasks::{WorkGuard, WorkTracker};
+use simple_server::web::compat::WebSocketUpgrade;
+use simple_server::web::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use simple_server::lifecycle::Shutdown;
-use simple_server::tasks::{WorkGuard, WorkTracker};
 use tokio::sync::broadcast;
 
 use crate::auth::AuthenticatedUser;
@@ -67,9 +68,7 @@ impl CatalogEventHub {
 pub async fn catalog_events(
     _user: AuthenticatedUser,
     ws: WebSocketUpgrade,
-    simple_server::axum::extract::State(state): simple_server::axum::extract::State<
-        super::AppState,
-    >,
+    simple_server::web::extract::State(state): simple_server::web::extract::State<super::AppState>,
 ) -> Response {
     let Some(guard) = state.catalog_events.admit_connection() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();

@@ -167,11 +167,11 @@ async fn run() -> Result<(), BoxError> {
     )?;
     lifecycle.service(
         "http",
-        simple_server::http::serve(listener, app, lifecycle.shutdown()),
+        simple_server::web::serve(listener, app, lifecycle.shutdown()),
     )?;
     lifecycle.service(
         "metrics-http",
-        simple_server::http::serve(metrics_listener, metrics::router(), lifecycle.shutdown()),
+        simple_server::web::serve(metrics_listener, metrics::router(), lifecycle.shutdown()),
     )?;
     lifecycle.service(
         "metrics-updater",

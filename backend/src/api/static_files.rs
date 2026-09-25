@@ -1,6 +1,6 @@
 #[cfg(feature = "embed-frontend")]
 use rust_embed::Embed;
-use simple_server::axum::{
+use simple_server::web::{
     body::Body,
     http::{header, HeaderValue, Response, StatusCode, Uri},
     response::IntoResponse,

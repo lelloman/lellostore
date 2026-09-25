@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use simple_server::axum::{
+use simple_server::web::{
     extract::{Path, State},
     Json,
 };

@@ -1,7 +1,7 @@
 use super::AppState;
 use crate::{auth::AdminUser, paravoid::signing::PublicSigningConfiguration};
 use serde::Serialize;
-use simple_server::axum::{extract::State, Json};
+use simple_server::web::{extract::State, Json};
 
 #[derive(Serialize)]
 pub struct ConfigurationResponse {

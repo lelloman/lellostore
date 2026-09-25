@@ -1,5 +1,5 @@
 use axum_test::TestServer;
-use simple_server::axum::http::{header, Method, StatusCode};
+use simple_server::web::http::{header, Method, StatusCode};
 
 mod common;
 
@@ -59,7 +59,7 @@ async fn insert_test_version(
 #[tokio::test]
 async fn test_health_endpoint() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/health").await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -71,7 +71,7 @@ async fn test_health_endpoint() {
 #[tokio::test]
 async fn production_cors_policy_allows_origins_methods_and_request_headers() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let ordinary = server
         .get("/health")
@@ -125,7 +125,10 @@ async fn production_cors_policy_allows_origins_methods_and_request_headers() {
         .is_none());
 
     let (_temp_dir, fail_closed_app) = create_fail_closed_test_app().await;
-    let fail_closed_server = TestServer::new(fail_closed_app).unwrap();
+    let fail_closed_server = TestServer::new(simple_server::web::compat::into_axum_router(
+        fail_closed_app,
+    ))
+    .unwrap();
     let unavailable = fail_closed_server
         .get("/api/apps")
         .add_header(header::ORIGIN, "https://catalog.example")
@@ -142,7 +145,7 @@ async fn production_cors_policy_allows_origins_methods_and_request_headers() {
 #[tokio::test]
 async fn test_apps_list_empty() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/api/apps").await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -154,7 +157,7 @@ async fn test_apps_list_empty() {
 #[tokio::test]
 async fn test_api_fails_closed_when_auth_is_unavailable() {
     let (_temp_dir, app) = create_fail_closed_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/api/apps").await;
 
@@ -164,7 +167,7 @@ async fn test_api_fails_closed_when_auth_is_unavailable() {
 #[tokio::test]
 async fn test_app_not_found() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/api/apps/com.nonexistent").await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -173,7 +176,7 @@ async fn test_app_not_found() {
 #[tokio::test]
 async fn test_app_without_a_published_release_is_hidden() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
     let body: serde_json::Value = server.get("/api/apps").await.json();
     assert!(body["apps"].as_array().unwrap().is_empty());
@@ -182,7 +185,7 @@ async fn test_app_without_a_published_release_is_hidden() {
 #[tokio::test]
 async fn test_apps_list_includes_latest_and_cumulative_sizes() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
     insert_test_version(
@@ -216,7 +219,7 @@ async fn test_apps_list_includes_latest_and_cumulative_sizes() {
 #[tokio::test]
 async fn test_metrics_endpoint() {
     let app = create_test_metrics_app();
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/metrics").await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -243,7 +246,7 @@ async fn test_metrics_endpoint() {
 #[tokio::test]
 async fn test_get_icon_success() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Create icon file
     let icons_dir = ctx.storage_path.join("icons");
@@ -273,7 +276,7 @@ async fn test_get_icon_success() {
 #[tokio::test]
 async fn test_icon_urls_track_content_changes() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let storage = lellostore_backend::services::StorageService::new(ctx.storage_path.clone());
     let icon_path = storage.save_icon("com.example.app", b"old icon").unwrap();
     insert_test_app(&ctx.pool, "com.example.app", "Test App", Some(&icon_path)).await;
@@ -311,7 +314,7 @@ async fn test_icon_urls_track_content_changes() {
 #[tokio::test]
 async fn test_get_icon_not_found_no_app() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     let response = server.get("/api/apps/com.nonexistent/icon").await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -320,7 +323,7 @@ async fn test_get_icon_not_found_no_app() {
 #[tokio::test]
 async fn test_get_icon_not_found_no_icon() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Insert app without icon
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
@@ -332,7 +335,7 @@ async fn test_get_icon_not_found_no_icon() {
 #[tokio::test]
 async fn test_download_apk_success() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -379,7 +382,7 @@ async fn test_download_apk_success() {
 #[tokio::test]
 async fn test_download_apk_range_request() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Create APK file with known content
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -417,7 +420,7 @@ async fn test_download_apk_range_request() {
 #[tokio::test]
 async fn test_download_apk_range_suffix() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -455,7 +458,7 @@ async fn test_download_apk_range_suffix() {
 #[tokio::test]
 async fn test_download_apk_range_invalid() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -490,7 +493,7 @@ async fn test_download_apk_range_invalid() {
 #[tokio::test]
 async fn test_download_apk_not_found() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Insert app but no version
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
@@ -504,7 +507,7 @@ async fn test_download_apk_not_found() {
 #[tokio::test]
 async fn test_get_app_with_versions() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // Insert app and multiple versions
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
@@ -567,7 +570,7 @@ async fn test_get_app_with_versions() {
 #[tokio::test]
 async fn test_serve_index_at_root() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     let response = server.get("/").await;
     // Should return the index.html with 200 status (if frontend is embedded)
@@ -588,7 +591,7 @@ async fn test_serve_index_at_root() {
 #[tokio::test]
 async fn test_spa_fallback_for_deep_routes() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     // SPA routes without file extension should return index.html
     let response = server.get("/apps/com.example.app").await;
@@ -611,7 +614,7 @@ async fn test_spa_fallback_for_deep_routes() {
 #[tokio::test]
 async fn test_api_routes_take_priority_over_static() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
 
     // API routes should still work
     let response = server.get("/api/apps").await;
@@ -624,7 +627,7 @@ async fn test_api_routes_take_priority_over_static() {
 #[tokio::test]
 async fn test_missing_static_file_returns_404() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     // Request for a non-existent file with extension should return 404, not index.html
     let response = server.get("/nonexistent.js").await;
@@ -638,7 +641,7 @@ async fn test_missing_static_file_returns_404() {
 #[tokio::test]
 async fn test_spa_fallback_for_package_name_with_dots() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
 
     // Package names like "com.lelloman.pezzottify.android" contain dots but are NOT file extensions.
     // The SPA router should serve index.html for these paths, not return 404.

@@ -1,5 +1,5 @@
 use simple_server::auth::Access;
-use simple_server::axum::{extract::FromRequestParts, http::request::Parts};
+use simple_server::web::{extract::FromRequestParts, http::request::Parts};
 use tracing::warn;
 
 use super::error::AuthError;
@@ -68,7 +68,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::http::Request;
+    use simple_server::web::http::Request;
 
     fn make_user(is_admin: bool) -> User {
         User {

@@ -1,8 +1,7 @@
 use serde_json::json;
-use simple_server::axum::{
+use simple_server::web::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use thiserror::Error;
 
@@ -36,8 +35,8 @@ pub enum AuthError {
     UserRegistryUnavailable(String),
 }
 
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
+impl simple_server::web::IntoRejectionResponse for AuthError {
+    fn into_rejection_response(self) -> simple_server::web::RejectionResponse {
         let (status, message) = match &self {
             AuthError::MissingToken
             | AuthError::InvalidAuthHeader
@@ -56,6 +55,20 @@ impl IntoResponse for AuthError {
         };
 
         let body = json!({ "error": message });
-        (status, Json(body)).into_response()
+        let mut response = simple_server::web::RejectionResponse::new(
+            serde_json::to_vec(&body).expect("auth error is serializable"),
+        );
+        *response.status_mut() = status;
+        response.headers_mut().insert(
+            simple_server::web::http::header::CONTENT_TYPE,
+            simple_server::web::HeaderValue::from_static("application/json"),
+        );
+        response
+    }
+}
+
+impl IntoResponse for AuthError {
+    fn into_response(self) -> Response {
+        simple_server::web::IntoRejectionResponse::into_rejection_response(self).into_response()
     }
 }

@@ -6,7 +6,7 @@ use crate::{
     services::{apk_signatures, upload::calculate_sha256_file},
 };
 use serde::{Deserialize, Serialize};
-use simple_server::axum::{
+use simple_server::web::{
     extract::{Path, State},
     Json,
 };

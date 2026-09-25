@@ -1,7 +1,7 @@
 use simple_server::auth::{
     AsyncAccess, CredentialError, HeaderCredential, RepeatedHeaders, SchemeCase,
 };
-use simple_server::axum::{
+use simple_server::web::{
     body::Body,
     extract::State,
     http::{header::AUTHORIZATION, request::Parts, HeaderMap, Request},
@@ -82,7 +82,7 @@ pub async fn auth_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::http::Request;
+    use simple_server::web::http::Request;
 
     fn make_request_with_auth(auth_value: &str) -> Request<Body> {
         Request::builder()
@@ -171,7 +171,7 @@ mod tests {
         let mut request = make_request_without_auth();
         request.headers_mut().insert(
             AUTHORIZATION,
-            simple_server::axum::http::HeaderValue::from_bytes(b"Bearer \xff").unwrap(),
+            simple_server::web::http::HeaderValue::from_bytes(b"Bearer \xff").unwrap(),
         );
         assert!(matches!(
             extract_bearer_token(&request),

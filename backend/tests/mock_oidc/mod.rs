@@ -5,7 +5,7 @@
 
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
-use simple_server::axum::{extract::State, response::Json, routing::get, Router};
+use simple_server::web::{extract::State, response::Json, routing::get, Router};
 use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -62,10 +62,13 @@ impl MockOidc {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         tokio::spawn(async move {
-            simple_server::axum::serve(listener, app)
-                .with_graceful_shutdown(async {
-                    let _ = shutdown_rx.await;
-                })
+            let shutdown = simple_server::lifecycle::Shutdown::new();
+            let signal = shutdown.clone();
+            tokio::spawn(async move {
+                let _ = shutdown_rx.await;
+                signal.request();
+            });
+            simple_server::web::serve(listener, app, shutdown)
                 .await
                 .ok();
         });

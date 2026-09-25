@@ -13,7 +13,7 @@ use lellostore_backend::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use simple_server::axum::http::StatusCode;
+use simple_server::web::http::StatusCode;
 use std::{
     collections::BTreeMap,
     io::{Cursor, Write},
@@ -232,7 +232,8 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .await
                 .is_err());
         }
-        let server = TestServer::new(ctx.router).unwrap();
+        let server =
+            TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
         let admin = format!("Bearer {}", oidc.get_admin_token());
         let user = format!("Bearer {}", oidc.get_user_token());
         let uploaded = server

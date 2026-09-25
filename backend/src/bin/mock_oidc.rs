@@ -6,7 +6,7 @@
 //! Get a test token: curl http://localhost:9999/token?admin=true
 
 use serde::{Deserialize, Serialize};
-use simple_server::axum::{extract::Query, response::Json, routing::get, Router};
+use simple_server::web::{extract::Query, response::Json, routing::get, Router};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Use a fixed RSA key pair for testing (2048-bit)
@@ -201,5 +201,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:9999")
         .await
         .unwrap();
-    simple_server::axum::serve(listener, app).await.unwrap();
+    simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+        .await
+        .unwrap();
 }

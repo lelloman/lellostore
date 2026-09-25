@@ -1,6 +1,6 @@
 //! File response utilities for streaming files with Range header support
 
-use simple_server::axum::{
+use simple_server::web::{
     body::Body,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},

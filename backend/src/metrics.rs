@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use prometheus::{HistogramOpts, HistogramVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder};
-use simple_server::axum::{
+use simple_server::web::{
     extract::Request,
     http::StatusCode,
     middleware::Next,

@@ -135,7 +135,7 @@ async fn signed_heads_cache_exact_bytes_refresh_revision_and_retire_explicitly()
     paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
         .await
         .unwrap();
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let url = head_url();
     let first = server.get(&url).await;
     first.assert_status_ok();
@@ -159,7 +159,7 @@ async fn signed_heads_cache_exact_bytes_refresh_revision_and_retire_explicitly()
         .get(&url)
         .add_header("If-None-Match", &etag)
         .await
-        .assert_status(simple_server::axum::http::StatusCode::NOT_MODIFIED);
+        .assert_status(simple_server::web::http::StatusCode::NOT_MODIFIED);
     server
         .get(&format!("{url}&sdk=31"))
         .await
@@ -188,7 +188,10 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
     let signing = keys(dir.path());
     let ctx = common::create_paravoid_test_context(signing.clone()).await;
     seed(&ctx.pool, &signing, "apkKey").await;
-    let canonical = TestServer::new(ctx.router.clone()).unwrap();
+    let canonical = TestServer::new(simple_server::web::compat::into_axum_router(
+        ctx.router.clone(),
+    ))
+    .unwrap();
     canonical
         .get("/api/apps/test.app/versions/1/apk")
         .await
@@ -209,7 +212,7 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
         .await
         .unwrap();
     std::fs::write(ctx.storage_path.join("payload.vpk"), b"vpk").unwrap();
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let token = format!("Bearer {key}");
     let url = head_url();
     server.get(&url).await.assert_status_unauthorized();
@@ -222,7 +225,7 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
         .add_header("Authorization", &token)
         .add_header("Range", "bytes=1-")
         .await
-        .assert_status(simple_server::axum::http::StatusCode::PARTIAL_CONTENT);
+        .assert_status(simple_server::web::http::StatusCode::PARTIAL_CONTENT);
     db::access::remove_direct_grant(&ctx.pool, "alice", "test.app")
         .await
         .unwrap();
@@ -542,7 +545,10 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
         paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
             .await
             .unwrap();
-        let server = TestServer::new(ctx.router.clone()).unwrap();
+        let server = TestServer::new(simple_server::web::compat::into_axum_router(
+            ctx.router.clone(),
+        ))
+        .unwrap();
         let envelope = apk_grant::read(&mut std::fs::File::open(&output).unwrap()).unwrap();
         let policy = paravoid::contract(&ctx.pool, "test.app", &contract_id)
             .await
@@ -634,7 +640,7 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
     seed(&ctx.pool, &signing, "public").await;
     let server = TestServer::builder()
         .http_transport()
-        .build(ctx.router)
+        .build(simple_server::web::compat::into_axum_router(ctx.router))
         .unwrap();
     let subscription = json!({"version":1,"type":"subscribe","applicationId":"test.app","shellContractId":"a".repeat(64),"channel":"stable"});
     let mut ids = Vec::new();
@@ -642,7 +648,7 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
         let mut socket = server
             .get_websocket("/api/paravoid/v1/events")
             .add_header(
-                simple_server::axum::http::header::SEC_WEBSOCKET_PROTOCOL,
+                simple_server::web::http::header::SEC_WEBSOCKET_PROTOCOL,
                 "paravoid.updates.v1",
             )
             .await

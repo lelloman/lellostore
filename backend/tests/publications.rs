@@ -33,7 +33,7 @@ async fn draft_is_hidden_from_catalog_and_direct_download_until_published() {
     draft(&ctx.pool, 1, false).await;
     std::fs::create_dir_all(ctx.storage_path.join("apks/test.app")).unwrap();
     std::fs::write(ctx.storage_path.join("apks/test.app/1.apk"), b"apk").unwrap();
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let before: serde_json::Value = server.get("/api/apps").await.json();
     assert_eq!(before["apps"].as_array().unwrap().len(), 0);
     server
@@ -198,7 +198,7 @@ async fn older_devices_keep_a_compatible_historical_installer_after_shell_adopti
         .await
         .unwrap();
     sqlx::query("UPDATE app_versions SET min_sdk = 30, distribution_mode = 'paravoid' WHERE version_code = 2").execute(&ctx.pool).await.unwrap();
-    let server = TestServer::new(ctx.router).unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
     let old: serde_json::Value = server.get("/api/apps?sdk=28").await.json();
     assert_eq!(old["apps"][0]["latest_version"]["version_code"], 1);
     assert_eq!(

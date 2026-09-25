@@ -1,7 +1,7 @@
 use super::AppState;
 use crate::{auth::AdminUser, db::paravoid, error::AppError};
 use serde::Deserialize;
-use simple_server::axum::{
+use simple_server::web::{
     extract::{Multipart, Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},

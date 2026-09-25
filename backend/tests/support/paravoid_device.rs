@@ -39,7 +39,7 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
     );
     let server = TestServer::builder()
         .http_transport_with_ip_port(Some(std::net::Ipv4Addr::LOCALHOST.into()), None)
-        .build(ctx.router)
+        .build(simple_server::web::compat::into_axum_router(ctx.router))
         .unwrap();
     let admin = format!("Bearer {}", oidc.get_admin_token());
     let user = format!("Bearer {}", oidc.get_user_token());
@@ -58,7 +58,7 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
                 ),
         )
         .await;
-    uploaded.assert_status(simple_server::axum::http::StatusCode::CREATED);
+    uploaded.assert_status(simple_server::web::http::StatusCode::CREATED);
     let uploaded: Value = uploaded.json();
     let package = uploaded["package_name"].as_str().unwrap();
     assert_eq!(package, "com.lelloman.paravoidcompat.complete.paravoid");
@@ -85,7 +85,7 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
             ),
         )
         .await;
-    vpk.assert_status(simple_server::axum::http::StatusCode::ACCEPTED);
+    vpk.assert_status(simple_server::web::http::StatusCode::ACCEPTED);
     upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
     let overview: Value = server
         .get(&overview_url)
