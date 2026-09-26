@@ -645,15 +645,15 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
     let subscription = json!({"version":1,"type":"subscribe","applicationId":"test.app","shellContractId":"a".repeat(64),"channel":"stable"});
     let mut ids = Vec::new();
     for _ in 0..2 {
-        let mut socket = server
+        let upgrade = server
             .get_websocket("/api/paravoid/v1/events")
             .add_header(
                 simple_server::web::http::header::SEC_WEBSOCKET_PROTOCOL,
                 "paravoid.updates.v1",
             )
-            .await
-            .into_websocket()
             .await;
+        upgrade.assert_header("sec-websocket-protocol", "paravoid.updates.v1");
+        let mut socket = upgrade.into_websocket().await;
         socket.send_json(&subscription).await;
         let hint: Value =
             tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_json())
@@ -665,6 +665,16 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
         assert_eq!(hint["shellContractId"], "a".repeat(64));
         assert_eq!(hint["channel"], "stable");
         ids.push(hint["eventId"].clone());
+        socket
+            .send_message(axum_test::WsMessage::Ping(b"push-alive".as_slice().into()))
+            .await;
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_message())
+                .await
+                .unwrap(),
+            axum_test::WsMessage::Pong(b"push-alive".as_slice().into()),
+        );
+        socket.close().await;
     }
     assert_ne!(ids[0], ids[1]);
     let mut socket = server

@@ -24,7 +24,7 @@ adapters remain for other services but are not used for LelloStore multipart.
 
 The shared RawQuery extractor preserves raw query encoding for delivery tickets.
 Existing WebSocket subprotocol and frame/message size limits are forwarded by the
-compatibility upgrade adapter. Streamed downloads, range responses, static assets,
+[owned WebSocket transport](STEP_11_WEBSOCKETS.md). Streamed downloads, range responses, static assets,
 authentication error envelopes and middleware placement are preserved.
 
 ## Verification
@@ -47,7 +47,7 @@ authentication error envelopes and middleware placement are preserved.
 
 ## Remaining boundaries
 
-WebSocket socket/message types, the tracing compatibility adapter and axum-test's
+The tracing compatibility adapter and axum-test's
 multipart/WebSocket transport helpers remain explicit backend boundaries. Mock
 OIDC server routes and ordinary fixtures use shared APIs. Multipart uploads are
 no longer a remaining Axum exposure in this service.

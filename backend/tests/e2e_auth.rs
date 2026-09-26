@@ -1176,6 +1176,17 @@ async fn authenticated_websocket_receives_catalog_change_after_publication() {
         .await
         .into_websocket()
         .await;
+    socket
+        .send_message(axum_test::WsMessage::Ping(
+            b"catalog-alive".as_slice().into(),
+        ))
+        .await;
+    assert_eq!(
+        tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_message(),)
+            .await
+            .unwrap(),
+        axum_test::WsMessage::Pong(b"catalog-alive".as_slice().into()),
+    );
     server
         .post("/api/admin/apps")
         .add_header(

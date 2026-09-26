@@ -1,8 +1,7 @@
 use serde::Serialize;
-use simple_server::axum::extract::ws::{Message, WebSocket};
 use simple_server::lifecycle::Shutdown;
 use simple_server::tasks::{WorkGuard, WorkTracker};
-use simple_server::web::compat::WebSocketUpgrade;
+use simple_server::web::ws::{Message, WebSocket, WebSocketUpgrade};
 use simple_server::web::{
     http::StatusCode,
     response::{IntoResponse, Response},

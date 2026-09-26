@@ -288,7 +288,7 @@ pub async fn download(
 pub async fn push_events(
     State(state): State<AppState>,
     headers: HeaderMap,
-    ws: simple_server::web::compat::WebSocketUpgrade,
+    ws: simple_server::web::ws::WebSocketUpgrade,
 ) -> Response {
     let Some(guard) = state.catalog_events.admit_connection() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -299,7 +299,7 @@ pub async fn push_events(
         .max_message_size(4096)
         .max_frame_size(4096)
         .on_upgrade(move |mut socket| async move {
-            use simple_server::axum::extract::ws::Message;
+            use simple_server::web::ws::Message;
             use std::time::Duration;
             let _guard = guard;
             #[derive(serde::Deserialize)]
