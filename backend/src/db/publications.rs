@@ -212,14 +212,14 @@ pub(crate) async fn publish_checked(
     if highest.is_some_and(|code| request.version_code <= code) {
         return Err(AppError::Conflict("APK version code must exceed every previously published version, including beta and withdrawn releases".into()));
     }
-    if request.replace_latest {
-        let previous: Option<i64> = sqlx::query_scalar("SELECT MAX(version_code) FROM app_versions WHERE package_name = ? AND is_beta = ? AND publication_state = 'published'")
-            .bind(package).bind(version.is_beta).fetch_one(&mut *tx).await?;
-        if let Some(code) = previous {
-            sqlx::query("UPDATE app_versions SET publication_state = 'withdrawn' WHERE package_name = ? AND version_code = ?")
-                .bind(package).bind(code).execute(&mut *tx).await?;
-        }
-    }
+    // Replacement is mandatory; the legacy replace_latest field is accepted but ignored.
+    super::artifact_retention::replace_apks(
+        &mut tx,
+        package,
+        version.is_beta,
+        version.version_code,
+    )
+    .await?;
     sqlx::query(
         "INSERT INTO published_apk_identities(package_name, version_code, sha256) VALUES (?, ?, ?)",
     )

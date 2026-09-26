@@ -149,6 +149,8 @@ pub struct VpkRelease {
     pub payload_version: i64,
     #[serde(skip_serializing)]
     pub archive_path: String,
+    pub archived: bool,
+    pub artifact_removed: bool,
     pub archive_size: i64,
     pub archive_sha256: String,
     pub manifest_sha256: String,
@@ -321,6 +323,13 @@ pub(crate) async fn publish_tx(
     sqlx::query("INSERT INTO published_vpk_identities(package_name,payload_version,release_id,archive_sha256,manifest_sha256) VALUES (?,?,?,?,?)")
         .bind(package).bind(release.payload_version).bind(&release.release_id).bind(&release.archive_sha256).bind(&release.manifest_sha256).execute(&mut *conn).await?;
     sqlx::query("UPDATE vpk_releases SET publication_state = 'published', published_at = datetime('now') WHERE id = ?").bind(id).execute(&mut *conn).await?;
+    super::artifact_retention::replace_vpks(
+        conn,
+        package,
+        &release.contract_id,
+        release.payload_version,
+    )
+    .await?;
     invalidate_stream(&mut *conn, package, &release.contract_id).await?;
     event(
         &mut *conn,

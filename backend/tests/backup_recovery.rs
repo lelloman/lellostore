@@ -86,3 +86,20 @@ async fn restored_snapshot_preserves_replay_and_revocation_and_detects_missing_b
     assert!(!verify(&restored, &ctx.storage_path, None).status.success());
     recovered.close().await;
 }
+
+#[tokio::test]
+async fn backup_accepts_intentionally_replaced_files_but_requires_archived_files() {
+    let ctx = common::create_test_context().await;
+    sqlx::query("INSERT INTO apps(package_name,name) VALUES ('example.app','Test')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,publication_state,artifact_removed) VALUES ('example.app',1,'1','apks/gone.apk',3,'hash',24,'withdrawn',1)").execute(&ctx.pool).await.unwrap();
+    let db = ctx.temp_dir.path().join("test.db");
+    assert!(verify(&db, &ctx.storage_path, None).status.success());
+    sqlx::query("UPDATE app_versions SET artifact_removed=0, archived=1")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    assert!(!verify(&db, &ctx.storage_path, None).status.success());
+}

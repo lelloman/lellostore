@@ -211,9 +211,24 @@ publisher=${LELLOSTORE_PUBLISHER:-$HOME/lelloprojects/lellostore/scripts/publish
 
 Uploads now create drafts. The publisher waits for durable server validation;
 review and publish the draft from the app's Releases page, or pass `--publish`
-when publication is already intended. Use `--replace-latest` to publish and
-withdraw the previous latest release in that channel. Withdrawn APKs are retained
-for existing acquisitions and history; this option no longer deletes them.
+when publication is already intended. Publishing always replaces older unarchived
+APKs in the same stable/beta channel and VPKs in the same shell-contract stream,
+including older drafts and withdrawn releases. Superseded files are deleted;
+release metadata, published identities and installed-client authorization remain.
+Use **Archive** on an APK or VPK before publishing its replacement to keep its file.
+Archiving does not withdraw a release. Unarchiving makes it eligible for the next
+replacement. `--replace-latest` remains a compatibility alias for `--publish`;
+`replace_latest=false` cannot disable replacement.
+
+Existing releases start unarchived and are cleaned up on the next publication in
+their channel/stream. Failed deletion is retried by the hourly cleanup worker,
+including after restart. No files are deleted just by applying the migration.
+
+Archive controls are also available through
+`PUT /api/admin/apps/{package}/versions/{code}/archive` and
+`PUT /api/admin/apps/{package}/vpks/{id}/archive`, with
+`{"expected_revision": 3, "archived": true}` (or `false` to unarchive).
+A stale revision or an already replaced artifact returns a conflict.
 
 ```bash
 python scripts/publish-to-lellostore.py upload path/to/app.apk --publish
@@ -229,7 +244,8 @@ The admin Uploads page exposes the same status and retry actions. Without the qu
 parameter the endpoint validates synchronously and returns the draft (201).
 
 Publish with `POST /api/admin/apps/{package}/publications`, supplying
-`version_code`, the reviewed `expected_revision`, and optionally `replace_latest`.
+`version_code` and the reviewed `expected_revision`. The legacy `replace_latest`
+field is accepted but no longer changes retention.
 Publication requires a version code higher than every previously published APK,
 including withdrawn releases. Stale review revisions return a conflict.
 Legacy uploads without explicit draft intent fail with `client_upgrade_required`.

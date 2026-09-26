@@ -109,7 +109,10 @@ to check an isolated recovery before restoring traffic.
 
 Hourly cleanup removes personalized transfer directories one hour after their
 24-hour acquisition expiry, and successful upload inputs after seven days. It retains
-job/acquisition identities, grant authorization and all published artifacts. Failed
+job/acquisition identities and grant authorization. Publication replaces older
+unarchived APKs within their channel and VPKs within their shell contract, deleting
+the superseded files. Explicitly archive a release before replacement to retain it.
+Hourly cleanup also retries failed artifact deletions. Failed
 upload inputs remain available for retry. Generated upload/acquisition files with no
 durable record are removed after a seven-day grace period. Multi-instance leases
 are not implemented. Monitor disk usage. Existing Prometheus HTTP metrics normalize package/release/grant

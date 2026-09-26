@@ -409,7 +409,7 @@ async fn test_upload_new_version() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn replacement_retains_history_and_other_channel_and_rejects_rollback() {
+async fn replacement_removes_unarchived_files_and_preserves_history_and_other_channel() {
     let (temp_dir, pool, storage) = setup_test_env().await;
     let path = create_upload_file(&temp_dir, "release.apk");
     for (code, beta, replace, succeeds) in [
@@ -443,15 +443,16 @@ async fn replacement_retains_history_and_other_channel_and_rejects_rollback() {
         .unwrap();
     assert_eq!(
         versions.iter().map(|v| v.version_code).collect::<Vec<_>>(),
-        vec![8, 3, 1]
+        vec![8, 3, 2, 1]
     );
-    for code in [1, 3, 8] {
+    for code in [3, 8] {
         assert!(storage.get_apk_path("com.example.replace", code).exists());
     }
+    assert!(!storage.get_apk_path("com.example.replace", 1).exists());
     assert!(!storage.get_apk_path("com.example.replace", 2).exists());
 
     // A database failure must roll back both version changes and remove the new APK.
-    sqlx::query("CREATE TRIGGER reject_version BEFORE DELETE ON app_versions WHEN OLD.version_code = 3 BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+    sqlx::query("CREATE TRIGGER reject_version BEFORE UPDATE OF artifact_removed ON app_versions WHEN OLD.version_code = 3 BEGIN SELECT RAISE(ABORT, 'test failure'); END")
         .execute(&pool).await.unwrap();
     let service = UploadService::new(
         storage.clone(),

@@ -1,10 +1,10 @@
-//! Bounded cleanup of expendable transfer copies, never published artifacts or identities.
+//! Retryable cleanup of replaced artifacts and expendable transfer copies.
 use crate::error::AppError;
 use sqlx::SqlitePool;
 use std::path::Path;
 
 pub async fn cleanup(pool: &SqlitePool, storage: &Path, now: i64) -> Result<u64, AppError> {
-    let mut removed = 0;
+    let mut removed = cleanup_replaced(pool, storage).await?;
     // Keep a one-hour grace beyond acquisition expiry. Personalization is bounded
     // to minutes; expired jobs cannot resume, while installed grants remain valid.
     let jobs: Vec<String> = sqlx::query_scalar("SELECT id FROM personalization_jobs WHERE files_cleaned_at IS NULL AND expires_at < ? ORDER BY expires_at LIMIT 500")
@@ -108,6 +108,53 @@ async fn cleanup_orphans(pool: &SqlitePool, storage: &Path, now: i64) -> Result<
             }
             removed += 1;
         }
+    }
+    Ok(removed)
+}
+
+/// Tombstones commit before bytes are deleted. A failed unlink is retried after restart.
+/// Keep metadata for shell contracts, issued grants and version identity reservations.
+pub async fn cleanup_replaced(pool: &SqlitePool, storage: &Path) -> Result<u64, AppError> {
+    let mut removed = 0;
+    for (table, column, namespace) in [
+        ("app_versions", "apk_path", "apks"),
+        ("vpk_releases", "archive_path", "vpks"),
+    ] {
+        let mut tx = pool.begin().await?;
+        // Serialize reference checks and deletion with publication/archive changes.
+        sqlx::query(&format!(
+            "UPDATE {table} SET artifact_cleaned = artifact_cleaned WHERE 0"
+        ))
+        .execute(&mut *tx)
+        .await?;
+        let paths: Vec<String> = sqlx::query_scalar(&format!("SELECT DISTINCT {column} FROM {table} WHERE artifact_removed = 1 AND artifact_cleaned = 0 LIMIT 500"))
+            .fetch_all(&mut *tx).await?;
+        for path in paths {
+            let relative = Path::new(&path);
+            if !relative.starts_with(namespace)
+                || !relative
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_)))
+            {
+                return Err(AppError::Internal("Invalid replaced artifact path".into()));
+            }
+            let referenced: bool = sqlx::query_scalar(&format!(
+                "SELECT EXISTS(SELECT 1 FROM {table} WHERE {column} = ? AND artifact_removed = 0)"
+            ))
+            .bind(&path)
+            .fetch_one(&mut *tx)
+            .await?;
+            if !referenced {
+                match tokio::fs::remove_file(storage.join(&path)).await {
+                    Ok(()) => removed += 1,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            sqlx::query(&format!("UPDATE {table} SET artifact_cleaned = 1 WHERE {column} = ? AND artifact_removed = 1"))
+                .bind(&path).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
     }
     Ok(removed)
 }

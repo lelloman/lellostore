@@ -176,7 +176,7 @@ impl UploadService {
         .await
     }
 
-    /// Replace only the latest release in the selected channel, retaining older history.
+    /// Publish with mandatory replacement; archived releases retain their files.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_upload_file_with_replacement(
         &self,
@@ -464,16 +464,10 @@ impl UploadService {
             self.cleanup_on_failure(&metadata.package_name, metadata.version_code, is_new_app);
         }
 
-        if let Some(previous_version) = db_result? {
-            if let Err(error) = self
-                .storage
-                .delete_apk(&metadata.package_name, previous_version)
-            {
-                warn!(
-                    "Failed to delete superseded APK {}/{}: {}",
-                    metadata.package_name, previous_version, error
-                );
-            }
+        db_result?;
+        if let Err(error) = super::retention::cleanup_replaced(&self.db, self.storage.root()).await
+        {
+            warn!(%error, "Artifact cleanup will retry in the background");
         }
 
         // 13. Temp directory is automatically cleaned up when dropped
@@ -592,13 +586,9 @@ impl UploadService {
             super::shells::register(&mut tx, package_name, version_code, shell).await?;
         }
 
-        if let Some(previous_version) = previous_version {
-            sqlx::query("DELETE FROM app_versions WHERE package_name = ? AND version_code = ?")
-                .bind(package_name)
-                .bind(previous_version)
-                .execute(&mut *tx)
-                .await
-                .map_err(AppError::Database)?;
+        if !draft {
+            db::artifact_retention::replace_apks(&mut tx, package_name, is_beta, version_code)
+                .await?;
         }
 
         if let Some(id) = job_id {

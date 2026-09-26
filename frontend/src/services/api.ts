@@ -145,6 +145,8 @@ async function request<T>(
 
 // API Types (matching backend responses - snake_case)
 export interface AppVersion {
+  archived?: boolean
+  artifact_removed?: boolean
   version_code: number
   version_name: string
   size: number
@@ -236,6 +238,8 @@ export interface ShellContract {
   verification_state: string; validation_report: string
 }
 export interface VpkRelease {
+  archived?: boolean
+  artifact_removed?: boolean
   id: string; package_name: string; contract_id: string; release_id: string; payload_version: number
   archive_size: number; archive_sha256: string; manifest_sha256: string; manifest_json: string
   min_sdk: number; max_sdk: number; abis_json: string; signing_key_id: string
@@ -528,6 +532,12 @@ export const api = {
     return request(`/api/admin/apps/${encodeURIComponent(packageName)}/distribution-reviews`, {
       method: 'POST', body: JSON.stringify({ version_code: versionCode, expected_revision: expectedRevision, migration }),
     })
+  },
+
+  async setArtifactArchived(packageName: string, kind: 'versions' | 'vpks', id: number | string, expectedRevision: number, archived: boolean): Promise<void> {
+    return request(`/api/admin/apps/${encodeURIComponent(packageName)}/${kind}/${encodeURIComponent(id)}/archive`, {
+      method: 'PUT', body: JSON.stringify({ expected_revision: expectedRevision, archived }),
+    }, false, async () => undefined)
   },
 
   async publishRelease(packageName: string, versionCode: number, expectedRevision: number, replaceLatest = false, transitionReview?: string, bootstrapVpk?: string): Promise<PublicationResult> {

@@ -188,13 +188,14 @@
                   icon
                   size="small"
                   variant="text"
+                  :disabled="item.artifact_removed"
                   title="Download APK"
                   aria-label="Download APK"
                   @click="downloadVersion(item)"
                 >
                   <v-icon>mdi-download-outline</v-icon>
                 </v-btn>
-                <v-btn v-if="item.distribution_mode === 'paravoid'" size="small" variant="text" @click="repairVersion = item">Repair update access</v-btn>
+                <v-btn v-if="item.distribution_mode === 'paravoid' && !item.artifact_removed" size="small" variant="text" @click="repairVersion = item">Repair update access</v-btn>
                 <v-btn
                   v-if="authStore.isAdmin"
                   icon
@@ -286,7 +287,7 @@ const sortedVersions = computed(() =>
 )
 const latestVersion = computed(() => sortedVersions.value.find(version => (version.publication_state ?? 'published') === 'published') ?? null)
 const totalSize = computed(() =>
-  sortedVersions.value.reduce((total, version) => total + version.size, 0)
+  sortedVersions.value.reduce((total, version) => total + (version.artifact_removed ? 0 : version.size), 0)
 )
 
 const versionHeaders = [

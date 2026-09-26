@@ -570,7 +570,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--distribution-mode", choices=("normal", "paravoid"), default="normal")
     upload.add_argument("--name", help="Override the application name")
     upload.add_argument("--description", help="Override the application description")
-    upload.add_argument("--replace-latest", action="store_true", help="Publish and withdraw the previous latest release in this channel; retain its artifact")
+    upload.add_argument("--replace-latest", action="store_true", help="Compatibility alias for --publish; older unarchived releases are always replaced")
     upload.add_argument("--publish", action="store_true", help="Publish after upload and validation; otherwise leave a draft")
     upload.add_argument("--beta", action="store_true", help="Publish this release to the beta channel")
     upload.add_argument("--dry-run", action="store_true", help="Validate without authenticating or uploading")

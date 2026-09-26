@@ -134,6 +134,11 @@ pub async fn publish(
         transition_signer.as_deref(),
     )
     .await?;
+    if let Err(error) =
+        crate::services::retention::cleanup_replaced(&state.db, &state.config.storage_path).await
+    {
+        tracing::warn!(%error, "Artifact cleanup will retry in the background");
+    }
     state.catalog_events.notify_catalog_changed();
     Ok(Json(result))
 }
@@ -152,6 +157,11 @@ pub async fn withdraw(
         request.expected_revision,
     )
     .await?;
+    if let Err(error) =
+        crate::services::retention::cleanup_replaced(&state.db, &state.config.storage_path).await
+    {
+        tracing::warn!(%error, "Artifact cleanup will retry in the background");
+    }
     state.catalog_events.notify_catalog_changed();
     Ok(Json(result))
 }

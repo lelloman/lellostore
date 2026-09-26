@@ -104,12 +104,13 @@ rollback, credential display, verification bypass or automatic data deletion.
   transaction. SDK/ABI coverage, monotonic identities and stream status are checked.
   Initial stable Paravoid publication needs no migration from a nonexistent app.
 - Hourly bounded cleanup of expired personalized transfer copies and old successful
-  upload inputs, retaining grant/job identities and immutable published artifacts.
+  upload inputs, retaining grant/job identities. Publication replaces superseded
+  unarchived artifact files; hourly cleanup retries failed deletions.
 - Read-only restore verification of logical database state and retained artifacts,
   with an isolated recovery test rejecting lost revocations, lower replay revisions
   and corrupted APK bytes. See [backup and restore procedure](PARAVOID_RECOVERY.md).
-- Device SDK filtering keeps compatible historical installers available when
-  the current distribution requires a newer Android release.
+- Device SDK filtering keeps explicitly archived, compatible historical installers
+  available when the current distribution requires a newer Android release.
 - Android conditional Manage app updates action checks the installed, exported
   shell Activity; Android and browser expose explicit repair actions. Android retains distribution
   metadata through its Room cache and repairs the installed published shell.

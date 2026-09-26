@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import ParavoidManagement from '../ParavoidManagement.vue'
 import { api, type AppDistribution } from '@/services/api'
-vi.mock('@/services/api', () => ({ api: { getAppDistribution: vi.fn(), publishVpk: vi.fn() } }))
+vi.mock('@/services/api', () => ({ api: { setArtifactArchived: vi.fn(), getAppDistribution: vi.fn(), publishVpk: vi.fn() } }))
 const snapshot = { distribution_mode: 'paravoid', publication_revision: 7, contracts: [], streams: [], grants: [], events: [], releases: [{ id: 'draft', payload_version: 2, release_id: 'release', publication_state: 'draft', validation_state: 'verified', release_notes: '', archive_size: 3 }] } as unknown as AppDistribution
 function mountView() {
   const slot = { template: '<div><slot /></div>' }
@@ -36,4 +36,11 @@ it('blocks publication of merely inspected payloads', async () => {
   await wrapper.findAll('button').find(b => b.text() === 'Review')!.trigger('click'); await flushPromises()
   expect(wrapper.findAll('button').find(b => b.text() === 'Publish payload')!.attributes('disabled')).toBeDefined()
   expect(api.publishVpk).not.toHaveBeenCalled()
+})
+
+it('archives a payload using the displayed revision', async () => {
+  const wrapper = mountView(); await flushPromises()
+  await wrapper.findAll('button').find(b => b.text() === 'Archive')!.trigger('click'); await flushPromises()
+  expect(api.setArtifactArchived).toHaveBeenCalledWith('example.app', 'vpks', 'draft', 7, true)
+  expect(wrapper.emitted('changed')).toHaveLength(1)
 })

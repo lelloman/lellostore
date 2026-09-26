@@ -13,8 +13,8 @@ async fn draft(pool: &sqlx::SqlitePool, code: i64, beta: bool) {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO app_versions(package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta, publication_state) VALUES ('test.app', ?, '1.0', 'apks/test.app/1.apk', 3, 'hash', 24, ?, 'draft')")
-        .bind(code).bind(beta).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name, version_code, version_name, apk_path, size, sha256, min_sdk, is_beta, publication_state) VALUES ('test.app', ?, '1.0', ?, 3, 'hash', 24, ?, 'draft')")
+        .bind(code).bind(format!("apks/test.app/{code}.apk")).bind(beta).execute(pool).await.unwrap();
 }
 
 fn request(code: i64, revision: i64) -> PublishRequest {
@@ -115,32 +115,67 @@ async fn version_order_includes_beta_and_withdrawn_history() {
 }
 
 #[tokio::test]
-async fn replacement_withdraws_same_channel_without_deleting_artifacts_or_other_channel() {
+async fn replacement_is_mandatory_and_deletes_only_superseded_unarchived_files() {
     let ctx = create_test_context().await;
-    for (code, beta) in [(1, false), (2, true), (3, false)] {
+    std::fs::create_dir_all(ctx.storage_path.join("apks/test.app")).unwrap();
+    for (code, beta) in [(1, false), (2, true), (3, false), (4, false)] {
         draft(&ctx.pool, code, beta).await;
-        let mut publish = request(code, code - 1);
-        publish.replace_latest = code == 3;
-        publications::publish(&ctx.pool, "test.app", "admin", &publish)
+        std::fs::write(
+            ctx.storage_path.join(format!("apks/test.app/{code}.apk")),
+            b"apk",
+        )
+        .unwrap();
+        if code == 1 {
+            sqlx::query("UPDATE app_versions SET archived = 1 WHERE version_code = 1")
+                .execute(&ctx.pool)
+                .await
+                .unwrap();
+        }
+        // Even explicit false from a legacy client cannot disable replacement.
+        publications::publish(&ctx.pool, "test.app", "admin", &request(code, code - 1))
             .await
             .unwrap();
     }
     let all = db::get_app_versions(&ctx.pool, "test.app").await.unwrap();
-    assert_eq!(all.len(), 3);
-    assert_eq!(
+    assert_eq!(all.len(), 4); // Metadata and identities survive file removal.
+    assert!(
         all.iter()
-            .find(|v| v.version_code == 1)
+            .find(|v| v.version_code == 3)
             .unwrap()
-            .publication_state,
-        "withdrawn"
+            .artifact_removed
     );
+    for code in [1, 2, 4] {
+        assert!(
+            !all.iter()
+                .find(|v| v.version_code == code)
+                .unwrap()
+                .artifact_removed
+        );
+    }
     assert_eq!(
-        all.iter()
-            .find(|v| v.version_code == 2)
-            .unwrap()
-            .publication_state,
-        "published"
+        lellostore_backend::services::retention::cleanup_replaced(&ctx.pool, &ctx.storage_path)
+            .await
+            .unwrap(),
+        1
     );
+    assert!(!ctx.storage_path.join("apks/test.app/3.apk").exists());
+    for code in [1, 2, 4] {
+        assert!(ctx
+            .storage_path
+            .join(format!("apks/test.app/{code}.apk"))
+            .exists());
+    }
+    assert_eq!(
+        lellostore_backend::services::retention::cleanup_replaced(&ctx.pool, &ctx.storage_path)
+            .await
+            .unwrap(),
+        0
+    );
+    let identities: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM published_apk_identities")
+        .fetch_one(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(identities, 4);
 }
 
 #[tokio::test]

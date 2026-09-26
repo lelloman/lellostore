@@ -38,3 +38,47 @@ async fn cleanup_preserves_referenced_failed_uploads_and_removes_only_old_genera
     assert!(!uploads.join(&orphan).exists());
     assert!(!copies.join(&directory).exists());
 }
+
+#[tokio::test]
+async fn replaced_cleanup_retries_failures_and_preserves_shared_files() {
+    let ctx = common::create_test_context().await;
+    sqlx::query("INSERT INTO apps(package_name,name) VALUES ('test.app','Test')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    for code in [1, 2, 3] {
+        sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,artifact_removed) VALUES ('test.app',?,'1',?,3,'hash',24,?)")
+            .bind(code).bind(if code == 1 { "apks/retry.apk" } else { "apks/shared.apk" }).bind(code != 3).execute(&ctx.pool).await.unwrap();
+    }
+    let path = ctx.storage_path.join("apks/retry.apk");
+    std::fs::create_dir(&path).unwrap(); // Force unlink to fail.
+    std::fs::write(ctx.storage_path.join("apks/shared.apk"), b"apk").unwrap();
+    assert!(lellostore_backend::services::retention::cleanup_replaced(
+        &ctx.pool,
+        &ctx.storage_path
+    )
+    .await
+    .is_err());
+    let cleaned: bool =
+        sqlx::query_scalar("SELECT artifact_cleaned FROM app_versions WHERE version_code=1")
+            .fetch_one(&ctx.pool)
+            .await
+            .unwrap();
+    assert!(!cleaned);
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::write(&path, b"apk").unwrap();
+    assert_eq!(
+        lellostore_backend::services::retention::cleanup_replaced(&ctx.pool, &ctx.storage_path)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!path.exists());
+    assert!(ctx.storage_path.join("apks/shared.apk").exists());
+    assert_eq!(
+        lellostore_backend::services::retention::cleanup_replaced(&ctx.pool, &ctx.storage_path)
+            .await
+            .unwrap(),
+        0
+    );
+}

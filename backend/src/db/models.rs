@@ -24,6 +24,8 @@ pub struct AppVersion {
     pub version_name: String,
     #[serde(skip_serializing)]
     pub apk_path: String,
+    pub archived: bool,
+    pub artifact_removed: bool,
     pub size: i64,
     pub sha256: String,
     pub min_sdk: i64,

@@ -25,12 +25,15 @@
             <div class="text-caption">APK {{ item.version_code }} · {{ item.is_beta ? 'Beta' : 'Stable' }}</div>
           </template>
           <template #item.publication_state="{ item }">
-            <v-chip :color="state(item) === 'published' ? 'success' : state(item) === 'draft' ? 'primary' : undefined" size="small">{{ state(item) }}</v-chip>
+            <v-chip v-if="item.archived" size="small" class="mr-1">Archived</v-chip>
+            <v-chip v-if="item.artifact_removed" size="small">Replaced</v-chip>
+            <v-chip v-else :color="state(item) === 'published' ? 'success' : state(item) === 'draft' ? 'primary' : undefined" size="small">{{ state(item) }}</v-chip>
           </template>
           <template #item.actions="{ item }">
+            <v-btn v-if="!item.artifact_removed" variant="text" :disabled="busy" @click="archive(item)">{{ item.archived ? 'Unarchive' : 'Archive' }}</v-btn>
             <v-btn v-if="state(item) === 'draft'" variant="text" :disabled="busy" @click="review(item)">Review draft</v-btn>
             <v-btn v-else-if="state(item) === 'published'" variant="text" color="warning" :disabled="busy" @click="review(item)">Withdraw</v-btn>
-            <span v-else class="text-caption text-medium-emphasis">Retained in history</span>
+            <span v-else class="text-caption text-medium-emphasis">Release history</span>
           </template>
           <template #no-data><div class="pa-6">No releases yet. Upload an APK to prepare a draft.</div></template>
         </v-data-table>
@@ -90,8 +93,7 @@
           <v-alert v-if="changesMode" type="info" variant="tonal" class="my-4">
             Publishing switches this app from {{ reviewedMode }} to {{ selected.distribution_mode ?? 'normal' }} distribution. The Store checks APK signing continuity and release compatibility automatically.
           </v-alert>
-          <v-checkbox v-model="replaceLatest" label="Withdraw the previous latest release in this channel" :disabled="busy" hide-details />
-          <p class="text-caption mb-3">Its artifact and published identity remain retained.</p>
+          <p class="text-body-2 mb-3">Publishing replaces older unarchived APKs in this channel and deletes their files. Archive a release before publishing to keep it.</p>
           <details><summary>Artifact verification details</summary><p class="hash mt-2">SHA-256: {{ selected.sha256 }}</p></details>
           <p v-if="dirty" class="text-body-2 mt-3">Save your changes before publishing.</p>
         </template>
@@ -128,7 +130,6 @@ const bootstrapChoices = ref<{ title: string; value: string }[]>([])
 const changesMode = computed(() => (hasPublished.value || reviewedMode.value === 'paravoid') && !!selected.value && (selected.value.distribution_mode ?? 'normal') !== reviewedMode.value)
 const notes = ref('')
 const isBeta = ref(false)
-const replaceLatest = ref(false)
 const busy = ref(false)
 const error = ref('')
 const dialogError = ref('')
@@ -141,6 +142,16 @@ const headers = [{ title: 'Release', key: 'version_name' }, { title: 'Status', k
 const state = (version: AppVersion) => version.publication_state ?? 'published'
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'The action failed. Please retry.'
 const formatSize = (size: number) => `${(size / 1024 / 1024).toFixed(1)} MB`
+
+async function archive(version: AppVersion) {
+  busy.value = true
+  error.value = ''
+  try {
+    await api.setArtifactArchived(props.app.package_name, 'versions', version.version_code, props.app.publication_revision ?? 0, !version.archived)
+    emit('changed')
+  } catch (cause) { error.value = message(cause) }
+  finally { busy.value = false }
+}
 
 async function review(version: AppVersion) {
   busy.value = true
@@ -169,7 +180,6 @@ async function review(version: AppVersion) {
     revision.value = fresh.publication_revision ?? 0
     notes.value = release.release_notes ?? ''
     isBeta.value = !!release.is_beta
-    replaceLatest.value = false
     dialogError.value = ''
   } catch (cause) { error.value = message(cause) }
   finally { busy.value = false }
@@ -191,7 +201,7 @@ async function save() {
 
 async function publish() {
   if (!selected.value || dirty.value || busy.value) return
-  await mutate(() => api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, replaceLatest.value, undefined, bootstrapVpk.value))
+  await mutate(() => api.publishRelease(props.app.package_name, selected.value!.version_code, revision.value, true, undefined, bootstrapVpk.value))
 }
 async function withdraw() {
   if (!selected.value || busy.value) return

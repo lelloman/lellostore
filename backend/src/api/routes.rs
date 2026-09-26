@@ -176,6 +176,14 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/apps/{package_name}/grants/{id}/revoke",
             post(super::vpks::revoke),
         )
+        .route(
+            "/apps/{package_name}/versions/{version_code}/archive",
+            put(super::archives::apk),
+        )
+        .route(
+            "/apps/{package_name}/vpks/{id}/archive",
+            put(super::archives::vpk),
+        )
         .route("/uploads", get(super::uploads::list))
         .route("/uploads/{id}", get(super::uploads::get))
         .route("/uploads/{id}/retry", post(super::uploads::retry))

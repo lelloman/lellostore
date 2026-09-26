@@ -4,6 +4,7 @@
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <v-alert v-if="notice" type="info" class="mb-4">{{ notice }}</v-alert>
     <template v-if="data">
+      <p class="mb-4">Publishing replaces older unarchived VPKs for the same shell contract and deletes their files. Archive a payload to keep it.</p>
       <p class="mb-4">Current distribution: {{ data.distribution_mode }}. Payload versions are independent of APK versions.</p>
       <v-tabs v-model="section"><v-tab value="payloads">Payloads</v-tab><v-tab value="contracts">Shells and streams</v-tab><v-tab value="grants">Issued access</v-tab><v-tab value="history">History</v-tab></v-tabs>
       <section v-if="section === 'payloads'" class="mt-4">
@@ -14,8 +15,8 @@
           <v-btn :disabled="busy || !file || !contractId" @click="upload">Upload payload draft</v-btn>
           <p class="text-caption mt-2 mb-4">Validation continues on the server. Check Uploads for progress and failures.</p>
         </div>
-        <v-card v-for="release in data.releases" :key="release.id" class="mb-3" :title="`Payload ${release.payload_version} · ${release.release_id}`" :subtitle="`${release.publication_state} · ${release.validation_state} · ${size(release.archive_size)}`">
-          <v-card-actions><v-btn @click="review(release)">Review</v-btn><v-btn :disabled="busy" @click="download(release)">Download original</v-btn></v-card-actions>
+        <v-card v-for="release in data.releases" :key="release.id" class="mb-3" :title="`Payload ${release.payload_version} · ${release.release_id}`" :subtitle="`${release.artifact_removed ? 'Replaced' : release.publication_state}${release.archived ? ' · Archived' : ''} · ${release.validation_state} · ${size(release.archive_size)}`">
+          <v-card-actions><v-btn @click="review(release)">Review</v-btn><v-btn :disabled="busy || release.artifact_removed" @click="download(release)">Download original</v-btn><v-btn v-if="!release.artifact_removed" :disabled="busy" @click="archive(release)">{{ release.archived ? 'Unarchive' : 'Archive' }}</v-btn></v-card-actions>
         </v-card>
         <p v-if="!data.releases.length" class="mt-4">No payload releases yet.</p>
       </section>
@@ -83,6 +84,7 @@ async function review(release: VpkRelease) { await perform(async () => { await r
 async function upload() { const chosen = Array.isArray(file.value) ? file.value[0] : file.value; if (!chosen) return; await perform(async () => { const job = await api.uploadVpk(props.packageName, contractId.value, chosen); notice.value = `Upload ${job.id} saved. Open Uploads to follow validation.`; file.value = null }) }
 async function save() { if (!selected.value || !data.value) return; await perform(async () => { await api.saveVpkNotes(props.packageName, selected.value!.id, reviewRevision.value, notes.value); await refresh(); selected.value = data.value!.releases.find(r => r.id === selected.value!.id) ?? null; reviewRevision.value = data.value!.publication_revision; emit('changed') }) }
 async function publish(withdraw: boolean) { if (!selected.value || !data.value) return; await perform(async () => { await api.publishVpk(props.packageName, selected.value!.id, reviewRevision.value, withdraw); selected.value = null; await refresh(); emit('changed') }) }
+async function archive(release: VpkRelease) { if (!data.value) return; await perform(async () => { await api.setArtifactArchived(props.packageName, 'vpks', release.id, data.value!.publication_revision, !release.archived); await refresh(); emit('changed') }) }
 async function download(release: VpkRelease) { await perform(async () => { const blob = await api.downloadVpk(props.packageName, release); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${release.release_id}.vpk`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }) }
 function cancelAction() { pendingStream.value = null; pendingGrant.value = null }
 async function confirmAction() { if (!data.value) return; await perform(async () => { if (pendingGrant.value) await api.revokeParavoidGrant(props.packageName, pendingGrant.value, data.value!.publication_revision); else if (pendingStream.value) await api.setParavoidStream(props.packageName, pendingStream.value, data.value!.publication_revision, streamFor(pendingStream.value)?.status !== 'retired'); cancelAction(); await refresh(); emit('changed') }) }

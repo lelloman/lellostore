@@ -1267,7 +1267,7 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn publication_replacement_withdraws_without_deleting_and_legacy_uploads_fail_explicitly() {
+async fn publication_replacement_deletes_files_and_legacy_uploads_fail_explicitly() {
     let (ctx, oidc) = create_auth_test_context().await;
     let server = TestServer::new(simple_server::web::compat::into_axum_router(
         ctx.router.clone(),
@@ -1315,7 +1315,7 @@ async fn publication_replacement_withdraws_without_deleting_and_legacy_uploads_f
     assert_eq!(versions[0].publication_state, "published");
     assert_eq!(versions[1].publication_state, "withdrawn");
     assert!(ctx.storage_path.join("apks/com.test.app/2.apk").exists());
-    assert!(ctx.storage_path.join("apks/com.test.app/1.apk").exists());
+    assert!(!ctx.storage_path.join("apks/com.test.app/1.apk").exists());
 }
 
 #[tokio::test]
@@ -1520,4 +1520,90 @@ async fn shared_multipart_preserves_upload_rejections_and_temp_cleanup() {
             0
         );
     }
+}
+
+#[tokio::test]
+async fn archive_controls_require_admin_and_current_revision_and_reject_replaced_files() {
+    let (ctx, oidc) = create_auth_test_context().await;
+    sqlx::query("INSERT INTO apps(package_name,name) VALUES ('test.app','Test')")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk) VALUES ('test.app',1,'1','apks/test.app/1.apk',3,'hash',24)").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('test.app','contract',1,'stable','public','embedded','https://example.test/','{}','{}','pending')").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES ('payload','test.app','contract','release',1,'vpks/payload.vpk',3,'hash','hash','{}',24,0,'[]','key','inspected','{}')").execute(&ctx.pool).await.unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let admin = oidc.get_admin_token();
+    let user = oidc.get_user_token();
+    for (index, suffix) in ["versions/1", "vpks/payload"].iter().enumerate() {
+        let url = format!("/api/admin/apps/test.app/{suffix}/archive");
+        let revision = index as i64 * 2;
+        let body = serde_json::json!({"expected_revision":revision,"archived":true});
+        server
+            .put(&url)
+            .json(&body)
+            .await
+            .assert_status_unauthorized();
+        server
+            .put(&url)
+            .add_header("Authorization", format!("Bearer {user}"))
+            .json(&body)
+            .await
+            .assert_status_forbidden();
+        server
+            .put(&url)
+            .add_header("Authorization", format!("Bearer {admin}"))
+            .json(&body)
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        server
+            .put(&url)
+            .add_header("Authorization", format!("Bearer {admin}"))
+            .json(&body)
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        let query = if index == 0 {
+            "SELECT archived FROM app_versions"
+        } else {
+            "SELECT archived FROM vpk_releases"
+        };
+        assert!(sqlx::query_scalar::<_, bool>(query)
+            .fetch_one(&ctx.pool)
+            .await
+            .unwrap());
+        server
+            .put(&url)
+            .add_header("Authorization", format!("Bearer {admin}"))
+            .json(&serde_json::json!({"expected_revision":revision+1,"archived":false}))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        assert!(!sqlx::query_scalar::<_, bool>(query)
+            .fetch_one(&ctx.pool)
+            .await
+            .unwrap());
+    }
+    sqlx::query("UPDATE app_versions SET artifact_removed=1, publication_state='withdrawn'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE vpk_releases SET artifact_removed=1, publication_state='withdrawn'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    for suffix in ["versions/1", "vpks/payload"] {
+        server
+            .put(&format!("/api/admin/apps/test.app/{suffix}/archive"))
+            .add_header("Authorization", format!("Bearer {admin}"))
+            .json(&serde_json::json!({"expected_revision":4,"archived":true}))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+    }
+    let detail: serde_json::Value = server
+        .get("/api/admin/apps/test.app")
+        .add_header("Authorization", format!("Bearer {admin}"))
+        .await
+        .json();
+    assert_eq!(detail["versions"][0]["artifact_removed"], true);
+    assert_eq!(detail["versions"][0]["archived"], false);
+    assert_eq!(detail["publication_revision"], 4);
 }

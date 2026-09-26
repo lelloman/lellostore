@@ -100,8 +100,8 @@ def verify(database, storage):
             raise InvalidBackup('Database lacks the current distribution schema')
         checked = 0
         for query in (
-            'SELECT apk_path,size,sha256 FROM app_versions',
-            'SELECT archive_path,archive_size,archive_sha256 FROM vpk_releases',
+            'SELECT apk_path,size,sha256 FROM app_versions WHERE artifact_removed = 0',
+            'SELECT archive_path,archive_size,archive_sha256 FROM vpk_releases WHERE artifact_removed = 0',
         ):
             for path, size, sha256 in connection.execute(query):
                 artifact(storage, path, size, sha256)

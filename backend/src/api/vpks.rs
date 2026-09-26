@@ -144,6 +144,11 @@ pub async fn publish(
         request.expected_revision,
     )
     .await?;
+    if let Err(error) =
+        crate::services::retention::cleanup_replaced(&state.db, &state.config.storage_path).await
+    {
+        tracing::warn!(%error, "Artifact cleanup will retry in the background");
+    }
     state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
@@ -161,6 +166,11 @@ pub async fn withdraw(
         request.expected_revision,
     )
     .await?;
+    if let Err(error) =
+        crate::services::retention::cleanup_replaced(&state.db, &state.config.storage_path).await
+    {
+        tracing::warn!(%error, "Artifact cleanup will retry in the background");
+    }
     state.catalog_events.notify_catalog_changed();
     Ok(StatusCode::NO_CONTENT)
 }
@@ -171,6 +181,9 @@ pub async fn download(
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     let release = paravoid::release(&state.db, &package, &id).await?;
+    if release.artifact_removed {
+        return Err(AppError::NotFound("Artifact was replaced".into()));
+    }
     super::file_response::serve_immutable_file(
         state.config.storage_path.join(&release.archive_path),
         "application/vnd.paravoid.vpk",

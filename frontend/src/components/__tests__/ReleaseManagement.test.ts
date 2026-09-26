@@ -4,7 +4,7 @@ import ReleaseManagement from '../ReleaseManagement.vue'
 import { api, type App } from '@/services/api'
 
 vi.mock('@/services/api', () => ({ api: {
-  getAppDistribution: vi.fn(), getAdminApp: vi.fn(), publishRelease: vi.fn(), withdrawRelease: vi.fn(),
+  setArtifactArchived: vi.fn(), getAppDistribution: vi.fn(), getAdminApp: vi.fn(), publishRelease: vi.fn(), withdrawRelease: vi.fn(),
   saveDraft: vi.fn(), getPublicationHistory: vi.fn(), getDistributionReviews: vi.fn(), reviewDistributionTransition: vi.fn(),
 } }))
 
@@ -36,6 +36,14 @@ describe('release review', () => {
     vi.mocked(api.getDistributionReviews).mockResolvedValue([])
   })
 
+  it('archives a release using the displayed revision', async () => {
+    const wrapper = mountView()
+    await wrapper.findAll('button').find(b => b.text() === 'Archive')!.trigger('click')
+    await flushPromises()
+    expect(api.setArtifactArchived).toHaveBeenCalledWith('example.app', 'versions', 2, 7, true)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+
   it('publishes a distribution change without a manual migration checklist', async () => {
     const changed = structuredClone(draft)
     changed.distribution_mode = 'paravoid'
@@ -50,7 +58,7 @@ describe('release review', () => {
     expect(publish.attributes('disabled')).toBeUndefined()
     await publish.trigger('click')
     await flushPromises()
-    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, undefined)
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, true, undefined, undefined)
 
   })
 
@@ -64,7 +72,7 @@ describe('release review', () => {
     expect(api.publishRelease).not.toHaveBeenCalled()
     await wrapper.findAll('button').find(b => b.text() === 'Publish release')!.trigger('click')
     await flushPromises()
-    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, undefined)
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, true, undefined, undefined)
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
 
@@ -95,7 +103,7 @@ describe('release review', () => {
     expect(publish.attributes('disabled')).toBeUndefined()
     await publish.trigger('click')
     await flushPromises()
-    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, false, undefined, 'bootstrap')
+    expect(api.publishRelease).toHaveBeenCalledWith('example.app', 2, 7, true, undefined, 'bootstrap')
   })
 
   it('keeps the review and reports a stale publication failure', async () => {

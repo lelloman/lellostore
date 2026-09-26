@@ -58,6 +58,8 @@ pub struct AppListItem {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AppVersionInfo {
+    pub archived: bool,
+    pub artifact_removed: bool,
     pub version_code: i64,
     pub version_name: String,
     pub apk_url: String,
@@ -118,6 +120,8 @@ fn make_apk_url(package_name: &str, version_code: i64) -> String {
 
 fn to_version_info(v: &AppVersion) -> AppVersionInfo {
     AppVersionInfo {
+        archived: v.archived,
+        artifact_removed: v.artifact_removed,
         version_code: v.version_code,
         version_name: v.version_name.clone(),
         apk_url: make_apk_url(&v.package_name, v.version_code),
@@ -221,7 +225,11 @@ async fn list_apps_with_access(
         if !include_drafts && versions.is_empty() {
             continue;
         }
-        let total_size = versions.iter().map(|version| version.size).sum();
+        let total_size = versions
+            .iter()
+            .filter(|version| !version.artifact_removed)
+            .map(|version| version.size)
+            .sum();
         let latest = versions.into_iter().max_by_key(|v| v.version_code);
 
         items.push(AppListItem {

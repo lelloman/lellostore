@@ -117,7 +117,7 @@ async fn payload_publication_is_atomic_monotonic_and_blocks_incomplete_validatio
             .await
             .unwrap()
             .publication_state,
-        "draft"
+        "withdrawn"
     );
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM published_vpk_identities")
         .fetch_one(&ctx.pool)
@@ -682,4 +682,84 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
         message.is_empty(),
         "wrong scope must close without an event"
     );
+}
+
+#[tokio::test]
+async fn replacement_preserves_archived_payloads_and_other_contracts_and_cleans_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let signing = keys(dir.path());
+    let ctx = common::create_test_context().await;
+    seed(&ctx.pool, &signing, "public").await;
+    std::fs::create_dir_all(ctx.storage_path.join("vpks")).unwrap();
+    sqlx::query("UPDATE vpk_releases SET archive_path = 'vpks/' || id || '.vpk'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE vpk_releases SET archived = 1 WHERE id = 'vpk-1'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    for code in [1, 2] {
+        std::fs::write(
+            ctx.storage_path.join(format!("vpks/vpk-{code}.vpk")),
+            b"vpk",
+        )
+        .unwrap();
+        paravoid::publish(
+            &ctx.pool,
+            "test.app",
+            &format!("vpk-{code}"),
+            "admin",
+            code - 1,
+        )
+        .await
+        .unwrap();
+    }
+    assert!(
+        !paravoid::release(&ctx.pool, "test.app", "vpk-1")
+            .await
+            .unwrap()
+            .artifact_removed
+    );
+    // A second stream is independently retained.
+    sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk) VALUES ('test.app',3,'3','apks/test.app/3.apk',3,'hash',30)").execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO paravoid_contracts SELECT package_name, ?, 3, 'beta', authentication, bootstrap, base_url, trust_json, descriptor_json, verification_state, validation_report, created_at FROM paravoid_contracts LIMIT 1")
+        .bind("c".repeat(64)).execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report,publication_state) SELECT 'other',package_name,?,'other',3,'vpks/other.vpk',archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report,'published' FROM vpk_releases WHERE id='vpk-2'")
+        .bind("c".repeat(64)).execute(&ctx.pool).await.unwrap();
+    sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) SELECT 'vpk-4',package_name,contract_id,'release-4',4,'vpks/vpk-4.vpk',archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report FROM vpk_releases WHERE id='vpk-2'")
+        .execute(&ctx.pool).await.unwrap();
+    for id in ["other", "vpk-4"] {
+        std::fs::write(ctx.storage_path.join(format!("vpks/{id}.vpk")), b"vpk").unwrap();
+    }
+    assert!(
+        paravoid::publish(&ctx.pool, "test.app", "vpk-4", "admin", 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        !paravoid::release(&ctx.pool, "test.app", "vpk-2")
+            .await
+            .unwrap()
+            .artifact_removed
+    );
+    paravoid::publish(&ctx.pool, "test.app", "vpk-4", "admin", 2)
+        .await
+        .unwrap();
+    assert!(
+        paravoid::release(&ctx.pool, "test.app", "vpk-2")
+            .await
+            .unwrap()
+            .artifact_removed
+    );
+    assert_eq!(
+        lellostore_backend::services::retention::cleanup_replaced(&ctx.pool, &ctx.storage_path)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!ctx.storage_path.join("vpks/vpk-2.vpk").exists());
+    for id in ["vpk-1", "other", "vpk-4"] {
+        assert!(ctx.storage_path.join(format!("vpks/{id}.vpk")).exists());
+    }
 }
