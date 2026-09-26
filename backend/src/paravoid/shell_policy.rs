@@ -218,6 +218,7 @@ fn validate_updates(values: &BTreeMap<String, String>) -> Result<(), Error> {
         "maxRetrySeconds",
         "maxRetries",
         "pushEnabled",
+        "pushBackgroundConnection",
         "pushWebSocketUrl",
         "pushTransportClass",
         "pushAuthenticationClass",
@@ -237,6 +238,7 @@ fn validate_updates(values: &BTreeMap<String, String>) -> Result<(), Error> {
         "batteryNotLow",
         "deviceIdle",
         "pushEnabled",
+        "pushBackgroundConnection",
     ] {
         if values.get(key).is_some_and(|v| v != "true" && v != "false") {
             return Err(Error::Malformed);
@@ -278,6 +280,13 @@ fn validate_updates(values: &BTreeMap<String, String>) -> Result<(), Error> {
         && empty("pushWebSocketUrl")
         && empty("pushTransportClass")
         && empty("pushComponentClasses")
+    {
+        return Err(Error::Malformed);
+    }
+    if values
+        .get("pushBackgroundConnection")
+        .is_some_and(|v| v == "true")
+        && (values.get("pushEnabled").is_none_or(|v| v != "true") || empty("pushWebSocketUrl"))
     {
         return Err(Error::Malformed);
     }

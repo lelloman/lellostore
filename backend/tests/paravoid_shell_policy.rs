@@ -152,3 +152,34 @@ fn accepts_version_two_update_configuration_and_rejects_bad_push_policy() {
     d["distribution"]["updates"]["pushWebSocketUrl"] = json!("ws://updates.example.test/v1/events");
     agrees(&make(d), false);
 }
+
+#[test]
+fn background_push_matches_producer_contract_and_preserves_strict_validation() {
+    let make = |updates: Value| {
+        let mut d = descriptor();
+        d["distribution"]["updates"] = updates;
+        let hash = hex::encode(Sha256::digest(canonical_json(&d).unwrap()));
+        canonical_json(&json!({"version":2,"contractId":hash,"descriptor":d})).unwrap()
+    };
+    // Old shells omit the flag; current producers always emit a string boolean.
+    for flag in [None, Some("false"), Some("true")] {
+        let mut updates =
+            json!({"pushEnabled":"true","pushWebSocketUrl":"wss://updates.example.test/v1/events"});
+        if let Some(flag) = flag {
+            updates["pushBackgroundConnection"] = json!(flag);
+        }
+        agrees(&make(updates), true);
+    }
+    agrees(&make(json!({"pushBackgroundConnection":"false"})), true);
+    for updates in [
+        json!({"pushBackgroundConnection":"yes"}),
+        json!({"pushBackgroundConnection":true}),
+        json!({"pushBackgroundConnection":"true"}),
+        json!({"pushBackgroundConnection":"true","pushEnabled":"false","pushWebSocketUrl":"wss://updates.example.test/v1/events"}),
+        json!({"pushBackgroundConnection":"true","pushEnabled":"true","pushTransportClass":"example.Transport"}),
+        json!({"pushBackgroundConnection":"true","pushEnabled":"true","pushWebSocketUrl":"ws://updates.example.test/v1/events"}),
+        json!({"pushBackgroundConnection":"false","unknownFutureOption":"true"}),
+    ] {
+        agrees(&make(updates), false);
+    }
+}
