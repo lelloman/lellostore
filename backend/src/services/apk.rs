@@ -277,18 +277,12 @@ impl ApkParser {
             Some("vector") | Some("shape") => render_xml_layer(&tree),
             Some("adaptive-icon") => {
                 let (background_id, foreground_id) = parse_adaptive_icon_refs(&tree)?;
-                let background_path =
-                    resource_file_for_id(resources, &background_id).ok_or_else(|| {
-                        ApkError::IconError("Adaptive icon background not found".into())
-                    })?;
-                let foreground_path =
-                    resource_file_for_id(resources, &foreground_id).ok_or_else(|| {
-                        ApkError::IconError("Adaptive icon foreground not found".into())
-                    })?;
-                let background_tree = self.dump_xmltree(apk_path, &background_path).await?;
-                let foreground_tree = self.dump_xmltree(apk_path, &foreground_path).await?;
-                let background = render_xml_layer_image(&background_tree)?;
-                let foreground = render_xml_layer_image(&foreground_tree)?;
+                let background = self
+                    .render_icon_resource(apk_path, resources, &background_id, 0)
+                    .await?;
+                let foreground = self
+                    .render_icon_resource(apk_path, resources, &foreground_id, 0)
+                    .await?;
                 let mut composed = background;
                 image::imageops::overlay(&mut composed, &foreground, 0, 0);
                 encode_png(composed)
@@ -300,6 +294,52 @@ impl ApkParser {
                 "Could not decode launcher drawable XML".into(),
             )),
         }
+    }
+
+    // Resource references may point to colors, raster files, or nested drawables.
+    // Bound recursion because APK resources are untrusted and can form cycles.
+    fn render_icon_resource<'a>(
+        &'a self,
+        apk: &'a Path,
+        resources: &'a str,
+        id: &'a str,
+        depth: usize,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<image::RgbaImage, ApkError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            if depth >= 8 {
+                return Err(ApkError::IconError(
+                    "Icon resource nesting limit exceeded".into(),
+                ));
+            }
+            if let Some(color) = resource_color_for_id(resources, id) {
+                return Ok(image::RgbaImage::from_pixel(
+                    192,
+                    192,
+                    image::Rgba(android_color(&color)?),
+                ));
+            }
+            let path = resource_file_for_id(resources, id)
+                .ok_or_else(|| ApkError::IconError(format!("Icon resource {id} not found")))?;
+            if is_raster_path(&path) {
+                return image::load_from_memory(&self.extract_icon(apk, &path).await?)
+                    .map(|image| image.to_rgba8())
+                    .map_err(|e| ApkError::IconError(e.to_string()));
+            }
+            let tree = self.dump_xmltree(apk, &path).await?;
+            let elements = parse_xmltree_elements(&tree);
+            if let Some(root) = elements.first().filter(|root| root.name == "inset") {
+                let child = attribute(root, "drawable")
+                    .and_then(|value| value.strip_prefix('@'))
+                    .ok_or_else(|| ApkError::IconError("Inset has no drawable reference".into()))?;
+                let image = self
+                    .render_icon_resource(apk, resources, child, depth + 1)
+                    .await?;
+                return inset_icon(image, root);
+            }
+            render_xml_layer_image(&tree)
+        })
     }
 
     /// Extract icon from APK (which is a ZIP file)
@@ -639,6 +679,58 @@ fn resource_file_for_id(resources: &str, wanted_id: &str) -> Option<String> {
     None
 }
 
+fn resource_color_for_id(resources: &str, wanted_id: &str) -> Option<String> {
+    let mut matches = false;
+    for line in resources.lines() {
+        let line = line.trim();
+        if line.starts_with("resource ") {
+            matches = line.split_whitespace().nth(1) == Some(wanted_id);
+        } else if matches {
+            if let Some(value) = line.strip_prefix("() ").filter(|v| v.starts_with('#')) {
+                return Some(value.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+fn inset_icon(image: image::RgbaImage, root: &XmlElement) -> Result<image::RgbaImage, ApkError> {
+    let amount = |name| -> Result<u32, ApkError> {
+        let value = attribute(root, name)
+            .or_else(|| attribute(root, "inset"))
+            .unwrap_or("0%");
+        // aapt2 prints fractions as 0.18% for an XML value of 18%.
+        let fraction = value
+            .strip_suffix('%')
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0 && *v < 1.0)
+            .ok_or_else(|| {
+                ApkError::IconError("Unsupported icon inset (expected fraction)".into())
+            })?;
+        Ok((fraction * 192.0).round() as u32)
+    };
+    let (left, right, top, bottom) = (
+        amount("insetLeft")?,
+        amount("insetRight")?,
+        amount("insetTop")?,
+        amount("insetBottom")?,
+    );
+    if left + right >= 192 || top + bottom >= 192 {
+        return Err(ApkError::IconError(
+            "Icon insets leave no drawable area".into(),
+        ));
+    }
+    let scaled = image::imageops::resize(
+        &image,
+        192 - left - right,
+        192 - top - bottom,
+        FilterType::Lanczos3,
+    );
+    let mut canvas = image::RgbaImage::new(192, 192);
+    image::imageops::overlay(&mut canvas, &scaled, left.into(), top.into());
+    Ok(canvas)
+}
+
 fn render_xml_layer(output: &str) -> Result<Vec<u8>, ApkError> {
     encode_png(render_xml_layer_image(output)?)
 }
@@ -713,6 +805,25 @@ fn render_vector(elements: &[XmlElement]) -> Result<image::RgbaImage, ApkError> 
                 svg.push_str(width);
                 svg.push('"');
             }
+            for (name, svg_name, choices) in [
+                (
+                    "strokeLineCap",
+                    "stroke-linecap",
+                    ["butt", "round", "square"],
+                ),
+                (
+                    "strokeLineJoin",
+                    "stroke-linejoin",
+                    ["miter", "round", "bevel"],
+                ),
+            ] {
+                if let Some(value) = attribute(element, name)
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .and_then(|v| choices.get(v))
+                {
+                    svg.push_str(&format!(" {svg_name}=\"{value}\""));
+                }
+            }
             if attribute(element, "fillType") == Some("1") {
                 svg.push_str(" fill-rule=\"evenodd\"");
             }
@@ -733,7 +844,16 @@ fn render_vector(elements: &[XmlElement]) -> Result<image::RgbaImage, ApkError> 
         resvg::tiny_skia::Transform::identity(),
         &mut pixmap.as_mut(),
     );
-    image::RgbaImage::from_raw(192, 192, pixmap.data().to_vec())
+    // tiny-skia uses premultiplied RGBA; image/PNG require straight alpha.
+    let pixels = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|pixel| {
+            let color = pixel.demultiply();
+            [color.red(), color.green(), color.blue(), color.alpha()]
+        })
+        .collect();
+    image::RgbaImage::from_raw(192, 192, pixels)
         .ok_or_else(|| ApkError::IconError("Could not create rendered icon".into()))
 }
 
@@ -1031,6 +1151,53 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
                 "res/d2.webp".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn adaptive_color_and_fractional_inset_preserve_background() {
+        let resources = "resource 0x7f020004 color/background\n  () #ffffffff\nresource 0x7f020005 color/other\n  () #ff000000";
+        assert_eq!(
+            resource_color_for_id(resources, "0x7f020004").as_deref(),
+            Some("#ffffffff")
+        );
+        let root = XmlElement {
+            indent: 0,
+            name: "inset".into(),
+            attributes: vec![("inset".into(), "0.180000%".into())],
+        };
+        let inset = inset_icon(
+            image::RgbaImage::from_pixel(192, 192, image::Rgba([0, 100, 255, 255])),
+            &root,
+        )
+        .unwrap();
+        assert_eq!(inset.get_pixel(20, 96)[3], 0);
+        assert_eq!(inset.get_pixel(96, 96), &image::Rgba([0, 100, 255, 255]));
+        let mut background =
+            image::RgbaImage::from_pixel(192, 192, image::Rgba([255, 255, 255, 255]));
+        image::imageops::overlay(&mut background, &inset, 0, 0);
+        assert_eq!(
+            background.get_pixel(20, 96),
+            &image::Rgba([255, 255, 255, 255])
+        );
+    }
+
+    #[test]
+    fn vector_round_caps_and_straight_alpha_are_preserved() {
+        let tree = r##"
+E: vector
+  A: android:viewportWidth(1)=100
+  A: android:viewportHeight(2)=100
+  E: path
+    A: android:pathData(3)="M30,50 L70,50"
+    A: android:strokeColor(4)=#80ff0000
+    A: android:strokeWidth(5)=20
+    A: android:strokeLineCap(6)=1
+"##;
+        let image = render_xml_layer_image(tree).unwrap();
+        // Left of the line's start, inside the round cap (a butt cap is empty).
+        let pixel = image.get_pixel(48, 96);
+        assert_eq!(pixel[0], 255);
+        assert!((127..=129).contains(&pixel[3]));
     }
 
     #[test]
