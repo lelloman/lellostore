@@ -47,7 +47,7 @@ authentication error envelopes and middleware placement are preserved.
 
 ## Remaining boundaries
 
-The tracing compatibility adapter and axum-test's
-multipart/WebSocket transport helpers remain explicit backend boundaries. Mock
-OIDC server routes and ordinary fixtures use shared APIs. Multipart uploads are
-no longer a remaining Axum exposure in this service.
+The `axum-test` multipart/WebSocket transport helpers remain explicit test
+boundaries. Mock OIDC server routes and ordinary fixtures use shared APIs.
+Multipart uploads and production HTTP tracing are no longer remaining Axum
+exposures in this service.

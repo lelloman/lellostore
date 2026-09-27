@@ -43,10 +43,9 @@ to the same transport without exposing its types to these production handlers.
 
 ## Remaining boundaries
 
-Production retains only the HTTP tracing compatibility adapter as its explicit
-Axum boundary. Tests retain `axum-test`, its multipart/WebSocket helpers and the
-explicit router adapter. Production WebSocket upgrades, sockets and messages
-are no longer remaining Axum exposure.
+Tests retain `axum-test`, its multipart/WebSocket helpers and the explicit
+router adapter. Production WebSocket upgrades, sockets and messages and HTTP
+tracing are no longer remaining Axum exposures.
 
 Integration rebases the development branch onto the migration commit, verifies
 unchanged tested tree and ancestry, and removes the owned temporary worktree and

@@ -31,12 +31,13 @@ Docker supplies the runtime APK/AAB tools and is the simplest production build.
 ## Backend
 
 The backend's shared HTTP integrations use the sibling `simple-server` checkout
-at revision `46c724315a3ed35e35cb086b2328bb4040cd0531`. Keep that checkout beside
+at revision `ca98a4159e1cb0dd7b9db2faa9a076d198b7973b`. Keep that checkout beside
 LelloStore for local builds; CI checks out both sources explicitly. See
 [the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) and
 [the logging migration notes](docs/STEP_03A_LOGGING.md).
 See [shared routing and multipart](docs/STEP_11_ROUTING.md) for the HTTP integration.
 See [owned WebSocket transport](docs/STEP_11_WEBSOCKETS.md) for catalog and Paravoid events.
+See [owned HTTP tracing](docs/STEP_11_HTTP_TRACING.md) for request lifecycle logging.
 
 Copy `backend/.env.example` to `backend/.env`, replace the OIDC placeholders,
 and create the database parent directory before starting the service:

@@ -235,9 +235,9 @@ async fn http_trace(
     request: simple_server::web::extract::Request,
     next: simple_server::web::middleware::Next,
 ) -> simple_server::web::response::Response {
-    simple_server::web::compat::trace_with_observer(
+    simple_server::web::tracing::trace_with_observer(
         request,
-        simple_server::http_tracing::TracingObserver,
+        simple_server::web::tracing::TracingObserver,
         |request| next.run(request),
     )
     .await
