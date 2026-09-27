@@ -28,6 +28,42 @@ fn request(code: i64, revision: i64) -> PublishRequest {
 }
 
 #[tokio::test]
+async fn publishing_changes_icon_url_and_served_bytes() {
+    let ctx = create_test_context().await;
+    draft(&ctx.pool, 1, false).await;
+    publications::publish(&ctx.pool, "test.app", "admin", &request(1, 0))
+        .await
+        .unwrap();
+    std::fs::write(ctx.storage_path.join("icons/old.png"), b"old").unwrap();
+    std::fs::write(ctx.storage_path.join("icons/new.png"), b"new").unwrap();
+    sqlx::query("UPDATE apps SET icon_path = 'icons/old.png'")
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    draft(&ctx.pool, 2, false).await;
+    sqlx::query(
+        "UPDATE app_versions SET proposed_icon_path = 'icons/new.png' WHERE version_code = 2",
+    )
+    .execute(&ctx.pool)
+    .await
+    .unwrap();
+    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let before: serde_json::Value = server.get("/api/apps").await.json();
+    publications::publish(&ctx.pool, "test.app", "admin", &request(2, 1))
+        .await
+        .unwrap();
+    let after: serde_json::Value = server.get("/api/apps").await.json();
+    assert_ne!(before["apps"][0]["icon_url"], after["apps"][0]["icon_url"]);
+    assert_eq!(
+        server
+            .get(after["apps"][0]["icon_url"].as_str().unwrap())
+            .await
+            .as_bytes(),
+        &b"new"[..]
+    );
+}
+
+#[tokio::test]
 async fn draft_is_hidden_from_catalog_and_direct_download_until_published() {
     let ctx = create_test_context().await;
     draft(&ctx.pool, 1, false).await;

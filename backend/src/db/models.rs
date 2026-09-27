@@ -39,4 +39,6 @@ pub struct AppVersion {
     pub proposed_name: Option<String>,
     #[serde(skip_serializing)]
     pub proposed_description: Option<String>,
+    #[serde(skip_serializing)]
+    pub proposed_icon_path: Option<String>,
 }

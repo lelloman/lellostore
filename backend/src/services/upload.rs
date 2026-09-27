@@ -99,7 +99,9 @@ impl UploadService {
             SELECT apps.package_name, MAX(app_versions.version_code)
             FROM apps
             JOIN app_versions ON app_versions.package_name = apps.package_name
-            WHERE apps.icon_path IS NULL OR apps.icon_revision < 1
+            WHERE (apps.icon_path IS NULL OR apps.icon_revision < 1)
+              AND app_versions.publication_state = 'published'
+              AND app_versions.artifact_removed = 0
             GROUP BY apps.package_name
             "#,
         )
@@ -414,18 +416,23 @@ impl UploadService {
         };
 
         // 11. Save icon if available (best-effort)
-        let icon_path =
-            if let Some(icon_data) = metadata.icon_data.as_ref().filter(|_| !draft || is_new_app) {
-                match self.storage.save_icon(&metadata.package_name, icon_data) {
-                    Ok(path) => Some(path),
-                    Err(e) => {
-                        warn!("Failed to save icon for {}: {}", metadata.package_name, e);
-                        None
-                    }
-                }
+        let icon_path = if let Some(icon_data) = metadata.icon_data.as_ref() {
+            let saved = if draft {
+                self.storage
+                    .save_release_icon(&metadata.package_name, icon_data)
             } else {
-                None
+                self.storage.save_icon(&metadata.package_name, icon_data)
             };
+            match saved {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    warn!("Failed to save icon for {}: {}", metadata.package_name, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         // 12. Update database (with cleanup on failure)
         let app_name = override_name
@@ -528,7 +535,7 @@ impl UploadService {
             .await?;
         }
 
-        if icon_path.is_some() {
+        if icon_path.is_some() && (!draft || is_new_app) {
             sqlx::query("UPDATE apps SET icon_revision = 1 WHERE package_name = ?")
                 .bind(package_name)
                 .execute(&mut *tx)
@@ -574,8 +581,8 @@ impl UploadService {
         .await?;
 
         if draft {
-            sqlx::query("UPDATE app_versions SET publication_state = 'draft', proposed_name = ?, proposed_description = ?, published_at = NULL WHERE package_name = ? AND version_code = ?")
-                .bind(override_name).bind(override_description).bind(package_name).bind(version_code)
+            sqlx::query("UPDATE app_versions SET publication_state = 'draft', proposed_name = ?, proposed_description = ?, proposed_icon_path = ?, published_at = NULL WHERE package_name = ? AND version_code = ?")
+                .bind(override_name).bind(override_description).bind(icon_path).bind(package_name).bind(version_code)
                 .execute(&mut *tx).await.map_err(AppError::Database)?;
         } else {
             sqlx::query("INSERT OR IGNORE INTO published_apk_identities(package_name, version_code, sha256) VALUES (?, ?, ?)")

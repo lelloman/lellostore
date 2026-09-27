@@ -230,8 +230,10 @@ pub(crate) async fn publish_checked(
     .await?;
     sqlx::query("UPDATE app_versions SET publication_state = 'published', published_at = datetime('now') WHERE package_name = ? AND version_code = ?")
         .bind(package).bind(request.version_code).execute(&mut *tx).await?;
-    sqlx::query("UPDATE apps SET name = COALESCE(?, name), description = COALESCE(?, description), updated_at = datetime('now') WHERE package_name = ?")
-        .bind(&version.proposed_name).bind(&version.proposed_description).bind(package).execute(&mut *tx).await?;
+    sqlx::query("UPDATE apps SET name = COALESCE(?, name), description = COALESCE(?, description), icon_path = COALESCE(?, icon_path), icon_revision = CASE WHEN ? IS NOT NULL THEN 1 ELSE icon_revision END, updated_at = datetime('now') WHERE package_name = ?")
+        .bind(&version.proposed_name).bind(&version.proposed_description)
+        .bind(&version.proposed_icon_path).bind(&version.proposed_icon_path)
+        .bind(package).execute(&mut *tx).await?;
     sqlx::query("UPDATE apps SET distribution_mode = ? WHERE package_name = ?")
         .bind(&version.distribution_mode)
         .bind(package)

@@ -166,6 +166,20 @@ impl StorageService {
         Ok(format!("icons/{}", file_name))
     }
 
+    /// Store a draft icon without overwriting the current listing's bytes.
+    pub fn save_release_icon(
+        &self,
+        package_name: &str,
+        data: &[u8],
+    ) -> Result<String, StorageError> {
+        validate_package_name(package_name)?;
+        let icons_dir = self.base_path.join("icons");
+        std::fs::create_dir_all(&icons_dir)?;
+        let file_name = format!("{}-{}.png", package_name, Self::calculate_sha256(data));
+        std::fs::write(icons_dir.join(&file_name), data)?;
+        Ok(format!("icons/{file_name}"))
+    }
+
     /// Delete APK file
     pub fn delete_apk(&self, package_name: &str, version_code: i64) -> Result<(), StorageError> {
         validate_package_name(package_name)?;
@@ -200,6 +214,26 @@ impl StorageService {
 
         if file_path.exists() {
             std::fs::remove_file(&file_path)?;
+        }
+
+        // Release icons use a content hash so drafts cannot overwrite listings.
+        let icons_dir = self.base_path.join("icons");
+        if icons_dir.exists() {
+            let prefix = format!("{package_name}-");
+            for entry in std::fs::read_dir(icons_dir)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                let Some(hash) = name
+                    .to_str()
+                    .and_then(|name| name.strip_prefix(&prefix))
+                    .and_then(|name| name.strip_suffix(".png"))
+                else {
+                    continue;
+                };
+                if hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                    std::fs::remove_file(entry.path())?;
+                }
+            }
         }
 
         Ok(())

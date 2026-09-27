@@ -128,6 +128,90 @@ async fn setup_test_env() -> (TempDir, sqlx::SqlitePool, StorageService) {
 }
 
 #[tokio::test]
+async fn draft_icon_replaces_listing_only_when_published() {
+    use lellostore_backend::db::{
+        self,
+        publications::{self, PublishRequest},
+    };
+    let (temp, pool, storage) = setup_test_env().await;
+    let old_path = storage
+        .save_icon("com.example.repair", b"old icon")
+        .unwrap();
+    db::insert_app(&pool, "com.example.repair", "Repair", None, Some(&old_path))
+        .await
+        .unwrap();
+    let source = temp.path().join("update.apk");
+    std::fs::write(&source, create_fake_apk_with_icon()).unwrap();
+    let service = UploadService::new(
+        storage.clone(),
+        ApkParser::new(create_fake_aapt2_with_icon(&temp)),
+        None,
+        pool.clone(),
+        100 * 1024 * 1024,
+    );
+    service
+        .process_draft_upload("update.apk", &source, None, None, false)
+        .await
+        .unwrap();
+    let staged = db::get_app_versions(&pool, "com.example.repair")
+        .await
+        .unwrap()[0]
+        .proposed_icon_path
+        .clone()
+        .unwrap();
+    assert_ne!(staged, old_path);
+    assert_eq!(
+        db::get_app(&pool, "com.example.repair")
+            .await
+            .unwrap()
+            .unwrap()
+            .icon_path,
+        Some(old_path.clone())
+    );
+    assert_eq!(
+        std::fs::read(storage.get_icon_path("com.example.repair")).unwrap(),
+        b"old icon"
+    );
+    // A stale publication must not change the listing icon.
+    let mut request = PublishRequest {
+        version_code: 7,
+        expected_revision: 99,
+        replace_latest: false,
+        transition_review: None,
+        bootstrap_vpk: None,
+    };
+    assert!(
+        publications::publish(&pool, "com.example.repair", "admin", &request)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        db::get_app(&pool, "com.example.repair")
+            .await
+            .unwrap()
+            .unwrap()
+            .icon_path,
+        Some(old_path)
+    );
+    request.expected_revision = 0;
+    publications::publish(&pool, "com.example.repair", "admin", &request)
+        .await
+        .unwrap();
+    assert_eq!(
+        db::get_app(&pool, "com.example.repair")
+            .await
+            .unwrap()
+            .unwrap()
+            .icon_path,
+        Some(staged.clone())
+    );
+    assert!(image::load_from_memory(
+        &std::fs::read(temp.path().join("storage").join(staged)).unwrap()
+    )
+    .is_ok());
+}
+
+#[tokio::test]
 async fn test_upload_file_too_large() {
     let (temp_dir, pool, storage) = setup_test_env().await;
 
