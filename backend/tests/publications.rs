@@ -1,12 +1,12 @@
 #[allow(dead_code)]
 mod common;
 
-use axum_test::TestServer;
 use common::create_test_context;
 use lellostore_backend::db::{
     self,
     publications::{self, PublishRequest},
 };
+use simple_server::testing::TestServer;
 
 async fn draft(pool: &sqlx::SqlitePool, code: i64, beta: bool) {
     sqlx::query("INSERT OR IGNORE INTO apps(package_name, name) VALUES ('test.app', 'Test')")
@@ -47,17 +47,31 @@ async fn publishing_changes_icon_url_and_served_bytes() {
     .execute(&ctx.pool)
     .await
     .unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
-    let before: serde_json::Value = server.get("/api/apps").await.json();
+    let server = TestServer::new(ctx.router);
+    let before: serde_json::Value = server
+        .get("/api/apps")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     publications::publish(&ctx.pool, "test.app", "admin", &request(2, 1))
         .await
         .unwrap();
-    let after: serde_json::Value = server.get("/api/apps").await.json();
+    let after: serde_json::Value = server
+        .get("/api/apps")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_ne!(before["apps"][0]["icon_url"], after["apps"][0]["icon_url"]);
     assert_eq!(
         server
             .get(after["apps"][0]["icon_url"].as_str().unwrap())
+            .send()
             .await
+            .expect("test request")
             .as_bytes(),
         &b"new"[..]
     );
@@ -69,21 +83,37 @@ async fn draft_is_hidden_from_catalog_and_direct_download_until_published() {
     draft(&ctx.pool, 1, false).await;
     std::fs::create_dir_all(ctx.storage_path.join("apks/test.app")).unwrap();
     std::fs::write(ctx.storage_path.join("apks/test.app/1.apk"), b"apk").unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
-    let before: serde_json::Value = server.get("/api/apps").await.json();
+    let server = TestServer::new(ctx.router);
+    let before: serde_json::Value = server
+        .get("/api/apps")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(before["apps"].as_array().unwrap().len(), 0);
     server
         .get("/api/apps/test.app/versions/1/apk")
+        .send()
         .await
-        .assert_status_not_found();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::NOT_FOUND);
     publications::publish(&ctx.pool, "test.app", "admin", &request(1, 0))
         .await
         .unwrap();
-    let after: serde_json::Value = server.get("/api/apps").await.json();
+    let after: serde_json::Value = server
+        .get("/api/apps")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(after["apps"][0]["latest_version"]["version_code"], 1);
     server
         .get("/api/apps/test.app/versions/1/apk")
+        .send()
         .await
+        .expect("test request")
         .assert_status_ok();
 }
 
@@ -269,18 +299,42 @@ async fn older_devices_keep_a_compatible_historical_installer_after_shell_adopti
         .await
         .unwrap();
     sqlx::query("UPDATE app_versions SET min_sdk = 30, distribution_mode = 'paravoid' WHERE version_code = 2").execute(&ctx.pool).await.unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
-    let old: serde_json::Value = server.get("/api/apps?sdk=28").await.json();
+    let server = TestServer::new(ctx.router);
+    let old: serde_json::Value = server
+        .get("/api/apps?sdk=28")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(old["apps"][0]["latest_version"]["version_code"], 1);
     assert_eq!(
         old["apps"][0]["latest_version"]["distribution_mode"],
         "normal"
     );
-    let modern: serde_json::Value = server.get("/api/apps?sdk=30").await.json();
+    let modern: serde_json::Value = server
+        .get("/api/apps?sdk=30")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(modern["apps"][0]["latest_version"]["version_code"], 2);
-    let detail: serde_json::Value = server.get("/api/apps/test.app?sdk=28").await.json();
+    let detail: serde_json::Value = server
+        .get("/api/apps/test.app?sdk=28")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(detail["versions"].as_array().unwrap().len(), 1);
-    let unsupported: serde_json::Value = server.get("/api/apps?sdk=23").await.json();
+    let unsupported: serde_json::Value = server
+        .get("/api/apps?sdk=23")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert!(unsupported["apps"].as_array().unwrap().is_empty());
 }
 

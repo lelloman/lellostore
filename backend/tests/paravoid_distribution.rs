@@ -1,6 +1,8 @@
 #[allow(dead_code)]
 mod common;
-use axum_test::TestServer;
+use simple_server::testing::TestServer;
+#[path = "support/owned_harness_ws.rs"]
+mod owned_harness_ws;
 use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     Engine,
@@ -9,6 +11,7 @@ use lellostore_backend::{
     db::{self, paravoid},
     paravoid::signing::OnlineSigning,
 };
+use owned_harness_ws::{OwnedSocketExt, OwnedUpgradeExt};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{os::unix::fs::PermissionsExt, process::Command, sync::Arc};
@@ -135,11 +138,11 @@ async fn signed_heads_cache_exact_bytes_refresh_revision_and_retire_explicitly()
     paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
         .await
         .unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let url = head_url();
-    let first = server.get(&url).await;
+    let first = server.get(&url).send().await.expect("test request");
     first.assert_status_ok();
-    let envelope: Value = first.json();
+    let envelope: Value = first.json().unwrap();
     let first_body = body(&envelope);
     assert_eq!(first_body["status"], "available");
     let contract = paravoid::contract(&ctx.pool, "test.app", &"a".repeat(64))
@@ -154,30 +157,47 @@ async fn signed_heads_cache_exact_bytes_refresh_revision_and_retire_explicitly()
             &["x86_64".into()],
         )
         .unwrap();
-    let etag = first.header("etag").to_str().unwrap().to_owned();
+    let etag = first.headers()["etag"].to_str().unwrap().to_owned();
     server
         .get(&url)
-        .add_header("If-None-Match", &etag)
+        .header("If-None-Match", &etag)
+        .send()
         .await
+        .expect("test request")
         .assert_status(simple_server::web::http::StatusCode::NOT_MODIFIED);
     server
         .get(&format!("{url}&sdk=31"))
+        .send()
         .await
-        .assert_status_bad_request();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::BAD_REQUEST);
     sqlx::query("UPDATE paravoid_streams SET expires_at = 0")
         .execute(&ctx.pool)
         .await
         .unwrap();
-    let refreshed = server.get(&url).add_header("If-None-Match", &etag).await;
+    let refreshed = server
+        .get(&url)
+        .header("If-None-Match", &etag)
+        .send()
+        .await
+        .expect("test request");
     refreshed.assert_status_ok();
     assert!(
-        body(&refreshed.json::<Value>())["headRevision"].as_i64()
+        body(&refreshed.json::<Value>().unwrap())["headRevision"].as_i64()
             > first_body["headRevision"].as_i64()
     );
     paravoid::set_stream(&ctx.pool, "test.app", &"a".repeat(64), true, "admin", 1)
         .await
         .unwrap();
-    let retired = body(&server.get(&url).await.json::<Value>());
+    let retired = body(
+        &server
+            .get(&url)
+            .send()
+            .await
+            .expect("test request")
+            .json::<Value>()
+            .unwrap(),
+    );
     assert_eq!(retired["status"], "shell-update-required");
     assert!(retired["release"].is_null());
 }
@@ -188,14 +208,13 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
     let signing = keys(dir.path());
     let ctx = common::create_paravoid_test_context(signing.clone()).await;
     seed(&ctx.pool, &signing, "apkKey").await;
-    let canonical = TestServer::new(simple_server::web::compat::into_axum_router(
-        ctx.router.clone(),
-    ))
-    .unwrap();
+    let canonical = TestServer::new(ctx.router.clone());
     canonical
         .get("/api/apps/test.app/versions/1/apk")
+        .send()
         .await
-        .assert_status_conflict();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::CONFLICT);
 
     let key = URL_SAFE_NO_PAD.encode([7_u8; 32]);
     sqlx::query("INSERT INTO paravoid_grants(id,key_id,credential_sha256,package_name,contract_id,installer_version,user_subject,acquisition_id,issued_at) VALUES ('grant','key',?,'test.app',?,1,'alice','copy',1)")
@@ -212,29 +231,43 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
         .await
         .unwrap();
     std::fs::write(ctx.storage_path.join("payload.vpk"), b"vpk").unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let token = format!("Bearer {key}");
     let url = head_url();
-    server.get(&url).await.assert_status_unauthorized();
-    let first = server.get(&url).add_header("Authorization", &token).await;
+    server
+        .get(&url)
+        .send()
+        .await
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::UNAUTHORIZED);
+    let first = server
+        .get(&url)
+        .header("Authorization", &token)
+        .send()
+        .await
+        .expect("test request");
     first.assert_status_ok();
-    let etag = first.header("etag").to_str().unwrap().to_owned();
+    let etag = first.headers()["etag"].to_str().unwrap().to_owned();
     let download = "/api/paravoid/v1/apps/test.app/releases/release-1/payload.vpk";
     server
         .get(download)
-        .add_header("Authorization", &token)
-        .add_header("Range", "bytes=1-")
+        .header("Authorization", &token)
+        .header("Range", "bytes=1-")
+        .send()
         .await
+        .expect("test request")
         .assert_status(simple_server::web::http::StatusCode::PARTIAL_CONTENT);
     db::access::remove_direct_grant(&ctx.pool, "alice", "test.app")
         .await
         .unwrap();
     server
         .get(&url)
-        .add_header("Authorization", &token)
-        .add_header("If-None-Match", &etag)
+        .header("Authorization", &token)
+        .header("If-None-Match", &etag)
+        .send()
         .await
-        .assert_status_forbidden();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::FORBIDDEN);
     db::access::set_direct_grant(
         &ctx.pool,
         "alice",
@@ -248,10 +281,12 @@ async fn revoked_or_unentitled_keys_cannot_fetch_cached_heads_or_ranges() {
         .unwrap();
     server
         .get(download)
-        .add_header("Authorization", &token)
-        .add_header("Range", "bytes=1-")
+        .header("Authorization", &token)
+        .header("Range", "bytes=1-")
+        .send()
         .await
-        .assert_status_forbidden();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::FORBIDDEN);
     let grants =
         serde_json::to_string(&paravoid::grants(&ctx.pool, "test.app").await.unwrap()).unwrap();
     assert!(!grants.contains(&key));
@@ -545,10 +580,7 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
         paravoid::publish(&ctx.pool, "test.app", "vpk-1", "admin", 0)
             .await
             .unwrap();
-        let server = TestServer::new(simple_server::web::compat::into_axum_router(
-            ctx.router.clone(),
-        ))
-        .unwrap();
+        let server = TestServer::new(ctx.router.clone());
         let envelope = apk_grant::read(&mut std::fs::File::open(&output).unwrap()).unwrap();
         let policy = paravoid::contract(&ctx.pool, "test.app", &contract_id)
             .await
@@ -558,8 +590,10 @@ async fn personalized_acquisition_preserves_signatures_and_repair_issues_new_gra
         let grant = policy.verify_grant(&envelope).unwrap();
         let response = server
             .get(&head_url().replace(&"a".repeat(64), &contract_id))
-            .add_header("Authorization", format!("Bearer {}", grant.credential()))
-            .await;
+            .header("Authorization", &format!("Bearer {}", grant.credential()))
+            .send()
+            .await
+            .expect("test request");
         response.assert_status_ok();
         let head = dir.path().join("store-head.json");
         std::fs::write(&head, response.as_bytes()).unwrap();
@@ -638,20 +672,19 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
     let signing = keys(dir.path());
     let ctx = common::create_paravoid_test_context(signing.clone()).await;
     seed(&ctx.pool, &signing, "public").await;
-    let server = TestServer::builder()
-        .http_transport()
-        .build(simple_server::web::compat::into_axum_router(ctx.router))
-        .unwrap();
+    let server = TestServer::tcp(ctx.router).await.unwrap();
     let subscription = json!({"version":1,"type":"subscribe","applicationId":"test.app","shellContractId":"a".repeat(64),"channel":"stable"});
     let mut ids = Vec::new();
     for _ in 0..2 {
         let upgrade = server
-            .get_websocket("/api/paravoid/v1/events")
-            .add_header(
-                simple_server::web::http::header::SEC_WEBSOCKET_PROTOCOL,
+            .get("/api/paravoid/v1/events")
+            .header(
+                simple_server::web::http::header::SEC_WEBSOCKET_PROTOCOL.as_str(),
                 "paravoid.updates.v1",
             )
-            .await;
+            .websocket()
+            .await
+            .expect("WebSocket handshake");
         upgrade.assert_header("sec-websocket-protocol", "paravoid.updates.v1");
         let mut socket = upgrade.into_websocket().await;
         socket.send_json(&subscription).await;
@@ -666,20 +699,24 @@ async fn push_subscription_resynchronizes_and_rejects_wrong_scope() {
         assert_eq!(hint["channel"], "stable");
         ids.push(hint["eventId"].clone());
         socket
-            .send_message(axum_test::WsMessage::Ping(b"push-alive".as_slice().into()))
+            .send_message(simple_server::web::ws::Message::Ping(
+                b"push-alive".as_slice().into(),
+            ))
             .await;
         assert_eq!(
             tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_message())
                 .await
                 .unwrap(),
-            axum_test::WsMessage::Pong(b"push-alive".as_slice().into()),
+            simple_server::web::ws::Message::Pong(b"push-alive".as_slice().into()),
         );
-        socket.close().await;
+        socket.close().await.unwrap();
     }
     assert_ne!(ids[0], ids[1]);
     let mut socket = server
-        .get_websocket("/api/paravoid/v1/events")
+        .get("/api/paravoid/v1/events")
+        .websocket()
         .await
+        .expect("WebSocket handshake")
         .into_websocket()
         .await;
     let mut wrong = subscription;

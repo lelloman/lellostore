@@ -1,4 +1,4 @@
-use axum_test::TestServer;
+use simple_server::testing::TestServer;
 use simple_server::web::http::{header, Method, StatusCode};
 
 mod common;
@@ -59,24 +59,26 @@ async fn insert_test_version(
 #[tokio::test]
 async fn test_health_endpoint() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/health").await;
+    let response = server.get("/health").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["status"], "healthy");
 }
 
 #[tokio::test]
 async fn production_cors_policy_allows_origins_methods_and_request_headers() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
     let ordinary = server
         .get("/health")
-        .add_header(header::ORIGIN, "https://catalog.example")
-        .await;
+        .header(header::ORIGIN.as_str(), "https://catalog.example")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(ordinary.status_code(), StatusCode::OK);
     assert_eq!(
         ordinary.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
@@ -92,11 +94,16 @@ async fn production_cors_policy_allows_origins_methods_and_request_headers() {
         .is_none());
 
     let preflight = server
-        .method(Method::OPTIONS, "/route-that-does-not-exist")
-        .add_header(header::ORIGIN, "https://catalog.example")
-        .add_header(header::ACCESS_CONTROL_REQUEST_METHOD, "DELETE")
-        .add_header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization")
-        .await;
+        .request(Method::OPTIONS, "/route-that-does-not-exist")
+        .header(header::ORIGIN.as_str(), "https://catalog.example")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD.as_str(), "DELETE")
+        .header(
+            header::ACCESS_CONTROL_REQUEST_HEADERS.as_str(),
+            "authorization",
+        )
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(preflight.status_code(), StatusCode::OK);
     assert_eq!(
         preflight.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
@@ -125,14 +132,13 @@ async fn production_cors_policy_allows_origins_methods_and_request_headers() {
         .is_none());
 
     let (_temp_dir, fail_closed_app) = create_fail_closed_test_app().await;
-    let fail_closed_server = TestServer::new(simple_server::web::compat::into_axum_router(
-        fail_closed_app,
-    ))
-    .unwrap();
+    let fail_closed_server = TestServer::new(fail_closed_app);
     let unavailable = fail_closed_server
         .get("/api/apps")
-        .add_header(header::ORIGIN, "https://catalog.example")
-        .await;
+        .header(header::ORIGIN.as_str(), "https://catalog.example")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(unavailable.status_code(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(
         unavailable
@@ -145,21 +151,21 @@ async fn production_cors_policy_allows_origins_methods_and_request_headers() {
 #[tokio::test]
 async fn test_apps_list_empty() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/api/apps").await;
+    let response = server.get("/api/apps").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["apps"], serde_json::json!([]));
 }
 
 #[tokio::test]
 async fn test_api_fails_closed_when_auth_is_unavailable() {
     let (_temp_dir, app) = create_fail_closed_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/api/apps").await;
+    let response = server.get("/api/apps").send().await.expect("test request");
 
     assert_eq!(response.status_code(), StatusCode::SERVICE_UNAVAILABLE);
 }
@@ -167,25 +173,35 @@ async fn test_api_fails_closed_when_auth_is_unavailable() {
 #[tokio::test]
 async fn test_app_not_found() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/api/apps/com.nonexistent").await;
+    let response = server
+        .get("/api/apps/com.nonexistent")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_app_without_a_published_release_is_hidden() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
-    let body: serde_json::Value = server.get("/api/apps").await.json();
+    let body: serde_json::Value = server
+        .get("/api/apps")
+        .send()
+        .await
+        .expect("test request")
+        .json()
+        .unwrap();
     assert!(body["apps"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn test_apps_list_includes_latest_and_cumulative_sizes() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     insert_test_app(&ctx.pool, "com.test.app", "Test App", None).await;
     insert_test_version(
@@ -207,10 +223,10 @@ async fn test_apps_list_includes_latest_and_cumulative_sizes() {
     )
     .await;
 
-    let response = server.get("/api/apps").await;
+    let response = server.get("/api/apps").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     let app = &body["apps"][0];
     assert_eq!(app["latest_version"]["size"], 4_096);
     assert_eq!(app["total_size"], 5_120);
@@ -219,9 +235,9 @@ async fn test_apps_list_includes_latest_and_cumulative_sizes() {
 #[tokio::test]
 async fn test_metrics_endpoint() {
     let app = create_test_metrics_app();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/metrics").await;
+    let response = server.get("/metrics").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // Check that the content type is correct for Prometheus
@@ -229,7 +245,7 @@ async fn test_metrics_endpoint() {
     assert!(content_type.to_str().unwrap().starts_with("text/plain"));
 
     // The metrics endpoint should return some content (metrics format)
-    let body = response.text();
+    let body = response.text().unwrap();
     // The registry will have metrics registered, check for the presence of our custom metrics
     // After register_metrics() is called, these will be in the output
     assert!(
@@ -246,7 +262,7 @@ async fn test_metrics_endpoint() {
 #[tokio::test]
 async fn test_get_icon_success() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Create icon file
     let icons_dir = ctx.storage_path.join("icons");
@@ -263,7 +279,11 @@ async fn test_get_icon_success() {
     )
     .await;
 
-    let response = server.get("/api/apps/com.example.app/icon").await;
+    let response = server
+        .get("/api/apps/com.example.app/icon")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let content_type = response.headers().get("content-type").unwrap();
@@ -276,7 +296,7 @@ async fn test_get_icon_success() {
 #[tokio::test]
 async fn test_icon_urls_track_content_changes() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let storage = lellostore_backend::services::StorageService::new(ctx.storage_path.clone());
     let icon_path = storage.save_icon("com.example.app", b"old icon").unwrap();
     insert_test_app(&ctx.pool, "com.example.app", "Test App", Some(&icon_path)).await;
@@ -295,16 +315,34 @@ async fn test_icon_urls_track_content_changes() {
     // the image cache; repeated reads of identical content must stay cacheable.
     for data in [b"old icon", b"new icon"] {
         storage.save_icon("com.example.app", data).unwrap();
-        let detail: serde_json::Value = server.get("/api/apps/com.example.app").await.json();
+        let detail: serde_json::Value = server
+            .get("/api/apps/com.example.app")
+            .send()
+            .await
+            .expect("test request")
+            .json()
+            .unwrap();
         let url = detail["icon_url"].as_str().unwrap();
         assert!(url.starts_with("/api/apps/com.example.app/icon?v="));
         assert_ne!(url, previous_url);
 
-        let listing: serde_json::Value = server.get("/api/apps").await.json();
+        let listing: serde_json::Value = server
+            .get("/api/apps")
+            .send()
+            .await
+            .expect("test request")
+            .json()
+            .unwrap();
         assert_eq!(listing["apps"][0]["icon_url"], url);
-        let repeated: serde_json::Value = server.get("/api/apps/com.example.app").await.json();
+        let repeated: serde_json::Value = server
+            .get("/api/apps/com.example.app")
+            .send()
+            .await
+            .expect("test request")
+            .json()
+            .unwrap();
         assert_eq!(repeated["icon_url"], url);
-        let icon = server.get(url).await;
+        let icon = server.get(url).send().await.expect("test request");
         assert_eq!(icon.status_code(), StatusCode::OK);
         assert_eq!(icon.as_bytes().as_ref(), data);
         previous_url = url.to_owned();
@@ -314,28 +352,36 @@ async fn test_icon_urls_track_content_changes() {
 #[tokio::test]
 async fn test_get_icon_not_found_no_app() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
-    let response = server.get("/api/apps/com.nonexistent/icon").await;
+    let response = server
+        .get("/api/apps/com.nonexistent/icon")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_get_icon_not_found_no_icon() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Insert app without icon
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
 
-    let response = server.get("/api/apps/com.example.app/icon").await;
+    let response = server
+        .get("/api/apps/com.example.app/icon")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_download_apk_success() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -355,7 +401,11 @@ async fn test_download_apk_success() {
     )
     .await;
 
-    let response = server.get("/api/apps/com.example.app/versions/1/apk").await;
+    let response = server
+        .get("/api/apps/com.example.app/versions/1/apk")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // Check headers
@@ -382,7 +432,7 @@ async fn test_download_apk_success() {
 #[tokio::test]
 async fn test_download_apk_range_request() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Create APK file with known content
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -405,8 +455,10 @@ async fn test_download_apk_range_request() {
     // Request first 10 bytes
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range", "bytes=0-9")
-        .await;
+        .header("Range", "bytes=0-9")
+        .send()
+        .await
+        .expect("test request");
 
     assert_eq!(response.status_code(), StatusCode::PARTIAL_CONTENT);
 
@@ -420,7 +472,7 @@ async fn test_download_apk_range_request() {
 #[tokio::test]
 async fn test_download_apk_range_suffix() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -443,8 +495,10 @@ async fn test_download_apk_range_suffix() {
     // Request last 5 bytes
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range", "bytes=-5")
-        .await;
+        .header("Range", "bytes=-5")
+        .send()
+        .await
+        .expect("test request");
 
     assert_eq!(response.status_code(), StatusCode::PARTIAL_CONTENT);
 
@@ -458,7 +512,7 @@ async fn test_download_apk_range_suffix() {
 #[tokio::test]
 async fn test_download_apk_range_invalid() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Create APK file
     let apk_dir = ctx.storage_path.join("apks").join("com.example.app");
@@ -481,8 +535,10 @@ async fn test_download_apk_range_invalid() {
     // Request range beyond file size
     let response = server
         .get("/api/apps/com.example.app/versions/1/apk")
-        .add_header("Range", "bytes=100-200")
-        .await;
+        .header("Range", "bytes=100-200")
+        .send()
+        .await
+        .expect("test request");
 
     assert_eq!(response.status_code(), StatusCode::RANGE_NOT_SATISFIABLE);
 
@@ -493,21 +549,23 @@ async fn test_download_apk_range_invalid() {
 #[tokio::test]
 async fn test_download_apk_not_found() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Insert app but no version
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
 
     let response = server
         .get("/api/apps/com.example.app/versions/999/apk")
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_get_app_with_versions() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Insert app and multiple versions
     insert_test_app(&ctx.pool, "com.example.app", "Test App", None).await;
@@ -538,11 +596,15 @@ async fn test_get_app_with_versions() {
         .unwrap();
     assert_eq!(count.0, 1, "App should exist in database");
 
-    let response = server.get("/api/apps/com.example.app").await;
+    let response = server
+        .get("/api/apps/com.example.app")
+        .send()
+        .await
+        .expect("test request");
 
     // Debug: print the response body if not OK
     if response.status_code() != StatusCode::OK {
-        let body = response.text();
+        let body = response.text().unwrap();
         panic!(
             "Expected OK but got {:?}, body: {}",
             response.status_code(),
@@ -550,7 +612,7 @@ async fn test_get_app_with_versions() {
         );
     }
 
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     // New format: flat structure with snake_case
     assert_eq!(body["package_name"], "com.example.app");
     assert_eq!(body["name"], "Test App");
@@ -570,9 +632,9 @@ async fn test_get_app_with_versions() {
 #[tokio::test]
 async fn test_serve_index_at_root() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
-    let response = server.get("/").await;
+    let response = server.get("/").send().await.expect("test request");
     // Should return the index.html with 200 status (if frontend is embedded)
     // or 404 if no frontend is built
     let status = response.status_code();
@@ -591,10 +653,14 @@ async fn test_serve_index_at_root() {
 #[tokio::test]
 async fn test_spa_fallback_for_deep_routes() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
     // SPA routes without file extension should return index.html
-    let response = server.get("/apps/com.example.app").await;
+    let response = server
+        .get("/apps/com.example.app")
+        .send()
+        .await
+        .expect("test request");
     let status = response.status_code();
 
     // Should return the index.html with 200 status (if frontend is embedded)
@@ -614,23 +680,27 @@ async fn test_spa_fallback_for_deep_routes() {
 #[tokio::test]
 async fn test_api_routes_take_priority_over_static() {
     let ctx = create_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // API routes should still work
-    let response = server.get("/api/apps").await;
+    let response = server.get("/api/apps").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert!(body["apps"].is_array());
 }
 
 #[tokio::test]
 async fn test_missing_static_file_returns_404() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
     // Request for a non-existent file with extension should return 404, not index.html
-    let response = server.get("/nonexistent.js").await;
+    let response = server
+        .get("/nonexistent.js")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(
         response.status_code(),
         StatusCode::NOT_FOUND,
@@ -641,13 +711,17 @@ async fn test_missing_static_file_returns_404() {
 #[tokio::test]
 async fn test_spa_fallback_for_package_name_with_dots() {
     let (_temp_dir, app) = create_test_app().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(app)).unwrap();
+    let server = TestServer::new(app);
 
     // Package names like "com.lelloman.pezzottify.android" contain dots but are NOT file extensions.
     // The SPA router should serve index.html for these paths, not return 404.
     // This is a regression test for a bug where dots in package names were incorrectly
     // interpreted as file extensions.
-    let response = server.get("/apps/com.lelloman.pezzottify.android").await;
+    let response = server
+        .get("/apps/com.lelloman.pezzottify.android")
+        .send()
+        .await
+        .expect("test request");
     let status = response.status_code();
 
     // Should return index.html (200 if frontend embedded) or 404 only if no frontend built

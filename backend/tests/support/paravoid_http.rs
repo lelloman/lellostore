@@ -1,10 +1,6 @@
 //! Authenticated HTTP acceptance using ephemeral signing keys and real Android content.
 //! This validates Store delivery, not installed Android lifecycle behavior.
 use super::signed_shell::{apk, apk_with_payload, document, run};
-use axum_test::{
-    multipart::{MultipartForm, Part},
-    TestServer,
-};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use lellostore_backend::{
     db,
@@ -13,6 +9,7 @@ use lellostore_backend::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use simple_server::testing::{MultipartForm, Part, TestServer};
 use simple_server::web::http::StatusCode;
 use std::{
     collections::BTreeMap,
@@ -232,13 +229,12 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .await
                 .is_err());
         }
-        let server =
-            TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+        let server = TestServer::new(ctx.router);
         let admin = format!("Bearer {}", oidc.get_admin_token());
         let user = format!("Bearer {}", oidc.get_user_token());
         let uploaded = server
             .post("/api/admin/apps?asynchronous=true")
-            .add_header("Authorization", &admin)
+            .header("Authorization", &admin)
             .multipart(
                 MultipartForm::new()
                     .add_text("publication", "draft")
@@ -248,48 +244,66 @@ async fn signed_shell_to_authenticated_http_delivery() {
                         Part::bytes(source_bytes.clone()).file_name("shell.apk"),
                     ),
             )
-            .await;
+            .send()
+            .await
+            .expect("test request");
         uploaded.assert_status(StatusCode::ACCEPTED);
         upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
-        let job = uploaded.json::<Value>();
+        let job = uploaded.json::<Value>().unwrap();
         let ready = server
             .get(&format!(
                 "/api/admin/uploads/{}",
                 job["id"].as_str().unwrap()
             ))
-            .add_header("Authorization", &admin)
-            .await;
+            .header("Authorization", &admin)
+            .send()
+            .await
+            .expect("test request");
         ready.assert_status_ok();
-        assert_eq!(ready.json::<Value>()["status"], "ready", "{}", ready.text());
+        assert_eq!(
+            ready.json::<Value>().unwrap()["status"],
+            "ready",
+            "{}",
+            ready.text().unwrap()
+        );
         server
             .get("/api/apps/example.app")
-            .add_header("Authorization", &user)
+            .header("Authorization", &user)
+            .send()
             .await
-            .assert_status_not_found();
+            .expect("test request")
+            .assert_status(simple_server::web::http::StatusCode::NOT_FOUND);
         if bootstrap == "empty" {
             let uploaded = server
                 .post(&format!(
                     "/api/admin/apps/example.app/contracts/{contract}/vpks"
                 ))
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
                 .multipart(
                     MultipartForm::new()
                         .add_part("file", Part::bytes(vpk.clone()).file_name("payload.vpk")),
                 )
-                .await;
+                .send()
+                .await
+                .expect("test request");
             uploaded.assert_status(StatusCode::ACCEPTED);
             upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
-            let completed =
-                upload_jobs::get(&ctx.pool, uploaded.json::<Value>()["id"].as_str().unwrap())
-                    .await
-                    .unwrap();
+            let completed = upload_jobs::get(
+                &ctx.pool,
+                uploaded.json::<Value>().unwrap()["id"].as_str().unwrap(),
+            )
+            .await
+            .unwrap();
             assert_eq!(completed.status, "ready", "{:?}", completed.error);
         }
         let overview = server
             .get("/api/admin/apps/example.app/distribution")
-            .add_header("Authorization", &admin)
+            .header("Authorization", &admin)
+            .send()
             .await
-            .json::<Value>();
+            .expect("test request")
+            .json::<Value>()
+            .unwrap();
         assert_eq!(
             overview["releases"][0]["validation_state"], "verified",
             "{overview}"
@@ -298,22 +312,26 @@ async fn signed_shell_to_authenticated_http_delivery() {
         let id = overview["releases"][0]["id"].as_str().unwrap();
         if bootstrap == "embedded" {
             assert_eq!(overview["installers"][0]["embedded_vpk_id"], id);
-            server.post("/api/admin/apps/example.app/publications").add_header("Authorization", &admin)
-                .json(&json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk":"different-payload"})).await.assert_status_conflict();
+            server.post("/api/admin/apps/example.app/publications").header("Authorization", &admin)
+                .json(&json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk":"different-payload"})).send().await.expect("test request").assert_status(simple_server::web::http::StatusCode::CONFLICT);
         }
         let publish = json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk": if bootstrap == "embedded" { Value::Null } else { json!(id) }});
         server
             .post("/api/admin/apps/example.app/publications")
-            .add_header("Authorization", &admin)
+            .header("Authorization", &admin)
             .json(&publish)
+            .send()
             .await
+            .expect("test request")
             .assert_status_ok();
         server
             .post("/api/admin/apps/example.app/publications")
-            .add_header("Authorization", &admin)
+            .header("Authorization", &admin)
             .json(&publish)
+            .send()
             .await
-            .assert_status_conflict();
+            .expect("test request")
+            .assert_status(simple_server::web::http::StatusCode::CONFLICT);
         db::access::set_direct_grant(
             &ctx.pool,
             "test-user",
@@ -324,30 +342,42 @@ async fn signed_shell_to_authenticated_http_delivery() {
         .unwrap();
         let catalog = server
             .get("/api/apps/example.app")
-            .add_header("Authorization", &user)
-            .await;
+            .header("Authorization", &user)
+            .send()
+            .await
+            .expect("test request");
         catalog.assert_status_ok();
-        assert_eq!(catalog.json::<Value>()["distribution_mode"], "paravoid");
+        assert_eq!(
+            catalog.json::<Value>().unwrap()["distribution_mode"],
+            "paravoid"
+        );
         let request =
             json!({"version_code":1,"purpose":"install","idempotency_key":"http-install"});
         let acquisition = server
             .post("/api/apps/example.app/acquisitions")
-            .add_header("Authorization", &user)
+            .header("Authorization", &user)
             .json(&request)
-            .await;
+            .send()
+            .await
+            .expect("test request");
         acquisition.assert_status_ok();
-        let acquired = acquisition.json::<Value>();
+        let acquired = acquisition.json::<Value>().unwrap();
         let retry = server
             .post("/api/apps/example.app/acquisitions")
-            .add_header("Authorization", &user)
+            .header("Authorization", &user)
             .json(&request)
+            .send()
             .await
-            .json::<Value>();
+            .expect("test request")
+            .json::<Value>()
+            .unwrap();
         assert_eq!(acquired, retry);
         let delivered = server
             .get(acquired["apk_url"].as_str().unwrap())
-            .add_header("Authorization", &user)
-            .await;
+            .header("Authorization", &user)
+            .send()
+            .await
+            .expect("test request");
         delivered.assert_status_ok();
         assert_eq!(acquired["size"], delivered.as_bytes().len());
         assert_eq!(
@@ -374,24 +404,31 @@ async fn signed_shell_to_authenticated_http_delivery() {
             assert_ne!(delivered.as_bytes().as_ref(), source_bytes);
             server
                 .get("/api/apps/example.app/versions/1/apk")
-                .add_header("Authorization", &user)
+                .header("Authorization", &user)
+                .send()
                 .await
-                .assert_status_conflict();
-            server.get(&head).await.assert_status_unauthorized();
+                .expect("test request")
+                .assert_status(simple_server::web::http::StatusCode::CONFLICT);
+            server
+                .get(&head)
+                .send()
+                .await
+                .expect("test request")
+                .assert_status(simple_server::web::http::StatusCode::UNAUTHORIZED);
             let bytes = lellostore_backend::paravoid::apk_grant::read(
                 &mut std::fs::File::open(&downloaded).unwrap(),
             )
             .unwrap();
             let grant = pinned.verify_grant(&bytes).unwrap();
             let bearer = format!("Bearer {}", grant.credential());
-            head_request = head_request.add_header("Authorization", &bearer);
-            payload_request = payload_request.add_header("Authorization", &bearer);
+            head_request = head_request.header("Authorization", &bearer);
+            payload_request = payload_request.header("Authorization", &bearer);
             Some(grant)
         } else {
             assert_eq!(delivered.as_bytes().as_ref(), source_bytes);
             None
         };
-        let response = head_request.await;
+        let response = head_request.send().await.expect("test request");
         response.assert_status_ok();
         let verified = pinned
             .verify_head(response.as_bytes(), 30, &["x86_64".into()])
@@ -400,37 +437,49 @@ async fn signed_shell_to_authenticated_http_delivery() {
             verified.body().status,
             lellostore_backend::paravoid::HeadStatus::Available
         );
-        let payload_response = payload_request.await;
+        let payload_response = payload_request.send().await.expect("test request");
         payload_response.assert_status_ok();
         assert_eq!(payload_response.as_bytes().as_ref(), vpk);
         if let Some(grant) = grant {
             let overview = server
                 .get("/api/admin/apps/example.app/distribution")
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
+                .send()
                 .await
-                .json::<Value>();
+                .expect("test request")
+                .json::<Value>()
+                .unwrap();
             server
                 .post(&format!(
                     "/api/admin/apps/example.app/grants/{}/revoke",
                     grant.grant_id()
                 ))
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
                 .json(&json!({"expected_revision":overview["publication_revision"]}))
+                .send()
                 .await
+                .expect("test request")
                 .assert_status(StatusCode::NO_CONTENT);
             let bearer = format!("Bearer {}", grant.credential());
             server
                 .get(&head)
-                .add_header("Authorization", &bearer)
-                .add_header("If-None-Match", response.header("etag").clone())
+                .header("Authorization", &bearer)
+                .header(
+                    "If-None-Match",
+                    response.headers()["etag"].to_str().unwrap(),
+                )
+                .send()
                 .await
-                .assert_status_forbidden();
+                .expect("test request")
+                .assert_status(simple_server::web::http::StatusCode::FORBIDDEN);
             server
                 .get(payload_url)
-                .add_header("Authorization", &bearer)
-                .add_header("Range", "bytes=0-15")
+                .header("Authorization", &bearer)
+                .header("Range", "bytes=0-15")
+                .send()
                 .await
-                .assert_status_forbidden();
+                .expect("test request")
+                .assert_status(simple_server::web::http::StatusCode::FORBIDDEN);
         }
 
         // Publishing automatically verifies signing continuity in both directions.
@@ -447,7 +496,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
             };
             server
                 .post("/api/admin/apps")
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
                 .multipart(
                     MultipartForm::new()
                         .add_text("publication", "draft")
@@ -457,26 +506,34 @@ async fn signed_shell_to_authenticated_http_delivery() {
                             Part::bytes(std::fs::read(path).unwrap()).file_name("installer.apk"),
                         ),
                 )
+                .send()
                 .await
+                .expect("test request")
                 .assert_status(StatusCode::CREATED);
             let overview = server
                 .get("/api/admin/apps/example.app/distribution")
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
+                .send()
                 .await
-                .json::<Value>();
+                .expect("test request")
+                .json::<Value>()
+                .unwrap();
             let bootstrap = if mode == "paravoid" {
                 json!(id)
             } else {
                 Value::Null
             };
-            server.post("/api/admin/apps/example.app/publications").add_header("Authorization", &admin)
+            server.post("/api/admin/apps/example.app/publications").header("Authorization", &admin)
                 .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"bootstrap_vpk":bootstrap,"replace_latest":true}))
-                .await.assert_status_ok();
+                .send().await.expect("test request").assert_status_ok();
             let reviews = server
                 .get("/api/admin/apps/example.app/distribution-reviews")
-                .add_header("Authorization", &admin)
+                .header("Authorization", &admin)
+                .send()
                 .await
-                .json::<Value>();
+                .expect("test request")
+                .json::<Value>()
+                .unwrap();
             assert_eq!(reviews[0]["signer_sha256"], certificate);
             let evidence: Value =
                 serde_json::from_str(reviews[0]["migration_evidence"].as_str().unwrap()).unwrap();
@@ -484,9 +541,12 @@ async fn signed_shell_to_authenticated_http_delivery() {
             assert!(evidence.get("tested_upgrade").is_none());
             let app = server
                 .get("/api/apps/example.app")
-                .add_header("Authorization", &user)
+                .header("Authorization", &user)
+                .send()
                 .await
-                .json::<Value>();
+                .expect("test request")
+                .json::<Value>()
+                .unwrap();
             assert_eq!(app["distribution_mode"], mode);
             let retained = db::paravoid::release(&ctx.pool, "example.app", id)
                 .await

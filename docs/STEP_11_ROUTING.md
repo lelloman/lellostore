@@ -47,7 +47,7 @@ authentication error envelopes and middleware placement are preserved.
 
 ## Remaining boundaries
 
-The `axum-test` multipart/WebSocket transport helpers remain explicit test
-boundaries. Mock OIDC server routes and ordinary fixtures use shared APIs.
+The later [owned test-harness migration](STEP_11_TEST_HARNESS.md) removed the
+`axum-test` multipart/WebSocket transport helpers. Mock OIDC server routes and ordinary fixtures use shared APIs.
 Multipart uploads and production HTTP tracing are no longer remaining Axum
 exposures in this service.

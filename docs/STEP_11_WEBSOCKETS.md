@@ -43,8 +43,9 @@ to the same transport without exposing its types to these production handlers.
 
 ## Remaining boundaries
 
-Tests retain `axum-test`, its multipart/WebSocket helpers and the explicit
-router adapter. Production WebSocket upgrades, sockets and messages and HTTP
+HTTP, multipart and WebSocket fixtures now use the optional owned test harness;
+`axum-test` and the router adapter were removed in the later
+[canary migration](STEP_11_TEST_HARNESS.md). Production WebSocket upgrades, sockets and messages and HTTP
 tracing are no longer remaining Axum exposures.
 
 Integration rebases the development branch onto the migration commit, verifies

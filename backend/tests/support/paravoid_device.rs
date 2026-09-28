@@ -1,8 +1,4 @@
 //! Opt-in installed-device acceptance against the production Store router.
-use axum_test::{
-    multipart::{MultipartForm, Part},
-    TestServer,
-};
 use lellostore_backend::{
     db,
     paravoid::signing::OnlineSigning,
@@ -10,6 +6,7 @@ use lellostore_backend::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use simple_server::testing::{MultipartForm, Part, TestOptions, TestServer};
 use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -37,17 +34,21 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
         ctx.pool.clone(),
         100 * 1024 * 1024,
     );
-    let server = TestServer::builder()
-        .http_transport_with_ip_port(Some(std::net::Ipv4Addr::LOCALHOST.into()), None)
-        .build(simple_server::web::compat::into_axum_router(ctx.router))
-        .unwrap();
+    // Installed-device fixtures can transfer real APKs and wait on SDK tools.
+    let server = TestServer::tcp(ctx.router)
+        .await
+        .unwrap()
+        .with_options(TestOptions {
+            timeout: std::time::Duration::from_secs(120),
+            max_response_bytes: 100 * 1024 * 1024,
+        });
     let admin = format!("Bearer {}", oidc.get_admin_token());
     let user = format!("Bearer {}", oidc.get_user_token());
     let output = fixture.join("build/outputs/paravoid/paravoidAndroidRelease");
     let source = output.join("shell.apk");
     let uploaded = server
         .post("/api/admin/apps")
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
         .multipart(
             MultipartForm::new()
                 .add_text("publication", "draft")
@@ -57,18 +58,23 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
                     Part::bytes(std::fs::read(&source).unwrap()).file_name("shell.apk"),
                 ),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     uploaded.assert_status(simple_server::web::http::StatusCode::CREATED);
-    let uploaded: Value = uploaded.json();
+    let uploaded: Value = uploaded.json().unwrap();
     let package = uploaded["package_name"].as_str().unwrap();
     assert_eq!(package, "com.lelloman.paravoidcompat.complete.paravoid");
     let code = uploaded["version"]["version_code"].as_i64().unwrap();
     let overview_url = format!("/api/admin/apps/{package}/distribution");
     let overview: Value = server
         .get(&overview_url)
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     let contract = overview["contracts"][0]["contract_id"].as_str().unwrap();
     assert_eq!(overview["contracts"][0]["bootstrap"], "empty");
     assert_eq!(overview["contracts"][0]["authentication"], "apkKey");
@@ -76,7 +82,7 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
         .post(&format!(
             "/api/admin/apps/{package}/contracts/{contract}/vpks"
         ))
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
         .multipart(
             MultipartForm::new().add_part(
                 "file",
@@ -84,18 +90,23 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
                     .file_name("payload.vpk"),
             ),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     vpk.assert_status(simple_server::web::http::StatusCode::ACCEPTED);
     upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
     let overview: Value = server
         .get(&overview_url)
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     let release = overview["releases"][0]["id"].as_str().unwrap();
     let release_id = overview["releases"][0]["release_id"].as_str().unwrap();
-    server.post(&format!("/api/admin/apps/{package}/publications")).add_header("Authorization", &admin)
-        .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"bootstrap_vpk":release})).await.assert_status_ok();
+    server.post(&format!("/api/admin/apps/{package}/publications")).header("Authorization", &admin)
+        .json(&json!({"version_code":code,"expected_revision":overview["publication_revision"],"bootstrap_vpk":release})).send().await.expect("test request").assert_status_ok();
     db::access::set_direct_grant(
         &ctx.pool,
         "test-user",
@@ -110,15 +121,17 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
     } else {
         let acquired = server
         .post(&format!("/api/apps/{package}/acquisitions"))
-        .add_header("Authorization", &user)
+        .header("Authorization", &user)
         .json(&json!({"version_code":code,"purpose":"install","idempotency_key":"device-install"}))
-        .await;
+        .send().await.expect("test request");
         acquired.assert_status_ok();
-        let acquired: Value = acquired.json();
+        let acquired: Value = acquired.json().unwrap();
         let delivered = server
             .get(acquired["apk_url"].as_str().unwrap())
-            .add_header("Authorization", &user)
-            .await;
+            .header("Authorization", &user)
+            .send()
+            .await
+            .expect("test request");
         delivered.assert_status_ok();
         assert_eq!(acquired["size"], delivered.as_bytes().len());
         assert_eq!(
@@ -130,7 +143,7 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
         (acquired, carrier)
     };
     let control = scratch.path().join("device.json");
-    std::fs::write(&control, json!({"server":server.server_address().unwrap().as_str(),"admin":admin,"user":user,
+    std::fs::write(&control, json!({"server":server.base_url().unwrap(),"admin":admin,"user":user,
         "package":package,"version":code,"release":release_id,"acquisition":acquired["id"],"apk":carrier,"source":source,
         "fixture":fixture,"serial":serial,"store_ui":store_ui}).to_string()).unwrap();
     std::fs::set_permissions(&control, std::fs::Permissions::from_mode(0o600)).unwrap();

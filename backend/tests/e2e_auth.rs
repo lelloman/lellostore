@@ -4,7 +4,10 @@
 //! Each test is designed to be LONG - testing many operations in sequence rather than
 //! one operation per test.
 
-use axum_test::TestServer;
+use simple_server::testing::TestServer;
+#[path = "support/owned_harness_ws.rs"]
+mod owned_harness_ws;
+use owned_harness_ws::{OwnedSocketExt, OwnedUpgradeExt};
 use simple_server::web::http::StatusCode;
 use std::sync::Arc;
 
@@ -200,7 +203,7 @@ fn create_fake_aapt2(temp_dir: &std::path::Path) -> std::path::PathBuf {
 #[tokio::test]
 async fn test_complete_app_lifecycle_with_auth() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Get tokens
     let admin_token = mock_oidc.get_admin_token();
@@ -208,19 +211,23 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/me")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", admin_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let identity: serde_json::Value = response.json();
+    let identity: serde_json::Value = response.json().unwrap();
     assert_eq!(identity["subject"], "test-admin");
     assert_eq!(identity["is_admin"], true);
 
     let response = server
         .get("/api/me")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let identity: serde_json::Value = response.json();
+    let identity: serde_json::Value = response.json().unwrap();
     assert_eq!(identity["subject"], "test-user");
     assert_eq!(identity["is_admin"], false);
 
@@ -231,10 +238,12 @@ async fn test_complete_app_lifecycle_with_auth() {
     // User can list apps (empty)
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["apps"].as_array().unwrap().len(), 0);
 
     // =========================================================================
@@ -245,17 +254,19 @@ async fn test_complete_app_lifecycle_with_auth() {
     let apk_data = create_test_apk("com.test.app", 1);
     let response = server
         .post("/api/admin/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
+        .header("Authorization", &format!("Bearer {}", user_token))
         .multipart(
-            axum_test::multipart::MultipartForm::new()
+            simple_server::testing::MultipartForm::new()
                 .add_text("publication", "draft")
                 .add_text("distribution_mode", "normal")
                 .add_part(
                     "file",
-                    axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
+                    simple_server::testing::Part::bytes(apk_data.clone()).file_name("test.apk"),
                 ),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(
         response.status_code(),
         StatusCode::FORBIDDEN,
@@ -268,34 +279,40 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .post("/api/admin/apps")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .header("Authorization", &format!("Bearer {}", admin_token))
         .multipart(
-            axum_test::multipart::MultipartForm::new()
+            simple_server::testing::MultipartForm::new()
                 .add_text("publication", "draft")
                 .add_text("distribution_mode", "normal")
                 .add_part(
                     "file",
-                    axum_test::multipart::Part::bytes(apk_data.clone()).file_name("test.apk"),
+                    simple_server::testing::Part::bytes(apk_data.clone()).file_name("test.apk"),
                 ),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::CREATED);
-    let uploaded: serde_json::Value = response.json();
+    let uploaded: serde_json::Value = response.json().unwrap();
     assert_eq!(uploaded["package_name"], "com.test.app");
     assert_eq!(uploaded["version"]["version_code"], 1);
     assert_eq!(uploaded["version"]["publication_state"], "draft");
     server
         .post("/api/admin/apps/com.test.app/publications")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .header("Authorization", &format!("Bearer {}", admin_token))
         .json(&serde_json::json!({"version_code": 1, "expected_revision": 0}))
+        .send()
         .await
+        .expect("test request")
         .assert_status_ok();
 
     let grant = server
         .put("/api/admin/users/test-user/apps/com.test.app")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .header("Authorization", &format!("Bearer {}", admin_token))
         .json(&serde_json::json!({"access_level": "stable"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(grant.status_code(), StatusCode::NO_CONTENT);
 
     // =========================================================================
@@ -304,10 +321,12 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["apps"].as_array().unwrap().len(), 1);
     assert_eq!(body["apps"][0]["package_name"], "com.test.app");
 
@@ -315,14 +334,18 @@ async fn test_complete_app_lifecycle_with_auth() {
     // PHASE 5: Test unauthenticated access is denied
     // =========================================================================
 
-    let response = server.get("/api/apps").await;
+    let response = server.get("/api/apps").send().await.expect("test request");
     assert_eq!(
         response.status_code(),
         StatusCode::UNAUTHORIZED,
         "Unauthenticated request should be denied"
     );
 
-    let response = server.post("/api/admin/apps").await;
+    let response = server
+        .post("/api/admin/apps")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
     // =========================================================================
@@ -331,15 +354,17 @@ async fn test_complete_app_lifecycle_with_auth() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", "Bearer invalid.token.here")
-        .await;
+        .header("Authorization", "Bearer invalid.token.here")
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
     // =========================================================================
     // PHASE 7: Verify health check still works without auth
     // =========================================================================
 
-    let response = server.get("/health").await;
+    let response = server.get("/health").send().await.expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 }
 
@@ -347,7 +372,7 @@ async fn test_complete_app_lifecycle_with_auth() {
 #[tokio::test]
 async fn test_multi_app_database_operations() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
@@ -442,10 +467,12 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     let apps = body["apps"].as_array().unwrap();
     assert_eq!(
         apps.len(),
@@ -472,10 +499,12 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["package_name"], "com.example.app1");
     assert_eq!(body["name"], "App One");
     let versions = body["versions"].as_array().unwrap();
@@ -492,23 +521,27 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .header("Authorization", &format!("Bearer {}", admin_token))
         .json(&serde_json::json!({
             "name": "Updated App One",
             "description": "New description"
         }))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
-    let body: serde_json::Value = response.json();
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["name"], "Updated App One");
     assert_eq!(body["description"], "New description");
 
     // Verify change persisted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    let body: serde_json::Value = response.json();
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(body["name"], "Updated App One");
 
     // =========================================================================
@@ -517,19 +550,23 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .put("/api/admin/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
+        .header("Authorization", &format!("Bearer {}", user_token))
         .json(&serde_json::json!({
             "name": "Hacker Was Here"
         }))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     // Verify name unchanged
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    let body: serde_json::Value = response.json();
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = response.json().unwrap();
     assert_eq!(
         body["name"], "Updated App One",
         "Name should not have changed"
@@ -541,17 +578,21 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .post("/api/admin/apps/com.example.app1/versions/1/withdraw")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
+        .header("Authorization", &format!("Bearer {}", admin_token))
         .json(&serde_json::json!({"expected_revision": 0}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // Verify version deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    let body: serde_json::Value = response.json();
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = response.json().unwrap();
     let versions = body["versions"].as_array().unwrap();
     assert_eq!(versions.len(), 2, "Should have 2 versions after deletion");
 
@@ -561,23 +602,29 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app2")
-        .add_header("Authorization", format!("Bearer {}", admin_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", admin_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NO_CONTENT);
 
     // Verify app deleted
     let response = server
         .get("/api/apps/com.example.app2")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 
     // Verify list updated
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
-    let body: serde_json::Value = response.json();
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = response.json().unwrap();
     let apps = body["apps"].as_array().unwrap();
     assert_eq!(
         apps.len(),
@@ -591,21 +638,27 @@ async fn test_multi_app_database_operations() {
 
     let response = server
         .delete("/api/admin/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     let response = server
         .delete("/api/admin/apps/com.example.app1/versions/2")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
 
     // Verify nothing deleted
     let response = server
         .get("/api/apps/com.example.app1")
-        .add_header("Authorization", format!("Bearer {}", user_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // =========================================================================
@@ -614,15 +667,20 @@ async fn test_multi_app_database_operations() {
     for code in [2, 3] {
         server
             .delete(&format!("/api/admin/apps/com.example.app1/versions/{code}"))
-            .add_header("Authorization", format!("Bearer {}", admin_token))
+            .header("Authorization", &format!("Bearer {}", admin_token))
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::CONFLICT);
     }
     let body: serde_json::Value = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", user_token))
+        .header("Authorization", &format!("Bearer {}", user_token))
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(body["apps"].as_array().unwrap().len(), 1);
     assert_eq!(body["apps"][0]["package_name"], "com.example.app1");
 }
@@ -631,7 +689,7 @@ async fn test_multi_app_database_operations() {
 #[tokio::test]
 async fn test_token_expiration_handling() {
     let (ctx, mock_oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
 
     // Get a valid token
     let valid_token = mock_oidc.get_user_token();
@@ -639,16 +697,20 @@ async fn test_token_expiration_handling() {
     // Test with valid token works
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", valid_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", valid_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 
     // Test with expired token
     let expired_token = mock_oidc.get_expired_token();
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", expired_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", expired_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(
         response.status_code(),
         StatusCode::UNAUTHORIZED,
@@ -659,8 +721,10 @@ async fn test_token_expiration_handling() {
     let wrong_aud_token = mock_oidc.get_token_with_audience("wrong-app");
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", wrong_aud_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", wrong_aud_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(
         response.status_code(),
         StatusCode::UNAUTHORIZED,
@@ -670,32 +734,46 @@ async fn test_token_expiration_handling() {
     // Valid token should still work
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {}", valid_token))
-        .await;
+        .header("Authorization", &format!("Bearer {}", valid_token))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn shared_auth_preserves_http_policy_and_registry_outage() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::builder()
-        .http_transport()
-        .build(simple_server::web::compat::into_axum_router(ctx.router))
-        .unwrap();
+    let server = TestServer::tcp(ctx.router).await.unwrap();
     let user = oidc.get_user_token();
     let admin = oidc.get_admin_token();
 
-    assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
     assert_eq!(
-        server.get("/api/apps").await.status_code(),
+        server
+            .get("/health")
+            .send()
+            .await
+            .expect("test request")
+            .status_code(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        server
+            .get("/api/apps")
+            .send()
+            .await
+            .expect("test request")
+            .status_code(),
         StatusCode::UNAUTHORIZED
     );
     for value in [format!("Bearer {user}"), format!("bearer {user}")] {
         assert_eq!(
             server
                 .get("/api/apps")
-                .add_header("Authorization", value)
+                .header("Authorization", &value)
+                .send()
                 .await
+                .expect("test request")
                 .status_code(),
             StatusCode::OK
         );
@@ -707,27 +785,33 @@ async fn shared_auth_preserves_http_policy_and_registry_outage() {
     ] {
         let response = server
             .get("/api/apps")
-            .add_header("Authorization", value)
-            .await;
+            .header("Authorization", &value)
+            .send()
+            .await
+            .expect("test request");
         assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            response.json::<serde_json::Value>()["error"],
+            response.json::<serde_json::Value>().unwrap()["error"],
             "Unauthorized"
         );
     }
     assert_eq!(
         server
             .get("/api/admin/apps")
-            .add_header("Authorization", format!("Bearer {user}"))
+            .header("Authorization", &format!("Bearer {user}"))
+            .send()
             .await
+            .expect("test request")
             .status_code(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
         server
             .get("/api/admin/apps")
-            .add_header("Authorization", format!("Bearer {admin}"))
+            .header("Authorization", &format!("Bearer {admin}"))
+            .send()
             .await
+            .expect("test request")
             .status_code(),
         StatusCode::OK
     );
@@ -735,14 +819,24 @@ async fn shared_auth_preserves_http_policy_and_registry_outage() {
     ctx.pool.close().await;
     let response = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {user}"))
-        .await;
+        .header("Authorization", &format!("Bearer {user}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(
-        response.json::<serde_json::Value>()["error"],
+        response.json::<serde_json::Value>().unwrap()["error"],
         "Authentication error"
     );
-    assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+    assert_eq!(
+        server
+            .get("/health")
+            .send()
+            .await
+            .expect("test request")
+            .status_code(),
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]
@@ -776,16 +870,16 @@ async fn failed_database_delete_does_not_remove_app_files() {
     .await
     .unwrap();
 
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let response = server
         .delete("/api/admin/apps/com.example.atomic")
-        .add_header(
+        .header(
             "Authorization",
-            format!("Bearer {}", mock_oidc.get_admin_token())
-                .parse::<simple_server::web::http::HeaderValue>()
-                .unwrap(),
+            &format!("Bearer {}", mock_oidc.get_admin_token()),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
 
     assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     let app_count: i64 =
@@ -816,7 +910,7 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     .await
     .unwrap();
 
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
@@ -824,78 +918,98 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     assert_eq!(
         server
             .get("/api/apps")
-            .add_header("Authorization", format!("Bearer {user_token}"),)
+            .header("Authorization", &format!("Bearer {user_token}"),)
+            .send()
             .await
+            .expect("test request")
             .status_code(),
         StatusCode::OK
     );
 
     let denied = server
         .post("/api/admin/app-groups")
-        .add_header("Authorization", format!("Bearer {user_token}"))
+        .header("Authorization", &format!("Bearer {user_token}"))
         .json(&serde_json::json!({"name": "Media apps"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(denied.status_code(), StatusCode::FORBIDDEN);
 
     let created = server
         .post("/api/admin/app-groups")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "Media apps"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(created.status_code(), StatusCode::CREATED);
-    let group: serde_json::Value = created.json();
+    let group: serde_json::Value = created.json().unwrap();
     let group_id = group["id"].as_i64().unwrap();
 
     let duplicate = server
         .post("/api/admin/app-groups")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "media APPS"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(duplicate.status_code(), StatusCode::CONFLICT);
 
     let set_group_grant = server
         .put(&format!(
             "/api/admin/app-groups/{group_id}/apps/com.example.media"
         ))
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(set_group_grant.status_code(), StatusCode::NO_CONTENT);
 
     let add_member = server
         .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
-        .add_header("Authorization", format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
 
     let stable_access = server
         .get("/api/admin/users/test-user/access")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(stable_access.status_code(), StatusCode::OK);
-    let access: serde_json::Value = stable_access.json();
+    let access: serde_json::Value = stable_access.json().unwrap();
     assert_eq!(access["effective_access"][0]["access_level"], "stable");
     assert_eq!(access["groups"][0]["name"], "Media apps");
 
     let set_direct_beta = server
         .put("/api/admin/users/test-user/apps/com.example.media")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "beta"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(set_direct_beta.status_code(), StatusCode::NO_CONTENT);
 
     let beta_access = server
         .get("/api/admin/users/test-user/access")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
-        .await;
-    let access: serde_json::Value = beta_access.json();
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
+    let access: serde_json::Value = beta_access.json().unwrap();
     assert_eq!(access["effective_access"][0]["access_level"], "beta");
 
     let mark_beta = server
         .put("/api/admin/apps/com.example.media/versions/7")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"is_beta": true}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(mark_beta.status_code(), StatusCode::NO_CONTENT);
     let row: (bool, String, String) = sqlx::query_as(
         "SELECT is_beta, apk_path, sha256 FROM app_versions WHERE package_name = 'com.example.media' AND version_code = 7",
@@ -911,9 +1025,11 @@ async fn admin_manages_audited_dynamic_app_access_and_release_channels() {
     // Promotion changes only model visibility, retaining the same artifact.
     let promote = server
         .put("/api/admin/apps/com.example.media/versions/7")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"is_beta": false}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(promote.status_code(), StatusCode::NO_CONTENT);
     let row: (bool, String, String) = sqlx::query_as(
         "SELECT is_beta, apk_path, sha256 FROM app_versions WHERE package_name = 'com.example.media' AND version_code = 7",
@@ -960,27 +1076,30 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
         }
     }
 
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
-    let authorization: simple_server::web::http::HeaderName = "Authorization".parse().unwrap();
 
     // Register the OIDC user in the server's administration directory.
     assert_eq!(
         server
             .get("/api/apps")
-            .add_header(authorization.clone(), format!("Bearer {user_token}"),)
+            .header("Authorization", &format!("Bearer {user_token}"),)
+            .send()
             .await
+            .expect("test request")
             .status_code(),
         StatusCode::OK
     );
 
     let groups = server
         .get("/api/admin/app-groups")
-        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(groups.status_code(), StatusCode::OK);
-    let groups: serde_json::Value = groups.json();
+    let groups: serde_json::Value = groups.json().unwrap();
     let all = groups["groups"]
         .as_array()
         .unwrap()
@@ -993,15 +1112,19 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
 
     let add_member = server
         .put(&format!("/api/admin/app-groups/{group_id}/users/test-user"))
-        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(add_member.status_code(), StatusCode::NO_CONTENT);
 
     let catalogue = server
         .get("/api/apps")
-        .add_header(authorization.clone(), format!("Bearer {user_token}"))
-        .await;
-    let catalogue: serde_json::Value = catalogue.json();
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
+    let catalogue: serde_json::Value = catalogue.json().unwrap();
     let apps = catalogue["apps"].as_array().unwrap();
     assert_eq!(apps.len(), 2);
     assert!(apps.iter().all(|app| app["access_level"] == "beta"));
@@ -1011,24 +1134,30 @@ async fn all_system_group_grants_every_app_and_rejects_rule_changes() {
 
     let rename = server
         .put(&format!("/api/admin/app-groups/{group_id}"))
-        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"name": "renamed"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(rename.status_code(), StatusCode::BAD_REQUEST);
 
     let set_rule = server
         .put(&format!(
             "/api/admin/app-groups/{group_id}/apps/com.example.one"
         ))
-        .add_header(authorization.clone(), format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(set_rule.status_code(), StatusCode::BAD_REQUEST);
 
     let delete = server
         .delete(&format!("/api/admin/app-groups/{group_id}"))
-        .add_header(authorization, format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(delete.status_code(), StatusCode::BAD_REQUEST);
 }
 
@@ -1061,31 +1190,37 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
         .unwrap();
     }
 
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin_token = mock_oidc.get_admin_token();
     let user_token = mock_oidc.get_user_token();
 
     let empty = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
-    assert!(empty.json::<serde_json::Value>()["apps"]
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
+    assert!(empty.json::<serde_json::Value>().unwrap()["apps"]
         .as_array()
         .unwrap()
         .is_empty());
 
     let hidden_detail = server
         .get("/api/apps/com.example.private")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(hidden_detail.status_code(), StatusCode::NOT_FOUND);
 
     let admin_catalogue = server
         .get("/api/admin/apps")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(
-        admin_catalogue.json::<serde_json::Value>()["apps"]
+        admin_catalogue.json::<serde_json::Value>().unwrap()["apps"]
             .as_array()
             .unwrap()
             .len(),
@@ -1094,65 +1229,85 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 
     let stable_grant = server
         .put("/api/admin/users/test-user/apps/com.example.private")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "stable"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(stable_grant.status_code(), StatusCode::NO_CONTENT);
 
     let stable_catalogue = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
-    let body: serde_json::Value = stable_catalogue.json();
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = stable_catalogue.json().unwrap();
     assert_eq!(body["apps"][0]["access_level"], "stable");
     assert_eq!(body["apps"][0]["latest_version"]["version_code"], 1);
 
     let stable_detail = server
         .get("/api/apps/com.example.private")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
-    let body: serde_json::Value = stable_detail.json();
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
+    let body: serde_json::Value = stable_detail.json().unwrap();
     assert_eq!(body["versions"].as_array().unwrap().len(), 1);
     assert_eq!(body["versions"][0]["version_code"], 1);
 
     let hidden_beta_apk = server
         .get("/api/apps/com.example.private/versions/2/apk")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(hidden_beta_apk.status_code(), StatusCode::NOT_FOUND);
 
     let beta_grant = server
         .put("/api/admin/users/test-user/apps/com.example.private")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
+        .header("Authorization", &format!("Bearer {admin_token}"))
         .json(&serde_json::json!({"access_level": "beta"}))
-        .await;
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(beta_grant.status_code(), StatusCode::NO_CONTENT);
     let beta_apk = server
         .get("/api/apps/com.example.private/versions/2/apk")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(beta_apk.status_code(), StatusCode::OK);
 
     let revoke = server
         .delete("/api/admin/users/test-user/apps/com.example.private")
-        .add_header("Authorization", format!("Bearer {admin_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(revoke.status_code(), StatusCode::NO_CONTENT);
 
     // A stale APK URL cannot bypass the newly revoked grant.
     let revoked_download = server
         .get("/api/apps/com.example.private/versions/1/apk")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
     assert_eq!(revoked_download.status_code(), StatusCode::NOT_FOUND);
     let revoked_catalogue = server
         .get("/api/apps")
-        .add_header("Authorization", format!("Bearer {user_token}"))
-        .await;
-    assert!(revoked_catalogue.json::<serde_json::Value>()["apps"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+        .header("Authorization", &format!("Bearer {user_token}"))
+        .send()
+        .await
+        .expect("test request");
+    assert!(
+        revoked_catalogue.json::<serde_json::Value>().unwrap()["apps"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Exercise authentication, upgrade, multipart upload and event serialization
@@ -1160,24 +1315,26 @@ async fn app_authorization_filters_metadata_and_is_rechecked_for_downloads() {
 #[tokio::test]
 async fn authenticated_websocket_receives_catalog_change_after_publication() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::builder()
-        .http_transport()
-        .build(simple_server::web::compat::into_axum_router(
-            ctx.router.clone(),
-        ))
-        .unwrap();
+    let server = TestServer::tcp(ctx.router.clone()).await.unwrap();
     server
-        .get_websocket("/api/events")
+        .get("/api/events")
+        .websocket()
         .await
-        .assert_status_unauthorized();
+        .expect("WebSocket handshake")
+        .assert_status(simple_server::web::http::StatusCode::UNAUTHORIZED);
     let mut socket = server
-        .get_websocket("/api/events")
-        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .get("/api/events")
+        .header(
+            "Authorization",
+            &format!("Bearer {}", oidc.get_user_token()),
+        )
+        .websocket()
         .await
+        .expect("WebSocket handshake")
         .into_websocket()
         .await;
     socket
-        .send_message(axum_test::WsMessage::Ping(
+        .send_message(simple_server::web::ws::Message::Ping(
             b"catalog-alive".as_slice().into(),
         ))
         .await;
@@ -1185,34 +1342,38 @@ async fn authenticated_websocket_receives_catalog_change_after_publication() {
         tokio::time::timeout(std::time::Duration::from_secs(5), socket.receive_message(),)
             .await
             .unwrap(),
-        axum_test::WsMessage::Pong(b"catalog-alive".as_slice().into()),
+        simple_server::web::ws::Message::Pong(b"catalog-alive".as_slice().into()),
     );
     server
         .post("/api/admin/apps")
-        .add_header(
+        .header(
             "Authorization",
-            format!("Bearer {}", oidc.get_admin_token()),
+            &format!("Bearer {}", oidc.get_admin_token()),
         )
         .multipart(
-            axum_test::multipart::MultipartForm::new()
+            simple_server::testing::MultipartForm::new()
                 .add_text("publication", "draft")
                 .add_text("distribution_mode", "normal")
                 .add_part(
                     "file",
-                    axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
+                    simple_server::testing::Part::bytes(create_test_apk("com.test.app", 1))
                         .file_name("test.apk"),
                 ),
         )
+        .send()
         .await
+        .expect("test request")
         .assert_status(StatusCode::CREATED);
     server
         .post("/api/admin/apps/com.test.app/publications")
-        .add_header(
+        .header(
             "Authorization",
-            format!("Bearer {}", oidc.get_admin_token()),
+            &format!("Bearer {}", oidc.get_admin_token()),
         )
         .json(&serde_json::json!({"version_code": 1, "expected_revision": 0}))
+        .send()
         .await
+        .expect("test request")
         .assert_status_ok();
     let event = tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -1221,7 +1382,7 @@ async fn authenticated_websocket_receives_catalog_change_after_publication() {
     .await
     .expect("catalog event was not delivered");
     assert_eq!(event, serde_json::json!({"type": "catalog_changed"}));
-    socket.close().await;
+    socket.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -1234,19 +1395,19 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
         let shutdown = Shutdown::new();
         let hub = CatalogEventHub::new(shutdown.clone());
         let (ctx, oidc) = create_auth_test_context_with_events(hub.clone()).await;
-        let server = TestServer::builder()
-            .http_transport()
-            .build(simple_server::web::compat::into_axum_router(
-                ctx.router.clone(),
-            ))
-            .unwrap();
+        let server = TestServer::tcp(ctx.router.clone()).await.unwrap();
         let mut sockets = Vec::new();
         for _ in 0..3 {
             sockets.push(
                 server
-                    .get_websocket("/api/events")
-                    .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+                    .get("/api/events")
+                    .header(
+                        "Authorization",
+                        &format!("Bearer {}", oidc.get_user_token()),
+                    )
+                    .websocket()
                     .await
+                    .expect("WebSocket handshake")
                     .into_websocket()
                     .await,
             );
@@ -1259,16 +1420,21 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
             for socket in &mut sockets {
                 assert!(matches!(
                     socket.receive_message().await,
-                    axum_test::WsMessage::Close(_)
+                    simple_server::web::ws::Message::Close(_)
                 ));
             }
         };
         let (result, ()) = tokio::join!(hub.drain(), receive_closes);
         result.unwrap();
         server
-            .get_websocket("/api/events")
-            .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+            .get("/api/events")
+            .header(
+                "Authorization",
+                &format!("Bearer {}", oidc.get_user_token()),
+            )
+            .websocket()
             .await
+            .expect("WebSocket handshake")
             .assert_status(StatusCode::SERVICE_UNAVAILABLE);
         ctx.pool.close().await;
     })
@@ -1280,44 +1446,45 @@ async fn catalog_websockets_close_and_reject_new_upgrades_during_shutdown() {
 #[tokio::test]
 async fn publication_replacement_deletes_files_and_legacy_uploads_fail_explicitly() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(
-        ctx.router.clone(),
-    ))
-    .unwrap();
+    let server = TestServer::new(ctx.router.clone());
     let authorization = format!("Bearer {}", oidc.get_admin_token());
     server
         .post("/api/admin/apps")
-        .add_header("Authorization", authorization.clone())
+        .header("Authorization", &authorization)
         .multipart(
-            axum_test::multipart::MultipartForm::new().add_part(
+            simple_server::testing::MultipartForm::new().add_part(
                 "file",
-                axum_test::multipart::Part::bytes(create_test_apk("com.test.app", 1))
+                simple_server::testing::Part::bytes(create_test_apk("com.test.app", 1))
                     .file_name("test.apk"),
             ),
         )
+        .send()
         .await
-        .assert_status_bad_request();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::BAD_REQUEST);
     for code in [1, 2] {
         let parser = ctx.temp_dir.path().join("fake-aapt2");
         std::fs::write(&parser, format!("#!/bin/sh\necho \"package: name='com.test.app' versionCode='{code}' versionName='{code}.0'\"\necho \"sdkVersion:'24'\"\necho \"application-label:'Test App'\"\n")).unwrap();
         server
             .post("/api/admin/apps")
-            .add_header("Authorization", authorization.clone())
+            .header("Authorization", &authorization)
             .multipart(
-                axum_test::multipart::MultipartForm::new()
+                simple_server::testing::MultipartForm::new()
                     .add_text("publication", "draft")
                     .add_text("distribution_mode", "normal")
                     .add_part(
                         "file",
-                        axum_test::multipart::Part::bytes(create_test_apk("com.test.app", code))
+                        simple_server::testing::Part::bytes(create_test_apk("com.test.app", code))
                             .file_name("test.apk"),
                     ),
             )
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::CREATED);
-        server.post("/api/admin/apps/com.test.app/publications").add_header("Authorization", authorization.clone())
+        server.post("/api/admin/apps/com.test.app/publications").header("Authorization", &authorization)
             .json(&serde_json::json!({"version_code": code, "expected_revision": code - 1, "replace_latest": true}))
-            .await.assert_status_ok();
+            .send().await.expect("test request").assert_status_ok();
     }
     let versions = lellostore_backend::db::get_app_versions(&ctx.pool, "com.test.app")
         .await
@@ -1332,24 +1499,26 @@ async fn publication_replacement_deletes_files_and_legacy_uploads_fail_explicitl
 #[tokio::test]
 async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin = format!("Bearer {}", oidc.get_admin_token());
     let response = server
         .post("/api/admin/apps?asynchronous=true")
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
         .multipart(
-            axum_test::multipart::MultipartForm::new()
+            simple_server::testing::MultipartForm::new()
                 .add_text("publication", "draft")
                 .add_text("distribution_mode", "normal")
                 .add_part(
                     "file",
-                    axum_test::multipart::Part::bytes(b"invalid bytes".to_vec())
+                    simple_server::testing::Part::bytes(b"invalid bytes".to_vec())
                         .file_name("invalid.bin"),
                 ),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     response.assert_status(StatusCode::ACCEPTED);
-    let job: serde_json::Value = response.json();
+    let job: serde_json::Value = response.json().unwrap();
     assert_eq!(job["status"], "queued");
     assert!(job.get("input_path").is_none());
     let id = job["id"].as_str().unwrap();
@@ -1361,19 +1530,29 @@ async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
     assert_eq!(std::fs::read(stored).unwrap(), b"invalid bytes");
     server
         .get("/api/admin/uploads")
-        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .header(
+            "Authorization",
+            &format!("Bearer {}", oidc.get_user_token()),
+        )
+        .send()
         .await
+        .expect("test request")
         .assert_status(StatusCode::FORBIDDEN);
     let history: Vec<serde_json::Value> = server
         .get("/api/admin/uploads")
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(history.len(), 1);
     server
         .post(&format!("/api/admin/uploads/{id}/retry"))
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
+        .send()
         .await
+        .expect("test request")
         .assert_status(StatusCode::CONFLICT);
     sqlx::query("UPDATE upload_jobs SET status = 'failed', error = 'test failure' WHERE id = ?")
         .bind(id)
@@ -1382,9 +1561,12 @@ async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
         .unwrap();
     let retried: serde_json::Value = server
         .post(&format!("/api/admin/uploads/{id}/retry"))
-        .add_header("Authorization", &admin)
+        .header("Authorization", &admin)
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(retried["status"], "queued");
     assert!(retried["error"].is_null());
 }
@@ -1392,27 +1574,36 @@ async fn asynchronous_upload_is_persisted_and_history_requires_admin() {
 #[tokio::test]
 async fn paravoid_public_key_configuration_requires_administrator() {
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let path = "/api/admin/paravoid/configuration";
     server
         .get(path)
+        .send()
         .await
+        .expect("test request")
         .assert_status(StatusCode::UNAUTHORIZED);
     server
         .get(path)
-        .add_header("Authorization", format!("Bearer {}", oidc.get_user_token()))
+        .header(
+            "Authorization",
+            &format!("Bearer {}", oidc.get_user_token()),
+        )
+        .send()
         .await
+        .expect("test request")
         .assert_status(StatusCode::FORBIDDEN);
     let response = server
         .get(path)
-        .add_header(
+        .header(
             "Authorization",
-            format!("Bearer {}", oidc.get_admin_token()),
+            &format!("Bearer {}", oidc.get_admin_token()),
         )
-        .await;
+        .send()
+        .await
+        .expect("test request");
     response.assert_status_ok();
     assert_eq!(
-        response.json::<serde_json::Value>(),
+        response.json::<serde_json::Value>().unwrap(),
         serde_json::json!({"configured": false, "distribution_enabled": false, "signing": null})
     );
 }
@@ -1421,43 +1612,61 @@ async fn paravoid_public_key_configuration_requires_administrator() {
 async fn canonical_download_requires_acquisition_for_keyed_and_unverified_shells() {
     use lellostore_backend::db::access::{set_direct_grant, AppAccessLevel};
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     sqlx::query("INSERT INTO apps(package_name,name,distribution_mode) VALUES ('test.shell','Shell','paravoid')").execute(&ctx.pool).await.unwrap();
     sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk,distribution_mode) VALUES ('test.shell',1,'1','shell.apk',3,'hash',30,'paravoid')").execute(&ctx.pool).await.unwrap();
     std::fs::write(ctx.storage_path.join("shell.apk"), b"apk").unwrap();
     let url = "/api/apps/test.shell/versions/1/apk";
     let token = format!("Bearer {}", oidc.get_user_token());
-    server.get(url).await.assert_status_unauthorized();
     server
         .get(url)
-        .add_header("Authorization", &token)
+        .send()
         .await
-        .assert_status_not_found();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::UNAUTHORIZED);
+    server
+        .get(url)
+        .header("Authorization", &token)
+        .send()
+        .await
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::NOT_FOUND);
     set_direct_grant(&ctx.pool, "test-user", "test.shell", AppAccessLevel::Stable)
         .await
         .unwrap();
     server
         .get(url)
-        .add_header("Authorization", &token)
+        .header("Authorization", &token)
+        .send()
         .await
-        .assert_status_conflict();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::CONFLICT);
     sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('test.shell',?,1,'stable','apkKey','empty','https://store.test/api/paravoid/','{}','{}','verified')").bind("a".repeat(64)).execute(&ctx.pool).await.unwrap();
     server
         .get(url)
-        .add_header("Authorization", &token)
+        .header("Authorization", &token)
+        .send()
         .await
-        .assert_status_conflict();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::CONFLICT);
     server
         .get(url)
-        .add_header("Authorization", &token)
-        .add_header("Range", "bytes=0-1")
+        .header("Authorization", &token)
+        .header("Range", "bytes=0-1")
+        .send()
         .await
-        .assert_status_conflict();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::CONFLICT);
     sqlx::query("UPDATE paravoid_contracts SET authentication='public'")
         .execute(&ctx.pool)
         .await
         .unwrap();
-    let public = server.get(url).add_header("Authorization", &token).await;
+    let public = server
+        .get(url)
+        .header("Authorization", &token)
+        .send()
+        .await
+        .expect("test request");
     public.assert_status_ok();
     assert_eq!(public.as_bytes().as_ref(), b"apk");
     sqlx::query("UPDATE paravoid_contracts SET verification_state='pending'")
@@ -1466,9 +1675,11 @@ async fn canonical_download_requires_acquisition_for_keyed_and_unverified_shells
         .unwrap();
     server
         .get(url)
-        .add_header("Authorization", &token)
+        .header("Authorization", &token)
+        .send()
         .await
-        .assert_status_conflict();
+        .expect("test request")
+        .assert_status(simple_server::web::http::StatusCode::CONFLICT);
 }
 
 #[path = "common/signed_shell.rs"]
@@ -1482,12 +1693,9 @@ mod paravoid_device;
 
 #[tokio::test]
 async fn shared_multipart_preserves_upload_rejections_and_temp_cleanup() {
-    use axum_test::multipart::{MultipartForm, Part};
+    use simple_server::testing::{MultipartForm, Part};
     let (ctx, oidc) = create_auth_test_context().await;
-    let server = TestServer::builder()
-        .http_transport()
-        .build(simple_server::web::compat::into_axum_router(ctx.router))
-        .unwrap();
+    let server = TestServer::tcp(ctx.router).await.unwrap();
     let admin = format!("Bearer {}", oidc.get_admin_token());
     for (form, status, message) in [
         (
@@ -1515,11 +1723,13 @@ async fn shared_multipart_preserves_upload_rejections_and_temp_cleanup() {
     ] {
         let response = server
             .post("/api/admin/apps")
-            .add_header("Authorization", &admin)
+            .header("Authorization", &admin)
             .multipart(form)
-            .await;
+            .send()
+            .await
+            .expect("test request");
         response.assert_status(status);
-        let json: serde_json::Value = response.json();
+        let json: serde_json::Value = response.json().unwrap();
         assert!(
             json["message"].as_str().unwrap().contains(message),
             "{json}"
@@ -1543,7 +1753,7 @@ async fn archive_controls_require_admin_and_current_revision_and_reject_replaced
     sqlx::query("INSERT INTO app_versions(package_name,version_code,version_name,apk_path,size,sha256,min_sdk) VALUES ('test.app',1,'1','apks/test.app/1.apk',3,'hash',24)").execute(&ctx.pool).await.unwrap();
     sqlx::query("INSERT INTO paravoid_contracts(package_name,contract_id,installer_version,channel,authentication,bootstrap,base_url,trust_json,descriptor_json,verification_state) VALUES ('test.app','contract',1,'stable','public','embedded','https://example.test/','{}','{}','pending')").execute(&ctx.pool).await.unwrap();
     sqlx::query("INSERT INTO vpk_releases(id,package_name,contract_id,release_id,payload_version,archive_path,archive_size,archive_sha256,manifest_sha256,manifest_json,min_sdk,max_sdk,abis_json,signing_key_id,validation_state,validation_report) VALUES ('payload','test.app','contract','release',1,'vpks/payload.vpk',3,'hash','hash','{}',24,0,'[]','key','inspected','{}')").execute(&ctx.pool).await.unwrap();
-    let server = TestServer::new(simple_server::web::compat::into_axum_router(ctx.router)).unwrap();
+    let server = TestServer::new(ctx.router);
     let admin = oidc.get_admin_token();
     let user = oidc.get_user_token();
     for (index, suffix) in ["versions/1", "vpks/payload"].iter().enumerate() {
@@ -1553,25 +1763,33 @@ async fn archive_controls_require_admin_and_current_revision_and_reject_replaced
         server
             .put(&url)
             .json(&body)
+            .send()
             .await
-            .assert_status_unauthorized();
+            .expect("test request")
+            .assert_status(simple_server::web::http::StatusCode::UNAUTHORIZED);
         server
             .put(&url)
-            .add_header("Authorization", format!("Bearer {user}"))
+            .header("Authorization", &format!("Bearer {user}"))
             .json(&body)
+            .send()
             .await
-            .assert_status_forbidden();
+            .expect("test request")
+            .assert_status(simple_server::web::http::StatusCode::FORBIDDEN);
         server
             .put(&url)
-            .add_header("Authorization", format!("Bearer {admin}"))
+            .header("Authorization", &format!("Bearer {admin}"))
             .json(&body)
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::NO_CONTENT);
         server
             .put(&url)
-            .add_header("Authorization", format!("Bearer {admin}"))
+            .header("Authorization", &format!("Bearer {admin}"))
             .json(&body)
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::CONFLICT);
         let query = if index == 0 {
             "SELECT archived FROM app_versions"
@@ -1584,9 +1802,11 @@ async fn archive_controls_require_admin_and_current_revision_and_reject_replaced
             .unwrap());
         server
             .put(&url)
-            .add_header("Authorization", format!("Bearer {admin}"))
+            .header("Authorization", &format!("Bearer {admin}"))
             .json(&serde_json::json!({"expected_revision":revision+1,"archived":false}))
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::NO_CONTENT);
         assert!(!sqlx::query_scalar::<_, bool>(query)
             .fetch_one(&ctx.pool)
@@ -1604,16 +1824,21 @@ async fn archive_controls_require_admin_and_current_revision_and_reject_replaced
     for suffix in ["versions/1", "vpks/payload"] {
         server
             .put(&format!("/api/admin/apps/test.app/{suffix}/archive"))
-            .add_header("Authorization", format!("Bearer {admin}"))
+            .header("Authorization", &format!("Bearer {admin}"))
             .json(&serde_json::json!({"expected_revision":4,"archived":true}))
+            .send()
             .await
+            .expect("test request")
             .assert_status(StatusCode::CONFLICT);
     }
     let detail: serde_json::Value = server
         .get("/api/admin/apps/test.app")
-        .add_header("Authorization", format!("Bearer {admin}"))
+        .header("Authorization", &format!("Bearer {admin}"))
+        .send()
         .await
-        .json();
+        .expect("test request")
+        .json()
+        .unwrap();
     assert_eq!(detail["versions"][0]["artifact_removed"], true);
     assert_eq!(detail["versions"][0]["archived"], false);
     assert_eq!(detail["publication_revision"], 4);
