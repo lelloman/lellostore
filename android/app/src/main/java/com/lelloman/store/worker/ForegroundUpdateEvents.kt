@@ -34,6 +34,7 @@ import kotlin.random.Random
 class ForegroundCatalogEventConnection @Inject constructor(
     okHttpClient: OkHttpClient,
     private val workManagerInitializer: WorkManagerInitializer,
+    private val localUpdateRelay: com.lelloman.store.updates.LocalUpdateRelay,
     private val logger: Logger,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
@@ -48,7 +49,11 @@ class ForegroundCatalogEventConnection @Inject constructor(
         scope.launch {
             for (signal in catalogChanges) {
                 delay(EVENT_COALESCE_MILLIS)
-                if (isStarted()) workManagerInitializer.enqueueImmediateUpdateCheck()
+                if (isStarted()) {
+                    workManagerInitializer.enqueueImmediateUpdateCheck()
+                    // The socket already delivered a hint even if the catalog HTTP refresh fails.
+                    scope.launch { localUpdateRelay.notifyInstalledApps() }
+                }
             }
         }
     }

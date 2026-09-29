@@ -14,6 +14,11 @@
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="com.lelloman.store.recovery.permission.RECOVERY_CONTROL" />
 
+    <queries>
+        <intent>
+            <action android:name="com.lelloman.paravoidandroid.action.UPDATE_TRIGGER_V1" />
+        </intent>
+    </queries>
     <application
         android:name=".LelloStoreApplication"
         android:allowBackup="true"

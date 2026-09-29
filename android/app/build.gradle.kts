@@ -108,6 +108,11 @@ android {
 tasks.named("preBuild").configure { dependsOn(bundleRecoveryCompanion) }
 
 dependencies {
+    implementation(libs.paravoid.update.ipc) {
+        providers.gradleProperty("paravoidVersion").orNull?.let { requestedVersion ->
+            version { require(requestedVersion) }
+        }
+    }
     // Modules
     implementation(project(":ui"))
     implementation(project(":domain"))

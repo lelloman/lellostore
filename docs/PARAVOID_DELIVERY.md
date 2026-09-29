@@ -248,3 +248,47 @@ Shell policy `updates.restartBehavior` independently selects `manual` (default),
 `prompt`, or `automatic` restart after staging. Automatic restart waits for a visible
 app Activity; background completion waits for the next foreground entry. Downstream
 apps may instead own timing/confirmation using the shell restart command.
+
+
+## Shared on-device update triggers
+
+LelloStore Android forwards catalog hints to installed, catalog-known shells advertising
+`com.lelloman.paravoidandroid.action.UPDATE_TRIGGER_V1`. Forwarding happens on WebSocket
+connection/reconnection and catalog events, and after successful periodic/manual catalog
+refreshes, even when no newer APK exists. LelloStore's APK auto-update switch does not
+control these hints. Each shell owns automatic checks, downloads, network policy and restart.
+
+Shell developers opt in with `updates.localTriggers.trustedCallers`, mapping distributor
+package names to lists of SHA-256 signing-certificate fingerprints. Configure the production
+Store package `com.lelloman.store` and its release certificate; debug builds use
+`com.lelloman.store.debug` and must be explicitly trusted only in fixtures. The service checks
+Android's calling UID, package and installed signing certificate on every Binder invocation.
+Shared-UID distributors are rejected. Android-verified signing history supports certificate
+rotation; removing old trust requires a new shell APK. A VPK cannot alter the allowlist.
+
+The shared `paravoid-update-ipc` AAR contains the v1 AIDL protocol. Only a hint and its
+acknowledgement cross this interface; no token, URL, version or installation command does.
+Responses are QUEUED=1, COALESCED=2, REJECTED=3, UNAVAILABLE=4. Queued means persisted in
+Android's scheduler, not downloaded or installed. The relay limits concurrent bindings to
+four, times out after five seconds, and releases each binding. Failures do not abort APK
+checking. Subsequent hints/polls retry delivery, while each shell keeps its polling fallback.
+Log tags `LocalUpdateRelay` and `ParavoidTrigger` show forwarding and acceptance outcomes.
+
+For development, stage the shared artifact from the Paravoid checkout:
+
+```sh
+./gradlew :paravoid-update-ipc:publishAllPublicationsToLocalStagingRepository \
+  -PparavoidRepository="$PWD/build/local-repository"
+```
+
+The Android build defaults to the sibling Paravoid checkout's `build/local-repository` and
+version `0.1.0-dev`. CI/release builds must supply a staged artifact repository with
+`-PparavoidRepository=...` and pin `-PparavoidVersion=...`; this is a local dependency staging
+step, not an application publication. Deploy backend policy-field support before uploading
+shells carrying `localTriggerCallers`. Old shells and old update policies remain valid.
+
+The opt-in `ParavoidTriggerDeviceTest` is driven by
+`paravoid-android/compatibility/local-triggers/device-test.py` on disposable emulators.
+It uses fixture catalog inputs and the production Store relay/polling entry point and
+WebSocket listener; Paravoid performs real signed HTTP discovery, verification and staging.
+It does not use production accounts, publish releases, or migrate installed real apps.

@@ -47,6 +47,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            localUpdateRelay = mockk(relaxed = true),
         )
 
         assertThat(updateChecker.availableUpdates.value).isEmpty()
@@ -135,6 +136,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            localUpdateRelay = mockk(relaxed = true),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -170,6 +172,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            localUpdateRelay = mockk(relaxed = true),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -199,6 +202,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            localUpdateRelay = mockk(relaxed = true),
         )
 
         val result = updateChecker.checkForUpdates()
@@ -297,6 +301,7 @@ class UpdateCheckerImplTest {
         preferences: UserPreferencesStore = createPreferences(),
         details: Map<String, AppDetail> = apps.value.associate { it.packageName to it.toDetail() },
         selfEnabled: Boolean = false,
+        relay: LocalUpdateRelay = mockk(relaxed = true),
     ): UpdateCheckerImpl {
         val appsRepository: AppsRepository = mockk {
             every { watchApps() } returns apps
@@ -309,7 +314,18 @@ class UpdateCheckerImplTest {
             every { watchInstalledApps() } returns installed
             coEvery { refreshInstalledApps() } returns Unit
         }
-        return UpdateCheckerImpl(appsRepository, installedRepository, preferences, recoveryGate(selfEnabled))
+        return UpdateCheckerImpl(appsRepository, installedRepository, preferences, recoveryGate(selfEnabled), relay)
+    }
+
+    @Test fun `forwards hints even without an APK upgrade and store auto update disabled`() = runTest {
+        val app = createApp("com.test.app", versionCode = 1)
+        val relay = mockk<LocalUpdateRelay>(relaxed = true)
+        val checker = createChecker(MutableStateFlow(listOf(app)),
+            MutableStateFlow(listOf(InstalledApp("com.test.app", 1, "1"))),
+            preferences = createPreferences(autoUpdate = false), relay = relay)
+        checker.checkForUpdates().getOrThrow()
+        assertThat(checker.availableUpdates.value).isEmpty()
+        io.mockk.coVerify(exactly = 1) { relay.notifyInstalledApps() }
     }
 
     private fun App.toDetail() = AppDetail(

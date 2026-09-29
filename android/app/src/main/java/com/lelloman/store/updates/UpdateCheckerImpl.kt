@@ -25,6 +25,7 @@ class UpdateCheckerImpl @Inject constructor(
     private val installedAppsRepository: InstalledAppsRepository,
     private val userPreferencesStore: UserPreferencesStore,
     private val selfUpdateGate: SelfUpdateGate,
+    private val localUpdateRelay: LocalUpdateRelay,
 ) : UpdateChecker {
 
     private val mutableUpdates = MutableStateFlow<List<AvailableUpdate>>(emptyList())
@@ -34,6 +35,8 @@ class UpdateCheckerImpl @Inject constructor(
         return runCatching {
             appsRepository.refreshApps().getOrThrow()
             installedAppsRepository.refreshInstalledApps()
+            // VPK hints must also reach shells when APK version codes have not changed.
+            localUpdateRelay.notifyInstalledApps()
             val policyAwareUpdates = findPolicyAwareUpdates(
                 appsRepository.watchApps().first(),
                 installedAppsRepository.watchInstalledApps().first(),

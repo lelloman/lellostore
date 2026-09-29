@@ -225,9 +225,42 @@ fn validate_updates(values: &BTreeMap<String, String>) -> Result<(), Error> {
         "updateBehavior",
         "pushComponentClasses",
         "restartBehavior",
+        "localTriggerCallers",
     ];
     if values.keys().any(|key| !keys.contains(&key.as_str())) {
         return Err(Error::Malformed);
+    }
+    if let Some(json) = values.get("localTriggerCallers") {
+        let parsed = parse_json(json.as_bytes(), 16384)?;
+        let callers = parsed.as_object().ok_or(Error::Malformed)?;
+        for (package, pins) in callers {
+            if !package.contains('.')
+                || !package.split('.').all(|part| {
+                    !part.is_empty()
+                        && part.bytes().enumerate().all(|(i, b)| {
+                            b.is_ascii_alphabetic() || i > 0 && (b.is_ascii_digit() || b == b'_')
+                        })
+                })
+            {
+                return Err(Error::Malformed);
+            }
+            let pins = pins
+                .as_array()
+                .filter(|pins| !pins.is_empty())
+                .ok_or(Error::Malformed)?;
+            let mut distinct = BTreeSet::new();
+            for pin in pins {
+                let pin = pin.as_str().ok_or(Error::Malformed)?;
+                if pin.len() != 64
+                    || !pin
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    || !distinct.insert(pin)
+                {
+                    return Err(Error::Malformed);
+                }
+            }
+        }
     }
     for key in [
         "checks",

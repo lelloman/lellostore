@@ -183,3 +183,35 @@ fn background_push_matches_producer_contract_and_preserves_strict_validation() {
         agrees(&make(updates), false);
     }
 }
+
+#[test]
+fn local_trigger_trust_matches_producer_and_needs_no_socket() {
+    let make = |callers: &str| {
+        let mut d = descriptor();
+        d["distribution"]["updates"] =
+            json!({"localTriggerCallers": callers, "pushEnabled":"false"});
+        let hash = hex::encode(Sha256::digest(canonical_json(&d).unwrap()));
+        canonical_json(&json!({"version":2,"contractId":hash,"descriptor":d})).unwrap()
+    };
+    let pin = "a".repeat(64);
+    agrees(
+        &make(
+            &json!({"com.store.one":[pin.clone(), "b".repeat(64)],"com.store.two":[pin.clone()]})
+                .to_string(),
+        ),
+        true,
+    );
+    agrees(&make("{}"), true);
+    for invalid in [
+        "[]".to_string(),
+        "null".to_string(),
+        json!({"com.store":[]}).to_string(),
+        json!({"bad":[pin.clone()]}).to_string(),
+        json!({"com.store":["bad"]}).to_string(),
+        json!({"com.store":[pin.clone(),pin.clone()]}).to_string(),
+        format!("{{\"com.store\":[\"{pin}\"],\"com.store\":[\"{pin}\"]}}"),
+        json!({"com.store":["A".repeat(64)]}).to_string(),
+    ] {
+        agrees(&make(&invalid), false);
+    }
+}

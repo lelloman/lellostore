@@ -10,6 +10,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Shared IPC artifact; CI/release builds can supply the staged repository and version.
+        maven {
+            url = uri(providers.gradleProperty("paravoidRepository")
+                .getOrElse("../../paravoid-android/build/local-repository"))
+            content { includeGroup("com.lelloman.paravoid") }
+        }
         maven("https://jitpack.io") {
             content {
                 includeGroup("com.github.MuntashirAkon")
