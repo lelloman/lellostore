@@ -5,7 +5,12 @@ pub mod models;
 pub mod paravoid;
 pub mod publications;
 
+use simple_server::database::migrations::{
+    CompletionState, MigrationEntry, MigrationObservation, MigrationPlan, MigrationVersion,
+    RecordedMigration,
+};
 use sqlx::sqlite::{SqliteConnection, SqlitePool, SqlitePoolOptions};
+use sqlx::Row;
 use std::path::Path;
 
 use crate::error::AppError;
@@ -32,10 +37,85 @@ pub async fn init_pool(database_url: &str) -> Result<SqlitePool, AppError> {
 }
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), AppError> {
-    sqlx::migrate!("./migrations")
+    let migrator = sqlx::migrate!("./migrations");
+    let namespace = "lellostore/backend".to_owned();
+    let plan = MigrationPlan {
+        namespace: namespace.clone(),
+        entries: migrator
+            .iter()
+            .filter(|migration| migration.migration_type.is_up_migration())
+            .map(|migration| MigrationEntry {
+                version: MigrationVersion::Number(migration.version as u64),
+                name: migration.description.to_string(),
+                digest: Some(hex::encode(&migration.checksum)),
+            })
+            .collect(),
+    };
+    let has_ledger: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Database)?;
+    let rows = if has_ledger == 0 {
+        Vec::new()
+    } else {
+        sqlx::query(
+            "SELECT version, description, success, checksum FROM _sqlx_migrations ORDER BY version",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?
+    };
+    let observation = MigrationObservation {
+        namespace,
+        entries: rows
+            .iter()
+            .map(|row| {
+                let version: i64 = row.get("version");
+                let version = u64::try_from(version).map_err(|_| {
+                    AppError::Internal(format!("Migration failed: invalid version {version}"))
+                })?;
+                Ok(RecordedMigration {
+                    entry: MigrationEntry {
+                        version: MigrationVersion::Number(version),
+                        name: row.get("description"),
+                        digest: Some(hex::encode(row.get::<Vec<u8>, _>("checksum"))),
+                    },
+                    state: if row.get("success") {
+                        CompletionState::Applied
+                    } else {
+                        CompletionState::Dirty
+                    },
+                })
+            })
+            .collect::<Result<_, AppError>>()?,
+        high_water_mark: None,
+    };
+    plan.inspect(&observation)
+        .map_err(|error| AppError::Internal(format!("Migration failed: {error}")))?;
+    migrator
         .run(pool)
         .await
         .map_err(|e| AppError::Internal(format!("Migration failed: {}", e)))
+}
+
+#[cfg(test)]
+mod migration_preflight_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rejects_changed_sqlx_history_before_running_migrations() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        run_migrations(&pool).await.unwrap();
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = X'00' WHERE version = (SELECT MIN(version) FROM _sqlx_migrations)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let error = run_migrations(&pool).await.unwrap_err();
+        assert!(error.to_string().contains("DigestMismatch"), "{error}");
+    }
 }
 
 pub async fn get_all_apps(pool: &SqlitePool) -> Result<Vec<App>, AppError> {
