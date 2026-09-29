@@ -9,7 +9,7 @@ embed-frontend = ["dep:rust-embed"]
 
 [dependencies]
 # Web framework
-simple-server = { path = "../../simple-server", features = ["web", "body-limit", "multipart", "ws", "tasks", "lifecycle", "logging", "http-tracing", "cors", "health", "auth", "database-migrations"] }
+simple-server = { package = "lelloman-simple-server", version = "=0.1.0", features = ["web", "body-limit", "multipart", "ws", "tasks", "lifecycle", "logging", "http-tracing", "cors", "health", "auth", "database-migrations"] }
 tokio = { version = "1", features = ["full", "process"] }
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 tower = "0.4"
@@ -66,7 +66,7 @@ path = "src/bin/mock_oidc.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
-simple-server = { path = "../../simple-server", features = ["test-harness-ws"] }
+simple-server = { package = "lelloman-simple-server", version = "=0.1.0", features = ["test-harness-ws"] }
 
 [profile.release]
 lto = true

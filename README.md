@@ -30,9 +30,8 @@ Docker supplies the runtime APK/AAB tools and is the simplest production build.
 
 ## Backend
 
-The backend's shared HTTP integrations use the sibling `simple-server` checkout
-at revision `d61c049aa49d89de6936de9e93a68bd18685f373`. Keep that checkout beside
-LelloStore for local builds; CI checks out both sources explicitly. See
+Cargo downloads `lelloman-simple-server = "=0.1.0"` from crates.io, aliased as
+`simple-server`. No sibling checkout or private registry credentials are required. See
 [the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) and
 [the logging migration notes](docs/STEP_03A_LOGGING.md).
 See [shared routing and multipart](docs/STEP_11_ROUTING.md) for the HTTP integration.
@@ -135,7 +134,7 @@ The production image builds the frontend, embeds it in the backend, and includes
 Java, bundletool, and `aapt` for APK/AAB processing:
 
 ```sh
-docker build --build-context simple-server=../simple-server \
+docker build \
   --build-arg VITE_OIDC_ISSUER_URL=https://auth.example.com/realms/store \
   --build-arg VITE_OIDC_CLIENT_ID=lellostore-frontend \
   -t lellostore .

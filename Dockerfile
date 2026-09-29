@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-# Requires --build-context simple-server=../simple-server
 # LelloStore Dockerfile
 # Multi-stage build: Frontend -> Backend -> Runtime
 
@@ -42,8 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=simple-server Cargo.toml /simple-server/Cargo.toml
-COPY --from=simple-server src /simple-server/src
 
 # Cache dependencies by building with empty source first
 COPY backend/Cargo.toml backend/Cargo.lock ./

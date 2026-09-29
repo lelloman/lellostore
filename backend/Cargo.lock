@@ -1435,6 +1435,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
+name = "lelloman-simple-server"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3187c81c94701cd041df7ab17ce968b73c967db77c551170e3c24960b6c77a"
+dependencies = [
+ "axum",
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body",
+ "pin-project-lite",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tower 0.5.3",
+ "tower-http 0.6.11",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lellostore-backend"
 version = "0.1.0"
 dependencies = [
@@ -1448,6 +1473,7 @@ dependencies = [
  "image",
  "jsonwebtoken",
  "lazy_static",
+ "lelloman-simple-server",
  "mime_guess",
  "prometheus",
  "reqwest",
@@ -1457,7 +1483,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "simple-server",
  "sqlx",
  "tempfile",
  "thiserror 1.0.69",
@@ -2758,29 +2783,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95890f873bec569a0362c235787f3aca6e1e887302ba4840839bcc6459c42da6"
 dependencies = [
  "quote",
-]
-
-[[package]]
-name = "simple-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "pin-project-lite",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tower 0.5.3",
- "tower-http 0.6.11",
- "tower-layer",
- "tower-service",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

@@ -39,13 +39,6 @@ jobs:
         with:
           persist-credentials: false
           path: lellostore
-      - name: Check out reviewed simple-server library
-        uses: actions/checkout@v7
-        with:
-          repository: lelloman/simple-server
-          ref: d61c049aa49d89de6936de9e93a68bd18685f373
-          path: simple-server
-          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
