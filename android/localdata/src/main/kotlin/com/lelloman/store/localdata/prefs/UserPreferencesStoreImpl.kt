@@ -13,6 +13,7 @@ import com.lelloman.store.domain.preferences.InstallationChannelPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -46,6 +47,8 @@ class UserPreferencesStoreImpl(
     override val keepUpdateConnection: StateFlow<Boolean> = dataStore.data
         .map { it[PreferencesKeys.KEEP_UPDATE_CONNECTION] ?: false }
         .stateIn(scope, SharingStarted.Eagerly, false)
+
+    override suspend fun readKeepUpdateConnection(): Boolean = dataStore.data.first()[PreferencesKeys.KEEP_UPDATE_CONNECTION] ?: false
 
     override suspend fun setKeepUpdateConnection(enabled: Boolean) {
         dataStore.edit { it[PreferencesKeys.KEEP_UPDATE_CONNECTION] = enabled }

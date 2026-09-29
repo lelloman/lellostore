@@ -7,3 +7,5 @@ pub mod metrics;
 pub mod services;
 
 pub mod paravoid;
+
+pub mod notifications;

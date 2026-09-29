@@ -70,6 +70,7 @@ async fn create_test_context_inner(
         .expect("Failed to run migrations");
 
     let config = Config {
+        notifications_enabled: false,
         listen_addr: "127.0.0.1:0".parse().unwrap(),
         metrics_addr: "127.0.0.1:0".parse().unwrap(),
         shutdown_grace_secs: 30,
@@ -100,6 +101,7 @@ async fn create_test_context_inner(
     ));
 
     let state = AppState {
+        notifications: lellostore_backend::notifications::Broker::new(pool.clone()),
         personalizer: None,
         paravoid_signing: signing,
         db: pool.clone(),

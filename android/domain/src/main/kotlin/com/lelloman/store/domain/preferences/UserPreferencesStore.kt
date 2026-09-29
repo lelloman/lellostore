@@ -8,6 +8,7 @@ interface UserPreferencesStore {
     val updateCheckInterval: StateFlow<UpdateCheckInterval>
     val wifiOnlyDownloads: StateFlow<Boolean>
     val keepUpdateConnection: StateFlow<Boolean>
+    suspend fun readKeepUpdateConnection(): Boolean = keepUpdateConnection.value
     suspend fun setKeepUpdateConnection(enabled: Boolean)
 
     val autoUpdateDefault: StateFlow<Boolean>

@@ -16,6 +16,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -156,6 +158,7 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
     private val logger: Logger,
     private val warmUpdateScheduler: WarmUpdateScheduler,
     private val connection: ForegroundCatalogEventConnection,
+    private val broker: com.lelloman.store.notification.NotificationBrokerRuntime,
     private val workManagerInitializer: WorkManagerInitializer,
     @ApplicationScope private val scope: CoroutineScope,
 ) : DefaultLifecycleObserver {
@@ -168,10 +171,13 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
 
     internal fun observeConnection(): Job = scope.launch {
         var connectionActive = false
+        val persisted = preferences.readKeepUpdateConnection()
+        preferences.keepUpdateConnection.first { it == persisted }
         combine(foreground, authStore.authState, configStore.serverUrl,
             preferences.keepUpdateConnection, service.running) { visible, auth, url, keep, running ->
-            ConnectionState(visible, auth is AuthState.Authenticated, url, keep, running)
+            if (auth is AuthState.Loading) null else ConnectionState(visible, auth is AuthState.Authenticated, url, keep, running)
         }
+            .filterNotNull()
             .distinctUntilChanged()
             .collect { state ->
                 if (!state.authenticated || !state.keep) {
@@ -188,8 +194,15 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
                     state.keep, state.serviceRunning)
                 if (active) {
                     warmUpdateScheduler.cancel()
-                    connection.start(state.serverUrl)
+                    if (state.keep && state.serviceRunning) {
+                        connection.stop()
+                        broker.start(state.serverUrl)
+                    } else {
+                        broker.stop()
+                        connection.start(state.serverUrl)
+                    }
                 } else {
+                    broker.stop()
                     connection.stop()
                     if (connectionActive && state.authenticated && !state.foreground) {
                         warmUpdateScheduler.start()

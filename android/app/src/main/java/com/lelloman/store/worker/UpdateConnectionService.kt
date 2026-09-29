@@ -55,6 +55,8 @@ class UpdateConnectionServiceController @Inject constructor(
 @AndroidEntryPoint
 class UpdateConnectionService : Service() {
     @Inject lateinit var controller: UpdateConnectionServiceController
+    @Inject lateinit var broker: com.lelloman.store.notification.NotificationBrokerRuntime
+    private var statusJob: kotlinx.coroutines.Job? = null
     @Inject lateinit var preferences: UserPreferencesStore
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
 
@@ -71,7 +73,7 @@ class UpdateConnectionService : Service() {
         val stop = PendingIntent.getService(this, 0,
             Intent(this, UpdateConnectionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, CHANNEL)
+        val builder = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(getString(R.string.notification_connection_title))
             .setContentText(getString(R.string.notification_connection_text))
@@ -79,9 +81,12 @@ class UpdateConnectionService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .addAction(0, getString(R.string.notification_connection_stop), stop)
-            .build()
+        val notification = builder.build()
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+        statusJob = scope.launch { broker.status.collect { status ->
+            manager.notify(NOTIFICATION_ID, builder.setContentText(status).build())
+        } }
         controller.onStarted()
     }
 
@@ -89,13 +94,13 @@ class UpdateConnectionService : Service() {
         if (intent?.action == ACTION_STOP) {
             scope.launch { preferences.setKeepUpdateConnection(false) }
         }
-        // Reopen the app to resume after the system stops the service.
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        statusJob?.cancel()
         controller.onStopped()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()

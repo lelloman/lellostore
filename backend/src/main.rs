@@ -134,6 +134,7 @@ async fn run() -> Result<(), BoxError> {
 
     // Build application state
     let state = AppState {
+        notifications: lellostore_backend::notifications::Broker::new(db.clone()),
         personalizer: lellostore_backend::services::personalization::Personalizer::from_env()?,
         paravoid_signing,
         db: db.clone(),
@@ -145,6 +146,7 @@ async fn run() -> Result<(), BoxError> {
     };
 
     // Create router
+    let notifications = state.notifications.clone();
     let app = api::routes::create_router(state);
 
     // Bind both ports before any serving or background work begins. A metrics
@@ -157,6 +159,20 @@ async fn run() -> Result<(), BoxError> {
         metrics_listener.local_addr()?
     );
 
+    if config.notifications_enabled {
+        let shutdown = lifecycle.shutdown();
+        lifecycle.service("notifications-maintenance", async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tokio::select! {
+                    _ = shutdown.requested() => return Ok::<_, std::io::Error>(()),
+                    _ = tick.tick() => {
+                        if notifications.maintenance().await.is_err() { tracing::warn!("Notification maintenance deferred"); }
+                    }
+                }
+            }
+        })?;
+    }
     lifecycle.service(
         "upload-validation",
         lellostore_backend::services::upload_jobs::run(

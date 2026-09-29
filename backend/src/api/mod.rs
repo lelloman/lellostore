@@ -17,6 +17,7 @@ use crate::services::{StorageService, UploadService};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub notifications: Arc<crate::notifications::Broker>,
     pub personalizer: Option<Arc<crate::services::personalization::Personalizer>>,
     pub paravoid_signing: Option<Arc<crate::paravoid::signing::OnlineSigning>>,
     pub db: SqlitePool,

@@ -5,6 +5,7 @@ import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.domain.preferences.UserPreferencesStore
+import io.mockk.coEvery
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -25,14 +26,15 @@ class UpdateConnectionLifecycleTest {
         val url = MutableStateFlow("https://store.example")
         val authStore = mockk<AuthStore> { every { authState } returns auth }
         val config = mockk<ConfigStore> { every { serverUrl } returns url }
-        val preferences = mockk<UserPreferencesStore> { every { keepUpdateConnection } returns keep }
+        val preferences = mockk<UserPreferencesStore> { every { keepUpdateConnection } returns keep; coEvery { readKeepUpdateConnection() } answers { keep.value } }
         val service = mockk<UpdateConnectionServiceController>(relaxed = true) {
             every { this@mockk.running } returns running
         }
         val connection = mockk<ForegroundCatalogEventConnection>(relaxed = true)
+        val broker = mockk<com.lelloman.store.notification.NotificationBrokerRuntime>(relaxed = true)
         val warm = mockk<WarmUpdateScheduler>(relaxed = true)
         val observer = ForegroundUpdateLifecycleObserver(authStore, config, preferences, service,
-            mockk(relaxed = true), warm, connection, mockk(relaxed = true), backgroundScope)
+            mockk(relaxed = true), warm, connection, broker, mockk(relaxed = true), backgroundScope)
         val owner = mockk<LifecycleOwner>()
         observer.observeConnection()
         observer.onStart(owner)
@@ -48,12 +50,11 @@ class UpdateConnectionLifecycleTest {
         clearMocks(connection, answers = false)
         observer.onStop(owner)
         runCurrent()
-        verify(exactly = 0) { connection.stop() }
-        verify { connection.start(url.value) }
+        verify { connection.stop(); broker.start(url.value) }
 
         url.value = "https://other.example"
         runCurrent()
-        verify { connection.start("https://other.example") }
+        verify { broker.start("https://other.example") }
         keep.value = false
         runCurrent()
         verify { service.stop(); connection.stop(); warm.start() }
@@ -73,5 +74,29 @@ class UpdateConnectionLifecycleTest {
         auth.value = AuthState.NotAuthenticated
         runCurrent()
         verify { service.stop(); connection.stop() }
+    }
+
+    @Test
+    fun `sticky service waits for restored authentication before making lifecycle decisions`() = runTest {
+        val auth = MutableStateFlow<AuthState>(AuthState.Loading)
+        val keep = MutableStateFlow(true)
+        val running = MutableStateFlow(true)
+        val authStore = mockk<AuthStore> { every { authState } returns auth }
+        val config = mockk<ConfigStore> { every { serverUrl } returns MutableStateFlow("https://store.example") }
+        val preferences = mockk<UserPreferencesStore> {
+            every { keepUpdateConnection } returns keep
+            coEvery { readKeepUpdateConnection() } returns true
+        }
+        val service = mockk<UpdateConnectionServiceController>(relaxed = true) { every { this@mockk.running } returns running }
+        val broker = mockk<com.lelloman.store.notification.NotificationBrokerRuntime>(relaxed = true)
+        val observer = ForegroundUpdateLifecycleObserver(authStore, config, preferences, service,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), broker, mockk(relaxed = true), backgroundScope)
+        observer.observeConnection()
+        runCurrent()
+        verify(exactly = 0) { service.stop() }
+        auth.value = AuthState.Authenticated("restored@example.test")
+        runCurrent()
+        verify { broker.start("https://store.example") }
+        verify(exactly = 0) { service.stop() }
     }
 }

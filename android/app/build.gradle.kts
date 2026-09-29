@@ -46,8 +46,8 @@ android {
         applicationId = "com.lelloman.store"
         minSdk = 24
         targetSdk = 36
-        versionCode = providers.gradleProperty("storeVersionCode").orElse("16").get().toInt()
-        versionName = providers.gradleProperty("storeVersionName").orElse("1.15").get()
+        versionCode = providers.gradleProperty("storeVersionCode").orElse("17").get().toInt()
+        versionName = providers.gradleProperty("storeVersionName").orElse("1.16").get()
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
@@ -113,6 +113,7 @@ dependencies {
             version { require(requestedVersion) }
         }
     }
+    implementation(project(":notification-client"))
     // Modules
     implementation(project(":ui"))
     implementation(project(":domain"))

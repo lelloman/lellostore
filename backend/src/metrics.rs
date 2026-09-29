@@ -30,6 +30,11 @@ lazy_static! {
         &["method", "path"]
     ).unwrap();
 
+    pub static ref NOTIFICATION_CONNECTIONS: IntGauge = IntGauge::new("lellostore_notification_connections", "Authenticated notification connections").unwrap();
+    pub static ref NOTIFICATION_QUEUE: IntGaugeVec = IntGaugeVec::new(Opts::new("lellostore_notification_deliveries", "Retained notification deliveries by outcome"), &["state"]).unwrap();
+    pub static ref NOTIFICATION_BYTES: IntGauge = IntGauge::new("lellostore_notification_pending_bytes", "Pending notification payload bytes").unwrap();
+    pub static ref NOTIFICATION_OLDEST: IntGauge = IntGauge::new("lellostore_notification_oldest_pending_seconds", "Age of oldest pending delivery").unwrap();
+
     // Business Metrics
     pub static ref APPS_TOTAL: IntGauge = IntGauge::new(
         "lellostore_apps_total",
@@ -49,6 +54,10 @@ lazy_static! {
 }
 
 pub fn register_metrics() {
+    REGISTRY.register(Box::new(NOTIFICATION_CONNECTIONS.clone())).unwrap();
+    REGISTRY.register(Box::new(NOTIFICATION_QUEUE.clone())).unwrap();
+    REGISTRY.register(Box::new(NOTIFICATION_BYTES.clone())).unwrap();
+    REGISTRY.register(Box::new(NOTIFICATION_OLDEST.clone())).unwrap();
     REGISTRY
         .register(Box::new(HTTP_REQUESTS_TOTAL.clone()))
         .unwrap();

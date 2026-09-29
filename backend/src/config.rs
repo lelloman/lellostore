@@ -19,6 +19,7 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub notifications_enabled: bool,
     pub listen_addr: SocketAddr,
     pub metrics_addr: SocketAddr,
     pub shutdown_grace_secs: u64,
@@ -84,6 +85,7 @@ impl Config {
             .unwrap_or(500 * 1024 * 1024); // 500MB default
 
         Ok(Config {
+            notifications_enabled: std::env::var("NOTIFICATIONS_ENABLED").as_deref() == Ok("true"),
             listen_addr,
             metrics_addr,
             shutdown_grace_secs,

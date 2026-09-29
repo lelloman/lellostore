@@ -25,6 +25,7 @@ pub fn create_test_router(state: AppState) -> Router {
 
 fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -> Router {
     let max_upload_size = state.config.max_upload_size;
+    if state.config.notifications_enabled { state.catalog_events.attach_notifications(&state.notifications); }
     let mut router = Router::new().route(
         "/health",
         get_service(simple_server::health::Probe::liveness().endpoint(handlers::health_check)),
@@ -40,6 +41,8 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
             "/api/paravoid/v1/apps/{package}/releases/{release}/payload.vpk",
             get(super::delivery::download),
         );
+
+    router = router.merge(crate::notifications::api::routes());
 
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {

@@ -1,5 +1,6 @@
 package com.lelloman.store.interactor
 
+import androidx.core.net.toUri
 import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
@@ -25,6 +26,8 @@ import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 class SettingsInteractorImpl @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val broker: com.lelloman.store.notification.NotificationBrokerRuntime,
     private val userPreferencesStore: UserPreferencesStore,
     private val authStore: AuthStore,
     private val configStore: ConfigStore,
@@ -54,8 +57,14 @@ class SettingsInteractorImpl @Inject constructor(
 
     override fun keepUpdateConnection() = userPreferencesStore.keepUpdateConnection
 
+    // This self-hosted push broker requires network access during Doze for its core function.
+    @android.annotation.SuppressLint("BatteryLife")
     override suspend fun setKeepUpdateConnection(enabled: Boolean) {
         userPreferencesStore.setKeepUpdateConnection(enabled)
+        if (enabled && !broker.hasBatteryExemption()) {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                "package:${context.packageName}".toUri()).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     }
 
     override fun autoUpdateDefault(): StateFlow<Boolean> = userPreferencesStore.autoUpdateDefault
@@ -145,6 +154,7 @@ class SettingsInteractorImpl @Inject constructor(
     }
 
     override suspend fun logout() {
+        broker.signedOut()
         authStore.logout()
     }
 
