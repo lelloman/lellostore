@@ -680,6 +680,17 @@ fn resource_file_for_id(resources: &str, wanted_id: &str) -> Option<String> {
 }
 
 fn resource_color_for_id(resources: &str, wanted_id: &str) -> Option<String> {
+    // Framework resources are not included in the APK's resource table. These
+    // public Android colors have stable IDs and device-independent values.
+    let framework_color = match wanted_id {
+        "0x0106000b" => Some("#ffffffff"), // android.R.color.white
+        "0x0106000c" => Some("#ff000000"), // android.R.color.black
+        "0x0106000d" => Some("#00000000"), // android.R.color.transparent
+        _ => None,
+    };
+    if let Some(color) = framework_color {
+        return Some(color.to_string());
+    }
     let mut matches = false;
     for line in resources.lines() {
         let line = line.trim();
@@ -1151,6 +1162,20 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
                 "res/d2.webp".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn framework_icon_colors_resolve_without_apk_resources() {
+        for (id, rgba) in [
+            ("0x0106000b", [255, 255, 255, 255]),
+            ("0x0106000c", [0, 0, 0, 255]),
+            ("0x0106000d", [0, 0, 0, 0]),
+        ] {
+            let color = resource_color_for_id("", id).unwrap();
+            assert_eq!(android_color(&color).unwrap(), rgba);
+        }
+        assert_eq!(resource_color_for_id("", "0x0106000e"), None);
+        assert_eq!(resource_color_for_id("", "0x7f06000b"), None);
     }
 
     #[test]
