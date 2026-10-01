@@ -274,7 +274,7 @@ impl ApkParser {
     ) -> Result<Vec<u8>, ApkError> {
         let tree = self.dump_xmltree(apk_path, icon_path).await?;
         match root_element_name(&tree) {
-            Some("vector") | Some("shape") => render_xml_layer(&tree),
+            Some("vector") | Some("shape") => render_xml_layer(&tree, resources),
             Some("adaptive-icon") => {
                 let (background_id, foreground_id) = parse_adaptive_icon_refs(&tree)?;
                 let background = self
@@ -285,7 +285,7 @@ impl ApkParser {
                     .await?;
                 let mut composed = background;
                 image::imageops::overlay(&mut composed, &foreground, 0, 0);
-                encode_png(composed)
+                encode_png(adaptive_icon_viewport(&composed))
             }
             Some(kind) => Err(ApkError::IconError(format!(
                 "Unsupported launcher drawable type: {kind}"
@@ -338,7 +338,7 @@ impl ApkParser {
                     .await?;
                 return inset_icon(image, root);
             }
-            render_xml_layer_image(&tree)
+            render_xml_layer_image(&tree, resources)
         })
     }
 
@@ -742,11 +742,18 @@ fn inset_icon(image: image::RgbaImage, root: &XmlElement) -> Result<image::RgbaI
     Ok(canvas)
 }
 
-fn render_xml_layer(output: &str) -> Result<Vec<u8>, ApkError> {
-    encode_png(render_xml_layer_image(output)?)
+fn adaptive_icon_viewport(image: &image::RgbaImage) -> image::RgbaImage {
+    // AdaptiveIconDrawable displays the central 72dp of each 108dp layer.
+    // The outer 18dp on each side is reserved for launcher animations.
+    let viewport = image::imageops::crop_imm(image, 32, 32, 128, 128).to_image();
+    image::imageops::resize(&viewport, 192, 192, FilterType::Lanczos3)
 }
 
-fn render_xml_layer_image(output: &str) -> Result<image::RgbaImage, ApkError> {
+fn render_xml_layer(output: &str, resources: &str) -> Result<Vec<u8>, ApkError> {
+    encode_png(render_xml_layer_image(output, resources)?)
+}
+
+fn render_xml_layer_image(output: &str, resources: &str) -> Result<image::RgbaImage, ApkError> {
     let elements = parse_xmltree_elements(output);
     let root = elements
         .first()
@@ -758,17 +765,17 @@ fn render_xml_layer_image(output: &str) -> Result<image::RgbaImage, ApkError> {
                 .find(|element| element.name == "solid")
                 .and_then(|element| attribute(element, "color"))
                 .ok_or_else(|| ApkError::IconError("Shape has no solid color".into()))?;
-            let rgba = android_color(color)?;
+            let rgba = drawable_color(color, resources)?;
             Ok(image::RgbaImage::from_pixel(192, 192, image::Rgba(rgba)))
         }
-        "vector" => render_vector(&elements),
+        "vector" => render_vector(&elements, resources),
         kind => Err(ApkError::IconError(format!(
             "Unsupported adaptive icon layer: {kind}"
         ))),
     }
 }
 
-fn render_vector(elements: &[XmlElement]) -> Result<image::RgbaImage, ApkError> {
+fn render_vector(elements: &[XmlElement], resources: &str) -> Result<image::RgbaImage, ApkError> {
     let vector = elements
         .first()
         .ok_or_else(|| ApkError::IconError("Vector drawable is empty".into()))?;
@@ -809,8 +816,22 @@ fn render_vector(elements: &[XmlElement]) -> Result<image::RgbaImage, ApkError> 
             svg.push_str("<path d=\"");
             svg.push_str(&escape_xml(path_data));
             svg.push('"');
-            append_svg_paint(&mut svg, element, "fillColor", "fill", "fillAlpha");
-            append_svg_paint(&mut svg, element, "strokeColor", "stroke", "strokeAlpha");
+            append_svg_paint(
+                &mut svg,
+                element,
+                "fillColor",
+                "fill",
+                "fillAlpha",
+                resources,
+            )?;
+            append_svg_paint(
+                &mut svg,
+                element,
+                "strokeColor",
+                "stroke",
+                "strokeAlpha",
+                resources,
+            )?;
             if let Some(width) = attribute(element, "strokeWidth") {
                 svg.push_str(" stroke-width=\"");
                 svg.push_str(width);
@@ -887,30 +908,42 @@ fn append_svg_paint(
     color_attribute: &str,
     svg_attribute: &str,
     alpha_attribute: &str,
-) {
+    resources: &str,
+) -> Result<(), ApkError> {
     let Some(color) = attribute(element, color_attribute) else {
         if svg_attribute == "fill" {
             svg.push_str(" fill=\"none\"");
         }
-        return;
+        return Ok(());
     };
-    if let Ok(rgba) = android_color(color) {
+    let rgba = drawable_color(color, resources)?;
+    svg.push(' ');
+    svg.push_str(svg_attribute);
+    svg.push_str("=\"");
+    svg.push_str(&format!("#{:02x}{:02x}{:02x}", rgba[0], rgba[1], rgba[2]));
+    svg.push('"');
+    let attribute_alpha = attribute(element, alpha_attribute)
+        .and_then(|value| value.parse::<f32>().ok())
+        .unwrap_or(1.0);
+    let alpha = (rgba[3] as f32 / 255.0) * attribute_alpha;
+    if alpha < 1.0 {
         svg.push(' ');
         svg.push_str(svg_attribute);
-        svg.push_str("=\"");
-        svg.push_str(&format!("#{:02x}{:02x}{:02x}", rgba[0], rgba[1], rgba[2]));
+        svg.push_str("-opacity=\"");
+        svg.push_str(&alpha.to_string());
         svg.push('"');
-        let attribute_alpha = attribute(element, alpha_attribute)
-            .and_then(|value| value.parse::<f32>().ok())
-            .unwrap_or(1.0);
-        let alpha = (rgba[3] as f32 / 255.0) * attribute_alpha;
-        if alpha < 1.0 {
-            svg.push(' ');
-            svg.push_str(svg_attribute);
-            svg.push_str("-opacity=\"");
-            svg.push_str(&alpha.to_string());
-            svg.push('"');
-        }
+    }
+    Ok(())
+}
+
+fn drawable_color(value: &str, resources: &str) -> Result<[u8; 4], ApkError> {
+    if let Some(id) = value.strip_prefix('@') {
+        let color = resource_color_for_id(resources, id).ok_or_else(|| {
+            ApkError::IconError(format!("Drawable color resource {id} not found"))
+        })?;
+        android_color(&color)
+    } else {
+        android_color(value)
     }
 }
 
@@ -1207,6 +1240,52 @@ application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'
     }
 
     #[test]
+    fn referenced_transparent_vector_fill_leaves_roof_interior_empty() {
+        let tree = r##"
+E: vector
+  A: android:viewportWidth(1)=100
+  A: android:viewportHeight(2)=100
+  E: path
+    A: android:pathData(3)="M20,60 L50,20 L80,60"
+    A: android:fillColor(4)=@0x0106000d
+    A: android:strokeColor(5)=@0x7f060001
+    A: android:strokeWidth(6)=10
+    A: android:strokeLineCap(7)=1
+"##;
+        let resources = "resource 0x7f060001 color/roof\n  () #ff60a5fa";
+        let image = render_xml_layer_image(tree, resources).unwrap();
+        // SVG's default fill would put an opaque black triangle here.
+        assert_eq!(image.get_pixel(96, 96)[3], 0);
+        assert_eq!(image.get_pixel(96, 38), &image::Rgba([96, 165, 250, 255]));
+        // Unsupported paint must fail extraction rather than silently use black.
+        assert!(render_xml_layer_image(tree, "").is_err());
+    }
+
+    #[test]
+    fn adaptive_viewport_removes_animation_padding_and_scales_artwork() {
+        let mut layer = image::RgbaImage::from_pixel(192, 192, image::Rgba([255, 0, 0, 255]));
+        for y in 32..160 {
+            for x in 32..160 {
+                layer.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+        for y in 64..128 {
+            for x in 64..128 {
+                layer.put_pixel(x, y, image::Rgba([0, 100, 255, 255]));
+            }
+        }
+        let icon = adaptive_icon_viewport(&layer);
+        assert_eq!(icon.dimensions(), (192, 192));
+        assert_eq!(icon.get_pixel(0, 0), &image::Rgba([255, 255, 255, 255]));
+        assert_eq!(icon.get_pixel(191, 191), &image::Rgba([255, 255, 255, 255]));
+        // The 64px artwork expands to 96px after cropping the 128px viewport.
+        assert_eq!(icon.get_pixel(40, 96), &image::Rgba([255, 255, 255, 255]));
+        assert_eq!(icon.get_pixel(60, 96), &image::Rgba([0, 100, 255, 255]));
+        assert_eq!(icon.get_pixel(132, 96), &image::Rgba([0, 100, 255, 255]));
+        assert_eq!(icon.get_pixel(152, 96), &image::Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
     fn vector_round_caps_and_straight_alpha_are_preserved() {
         let tree = r##"
 E: vector
@@ -1218,7 +1297,7 @@ E: vector
     A: android:strokeWidth(5)=20
     A: android:strokeLineCap(6)=1
 "##;
-        let image = render_xml_layer_image(tree).unwrap();
+        let image = render_xml_layer_image(tree, "").unwrap();
         // Left of the line's start, inside the round cap (a butt cap is empty).
         let pixel = image.get_pixel(48, 96);
         assert_eq!(pixel[0], 255);
@@ -1239,7 +1318,7 @@ E: vector
         A: android:pathData(0x01010405)="M8,23.5L24,10l16,13.5v15a2,2 0,0 1,-2 2h-9v-11h-10v11h-9a2,2 0,0 1,-2 -2z"
 "##;
 
-        let icon = render_xml_layer(xmltree).unwrap();
+        let icon = render_xml_layer(xmltree, "").unwrap();
         let decoded = image::load_from_memory(&icon).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (192, 192));
         assert_eq!(decoded.get_pixel(0, 0), image::Rgba([0, 106, 103, 255]));
