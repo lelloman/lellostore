@@ -215,3 +215,27 @@ fn local_trigger_trust_matches_producer_and_needs_no_socket() {
         agrees(&make(&invalid), false);
     }
 }
+
+#[test]
+fn accepts_aapt_generated_resource_names_and_rejects_malformed_names() {
+    for name in [
+        "drawable/$avd_hide_password__0",
+        "drawable/$mtrl_checkbox_button_checked_unchecked__0",
+        "drawable/generated$name",
+    ] {
+        let mut policy = descriptor();
+        policy["installed"]["ledgerReservations"][name] = json!("0x7f020001");
+        agrees(&envelope(policy), true);
+    }
+    for name in [
+        "drawable/$bad/name",
+        "drawable/$bad:foo",
+        "drawable/../bad",
+        "drawable/9bad",
+        "drawable/",
+    ] {
+        let mut policy = descriptor();
+        policy["installed"]["ledgerReservations"][name] = json!("0x7f020001");
+        agrees(&envelope(policy), false);
+    }
+}

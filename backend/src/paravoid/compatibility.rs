@@ -199,10 +199,10 @@ pub(super) fn resource_name(name: &str) -> bool {
         && name
             .as_bytes()
             .first()
-            .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+            .is_some_and(|b| b.is_ascii_alphabetic() || b"_$".contains(b))
         && name
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"_.".contains(&b))
+            .all(|b| b.is_ascii_alphanumeric() || b"_.$".contains(&b))
 }
 fn check_ledger(bytes: &[u8], app: &str, reservations: &BTreeMap<String, String>) -> Result<()> {
     let json = parse_json(bytes, LEDGER_LIMIT)?;
