@@ -38,3 +38,18 @@ fn container_enables_frontend_embedding_for_release_builds() {
         "both cached and final release builds must use the same frontend feature",
     );
 }
+
+#[test]
+fn container_provides_the_dvpk_encoder_without_enabling_it() {
+    let dockerfile = include_str!("../../Dockerfile");
+
+    assert!(dockerfile.contains("bsdiff4==1.2.6"));
+    assert!(dockerfile
+        .contains("ENV PARAVOID_DVPK_ENCODER=/usr/local/lib/lellostore/vendor/paravoid/dvpk.py"));
+    assert!(dockerfile.contains("ENV PARAVOID_DVPK_PYTHON=/opt/dvpk/bin/python"));
+    assert!(
+        !dockerfile.contains("PARAVOID_DVPK_GENERATION")
+            && !dockerfile.contains("PARAVOID_DVPK_ADVERTISING"),
+        "delta generation and advertising are operator decisions",
+    );
+}

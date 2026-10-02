@@ -51,6 +51,74 @@ pub async fn cleanup(pool: &SqlitePool, storage: &Path, now: i64) -> Result<u64,
             .await?;
     }
     removed += cleanup_orphans(pool, storage, now).await?;
+    removed += cleanup_deltas(pool, storage, now).await?;
+    Ok(removed)
+}
+
+/// Patches are optional derived artifacts. Superseded targets retire their
+/// patches; files are removed only after a grace period for outstanding heads
+/// and transfers. Full archives are never removed because a patch exists.
+async fn cleanup_deltas(pool: &SqlitePool, storage: &Path, now: i64) -> Result<u64, AppError> {
+    crate::db::dvpk::retire_superseded(pool, now).await?;
+    crate::db::dvpk::skip_orphaned(pool, now).await?;
+    let mut removed = 0;
+    for delta in crate::db::dvpk::expired_retired(pool, now).await? {
+        let Some(path) = delta.patch_path.as_deref() else {
+            continue;
+        };
+        let relative = Path::new(path);
+        if !relative.starts_with("dvpks")
+            || !relative
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(AppError::Internal("Invalid retired delta path".into()));
+        }
+        let mut tx = pool.begin().await?;
+        // Mark first, then unlink only bytes no servable relationship shares.
+        sqlx::query("UPDATE vpk_deltas SET file_removed = 1, updated_at = ? WHERE id = ? AND file_removed = 0")
+            .bind(now).bind(&delta.id).execute(&mut *tx).await?;
+        let shared: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vpk_deltas WHERE patch_path = ? AND file_removed = 0 AND state IN ('ready','retired'))")
+            .bind(path).fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        if !shared {
+            match tokio::fs::remove_file(storage.join(relative)).await {
+                Ok(()) => removed += 1,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    // Reconcile patch files an interrupted publication left unreferenced, and
+    // staging copies, after the same grace as other transfer leftovers.
+    removed += cleanup_unreferenced_patches(pool, storage, now).await?;
+    // Worker directories are removed after each job; leftovers of a crash are
+    // removed once no job with that ID is running.
+    let work = storage.join(crate::services::dvpk::WORK_NAMESPACE);
+    let mut entries = match tokio::fs::read_dir(&work).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(removed),
+        Err(error) => return Err(error.into()),
+    };
+    while let Some(entry) = entries.next_entry().await? {
+        let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let info = tokio::fs::symlink_metadata(entry.path()).await?;
+        if uuid::Uuid::parse_str(&id).is_err() || !info.is_dir() {
+            continue;
+        }
+        let running: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM vpk_deltas WHERE id = ? AND state = 'running')",
+        )
+        .bind(&id)
+        .fetch_one(pool)
+        .await?;
+        if !running {
+            tokio::fs::remove_dir_all(entry.path()).await?;
+            removed += 1;
+        }
+    }
     Ok(removed)
 }
 
@@ -144,6 +212,14 @@ pub async fn cleanup_replaced(pool: &SqlitePool, storage: &Path) -> Result<u64, 
             .bind(&path)
             .fetch_one(&mut *tx)
             .await?;
+            // Pending delta generation keeps its verified inputs; retry later.
+            if table == "vpk_releases" {
+                let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vpk_deltas d JOIN vpk_releases r ON r.id IN (d.base_vpk_id, d.target_vpk_id) WHERE r.archive_path = ? AND d.state IN ('queued','running'))")
+                    .bind(&path).fetch_one(&mut *tx).await?;
+                if pending {
+                    continue;
+                }
+            }
             if !referenced {
                 match tokio::fs::remove_file(storage.join(&path)).await {
                     Ok(()) => removed += 1,
@@ -155,6 +231,59 @@ pub async fn cleanup_replaced(pool: &SqlitePool, storage: &Path) -> Result<u64, 
                 .bind(&path).execute(&mut *tx).await?;
         }
         tx.commit().await?;
+    }
+    Ok(removed)
+}
+
+async fn cleanup_unreferenced_patches(
+    pool: &SqlitePool,
+    storage: &Path,
+    now: i64,
+) -> Result<u64, AppError> {
+    let mut entries = match tokio::fs::read_dir(storage.join("dvpks")).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.into()),
+    };
+    let mut removed = 0;
+    while let Some(entry) = entries.next_entry().await? {
+        if removed >= 500 {
+            break;
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let canonical = name.strip_suffix(".dvpk").is_some_and(|hash| {
+            hash.len() == 64
+                && hash
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        });
+        if !canonical && !name.starts_with(".tmp") {
+            continue;
+        }
+        let info = tokio::fs::symlink_metadata(entry.path()).await?;
+        let modified = info
+            .modified()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| AppError::Internal("Invalid patch file timestamp".into()))?
+            .as_secs();
+        if !info.is_file() || modified > now.saturating_sub(7 * 86400).max(0) as u64 {
+            continue;
+        }
+        if canonical {
+            let referenced: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM vpk_deltas WHERE patch_path = ? AND file_removed = 0)",
+            )
+            .bind(format!("dvpks/{name}"))
+            .fetch_one(pool)
+            .await?;
+            if referenced {
+                continue;
+            }
+        }
+        tokio::fs::remove_file(entry.path()).await?;
+        removed += 1;
     }
     Ok(removed)
 }

@@ -41,11 +41,90 @@ Every request rechecks revocation, grant scope and the acquiring user's live dir
 or group access. Conditional and ranged requests have the same checks. A USB copy
 belongs to the authenticated acquiring controller user.
 
-Heads are cached as exact signed bytes by contract/revision/request scope. Expiry
-refresh increments the revision; publication, withdrawal and stream changes invalidate
-previous head selection. Retired streams return `shell-update-required`. Historic
+Heads are cached as exact signed bytes by contract/revision/request scope. Each
+discovery epoch owns two revisions: `R` for the full-only representation and `R + 1`
+for DVPK-capable shells, and every new epoch starts above both. Expiry refresh,
+publication, withdrawal, stream changes, delta readiness or removal, and toggling
+delta advertising start a new epoch, so no observed revision is re-signed with
+different bytes. Retired streams return `shell-update-required`. Historic
 published payload identities remain downloadable for outstanding signed references.
 Grant revocation blocks future delivery, not already accepted offline execution.
+
+## DVPK delta delivery
+
+Publishers still upload only the embedded-payload shell APK (or a VPK); there is no
+DVPK upload. When generation is enabled, every verified payload draft and every
+publication enqueues direct `bsdiff-deflate-v1` patches from the most recent
+earlier published, still-stored payloads of the same app and shell contract
+(`PARAVOID_DVPK_RETAINED_BASES`, default 3). Jobs are
+durable and deduplicated by contract, exact base/target archive hashes and
+algorithm. Publication never waits for them, and no job outcome changes a draft,
+review, publication or signed VPK.
+
+A single lower-priority worker runs the vendored reference encoder
+(`scripts/vendor/paravoid/dvpk.py`) as a subprocess on the immutable verified
+archives, with address-space, CPU, output-file-size and wall-clock limits. It
+rechecks input hashes, checks the encoder report against the inputs and output,
+independently reconstructs the exact target with the Store's bounded Rust decoder,
+requires the shell's 20% savings threshold and the format bounds, and only then
+publishes `dvpks/<patchSha256>.dvpk` (synced temporary file, immutable link,
+read-back hash check) and marks the patch `ready`. Insufficient savings, oversized
+inputs or patches and resource-limit kills are `skipped`; encoder crashes retry
+twice with backoff before `failed`; mismatches fail immediately. Interrupted claims
+are requeued on restart. Superseded base archives are kept from cleanup while a job
+that needs them is queued or running.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PARAVOID_DVPK_GENERATION` | off | `true` starts the worker and enqueues jobs |
+| `PARAVOID_DVPK_ADVERTISING` | off | `true` offers ready patches in capable heads |
+| `PARAVOID_DVPK_ENCODER` | Docker: vendored `dvpk.py` | Required when generation is on |
+| `PARAVOID_DVPK_PYTHON` | `python3`; Docker: `/opt/dvpk/bin/python` | Interpreter with `bsdiff4==1.2.6` |
+| `PARAVOID_DVPK_RETAINED_BASES` | 3 (1–16) | Replaced published VPKs kept as delta bases |
+| `PARAVOID_DVPK_MAX_INPUT_BYTES` | 256 MiB | Larger base or target archives are skipped |
+| `PARAVOID_DVPK_MEMORY_LIMIT_BYTES` | 4 GiB | Encoder address-space limit |
+| `PARAVOID_DVPK_TIMEOUT_SECS` | 900 | Encoder wall-clock and CPU limit |
+
+Shells negotiate with `X-Paravoid-Dvpk: bsdiff-deflate-v1` and may send
+`X-Paravoid-Base-Sha256`. Duplicate negotiation headers and malformed base hints
+are rejected; unknown capability values get the full-only head. Full-only heads
+never contain `deltas`, because older shells reject unknown signed fields. With
+advertising on, capable heads for a published target list up to 16 ready patches
+in `release.deltas`, ordered by base payload version, and let the shell choose its
+base; the base hint is only recorded as a metric. With advertising off, capable
+shells receive the identical full-only head. Heads vary by `Authorization`,
+`X-Paravoid-Dvpk` and `X-Paravoid-Base-Sha256`.
+
+Patches are served at
+`v1/apps/<applicationId>/releases/<targetReleaseId>/deltas/<baseArchiveSha256>/payload.dvpk`
+with the target archive's authorization, grant and publication checks, bound to that
+target and contract. Responses use `application/vnd.paravoid.dvpk`, identity
+encoding, the patch hash as ETag, exact lengths and the full-archive Range/If-Range/416
+behavior. Unknown relationships return 404. A missing or truncated stored patch is
+marked failed and withdrawn through a new revision; shells fall back to the full
+VPK, which remains served. Patches of superseded targets retire and stay downloadable
+for 24 hours before their files are removed.
+
+Retention while generation is on: publishing payload N withdraws older payloads of
+that contract but keeps the files of the `PARAVOID_DVPK_RETAINED_BASES` most recent
+previously published ones (archived payloads count towards that window and are
+always kept), so devices up to that many payloads behind get a direct patch. Older
+replaced payloads and never-published lower drafts are removed as before, and each
+publication slides the window. Patches into withdrawn targets (superseded or rolled
+back) retire, including while that target is kept as a base. With generation off,
+replaced payloads are removed immediately, as before. Storage cost is up to that
+many extra full archives per shell contract plus the current target's patches.
+`vpk_deltas` rows are kept as history.
+
+Roll out with generation on and advertising off, inspect the app's **Deltas** tab
+(state, failures, sizes, savings, encoder version and duration; verified patches are
+downloadable at their endpoint for inspection), then enable advertising. Disabling
+advertising later removes offers through fresh revisions. Metrics:
+`lellostore_dvpk_jobs_total{outcome}`, `lellostore_dvpk_generation_seconds`,
+`lellostore_dvpk_input_bytes_total`, `lellostore_paravoid_heads_total{representation,base_hint}`,
+`lellostore_paravoid_transfers_total{kind,status}` and
+`lellostore_paravoid_transfer_bytes_total{kind}`. Client-side fallback reasons are
+not visible to the Store.
 
 ## Administration and publisher
 
@@ -124,6 +203,16 @@ recover completed output by checking grant identity, developer signing entries a
 apksigner verification again.
 
 ## Verification performed
+
+`backend/tests/paravoid_dvpk.rs` covers DVPK generation outcomes and recovery,
+negotiation, revision epochs for upgrading shells, advertising rollout/rollback,
+keyed and public patch transport, ranges and retention with a stand-in encoder.
+`scripts/check-paravoid-dvpk.sh ../paravoid-android` additionally runs the pinned
+reference encoder on developer-signed VPKs, reconstructs them with Paravoid's Java
+decoder, verifies heads with the current and pre-DVPK upstream verifiers, and checks
+that an exactly reconstructed incompatible target still fails full verification.
+It needs Java, OpenSSL and either network access for `bsdiff4==1.2.6` or
+`PARAVOID_DVPK_PYTHON`. Store-backed installed-device DVPK acceptance is still open.
 
 Backend tests cover signed head identity/expiry/retirement, monotonic VPK publication,
 revoked or removed access before 304/206, and incomplete-verification rejection.

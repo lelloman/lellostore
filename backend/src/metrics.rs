@@ -35,6 +35,31 @@ lazy_static! {
     pub static ref NOTIFICATION_BYTES: IntGauge = IntGauge::new("lellostore_notification_pending_bytes", "Pending notification payload bytes").unwrap();
     pub static ref NOTIFICATION_OLDEST: IntGauge = IntGauge::new("lellostore_notification_oldest_pending_seconds", "Age of oldest pending delivery").unwrap();
 
+    // DVPK delta delivery. Labels are bounded; archive hashes are never labels.
+    pub static ref DVPK_JOBS: prometheus::IntCounterVec = prometheus::IntCounterVec::new(
+        Opts::new("lellostore_dvpk_jobs_total", "DVPK generation job outcomes"),
+        &["outcome"]
+    ).unwrap();
+    pub static ref DVPK_GENERATION_SECONDS: prometheus::Histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new("lellostore_dvpk_generation_seconds", "DVPK generation and verification duration")
+            .buckets(vec![1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0])
+    ).unwrap();
+    pub static ref DVPK_INPUT_BYTES: prometheus::IntCounter = prometheus::IntCounter::new(
+        "lellostore_dvpk_input_bytes_total", "Base plus target archive bytes processed by the DVPK worker"
+    ).unwrap();
+    pub static ref PARAVOID_HEADS: prometheus::IntCounterVec = prometheus::IntCounterVec::new(
+        Opts::new("lellostore_paravoid_heads_total", "Signed discovery responses by representation and base hint"),
+        &["representation", "base_hint"]
+    ).unwrap();
+    pub static ref PARAVOID_TRANSFERS: prometheus::IntCounterVec = prometheus::IntCounterVec::new(
+        Opts::new("lellostore_paravoid_transfers_total", "Paravoid artifact responses by kind and status"),
+        &["kind", "status"]
+    ).unwrap();
+    pub static ref PARAVOID_TRANSFER_BYTES: prometheus::IntCounterVec = prometheus::IntCounterVec::new(
+        Opts::new("lellostore_paravoid_transfer_bytes_total", "Paravoid artifact bytes selected for transfer by kind"),
+        &["kind"]
+    ).unwrap();
+
     // Business Metrics
     pub static ref APPS_TOTAL: IntGauge = IntGauge::new(
         "lellostore_apps_total",
@@ -69,6 +94,20 @@ pub fn register_metrics() {
         .register(Box::new(APP_VERSIONS_TOTAL.clone()))
         .unwrap();
     REGISTRY.register(Box::new(STORAGE_BYTES.clone())).unwrap();
+    REGISTRY.register(Box::new(DVPK_JOBS.clone())).unwrap();
+    REGISTRY
+        .register(Box::new(DVPK_GENERATION_SECONDS.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(DVPK_INPUT_BYTES.clone()))
+        .unwrap();
+    REGISTRY.register(Box::new(PARAVOID_HEADS.clone())).unwrap();
+    REGISTRY
+        .register(Box::new(PARAVOID_TRANSFERS.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(PARAVOID_TRANSFER_BYTES.clone()))
+        .unwrap();
 }
 
 pub fn encode_metrics() -> String {

@@ -1,8 +1,9 @@
 use super::AppState;
 use crate::{
-    db::paravoid::{Contract, Stream, VpkRelease},
+    db::paravoid::{Contract, Stream, VpkRelease, EPOCH_REVISIONS},
     error::AppError,
-    paravoid::MAX_INTEGER,
+    metrics,
+    paravoid::{dvpk::ALGORITHM, MAX_INTEGER},
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::json;
@@ -115,6 +116,48 @@ async fn authorize(
     sqlx::query("UPDATE paravoid_grants SET last_used_at = ?, request_count = request_count + 1 WHERE id = ?").bind(now).bind(id).execute(conn).await?;
     Ok(())
 }
+const DVPK_HEADER: &str = "x-paravoid-dvpk";
+const BASE_HEADER: &str = "x-paravoid-base-sha256";
+const HEAD_VARY: &str = "Authorization, X-Paravoid-Dvpk, X-Paravoid-Base-Sha256";
+
+fn is_hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// DVPK capability negotiation. The base hash is only an advisory selection
+/// hint: never a grant, entitlement or artifact lookup key.
+struct Negotiation {
+    capable: bool,
+    base: Option<String>,
+}
+impl Negotiation {
+    fn parse(headers: &HeaderMap) -> Result<Self, AppError> {
+        let single = |name: &str| -> Result<Option<&HeaderValue>, AppError> {
+            let mut values = headers.get_all(name).iter();
+            let first = values.next();
+            if values.next().is_some() {
+                return Err(AppError::BadRequest(
+                    "Duplicate delta negotiation header".into(),
+                ));
+            }
+            Ok(first)
+        };
+        // Unknown capability values receive the full-only representation.
+        let capable = single(DVPK_HEADER)?.is_some_and(|v| v.as_bytes() == ALGORITHM.as_bytes());
+        let base = match single(BASE_HEADER)? {
+            None => None,
+            Some(value) => match value.to_str() {
+                Ok(hash) if is_hash(hash) => Some(hash.to_owned()),
+                _ => return Err(AppError::BadRequest("Malformed base archive hint".into())),
+            },
+        };
+        Ok(Self { capable, base })
+    }
+}
+
 fn headers_ok(headers: &HeaderMap) -> Result<(), AppError> {
     if let Some(encoding) = headers.get(header::ACCEPT_ENCODING) {
         if encoding.to_str().unwrap_or("") != "identity" {
@@ -133,6 +176,10 @@ pub async fn head(
 ) -> Result<Response, AppError> {
     headers_ok(&headers)?;
     let scope = Scope::parse(query)?;
+    let negotiation = Negotiation::parse(&headers)?;
+    let advertising = state.config.dvpk.advertising;
+    // Without advertising, capable shells share the full-only representation.
+    let capable = negotiation.capable && advertising;
     let signing = state
         .paravoid_signing
         .as_ref()
@@ -169,19 +216,47 @@ pub async fn head(
             "Server clock precedes authenticated time".into(),
         ));
     }
-    if stream.expires_at <= now {
-        if stream.revision as u64 >= MAX_INTEGER {
+    // A new epoch allocates the full-only revision R and the capable revision
+    // R + 1, both above every revision of earlier epochs. Toggling advertising
+    // starts a new epoch, so no observed revision is ever re-signed differently.
+    if stream.expires_at <= now || stream.dvpk_advertising != advertising {
+        if stream.revision as u64 + 2 * EPOCH_REVISIONS as u64 > MAX_INTEGER {
             return Err(AppError::Config("Stream revision exhausted".into()));
         }
-        stream.revision = (stream.revision + 1).max(policy.minimum_head_revision() as i64);
+        stream.revision =
+            (stream.revision + EPOCH_REVISIONS).max(policy.minimum_head_revision() as i64);
         stream.issued_at = now.max(stream.issued_at);
         stream.expires_at = stream.issued_at + 3600;
-        sqlx::query("UPDATE paravoid_streams SET revision = ?, issued_at = ?, expires_at = ? WHERE package_name = ? AND contract_id = ?")
-            .bind(stream.revision).bind(stream.issued_at).bind(stream.expires_at).bind(&package).bind(&scope.contract).execute(&mut *tx).await?;
+        stream.dvpk_advertising = advertising;
+        sqlx::query("UPDATE paravoid_streams SET revision = ?, issued_at = ?, expires_at = ?, dvpk_advertising = ? WHERE package_name = ? AND contract_id = ?")
+            .bind(stream.revision).bind(stream.issued_at).bind(stream.expires_at).bind(advertising).bind(&package).bind(&scope.contract).execute(&mut *tx).await?;
     }
-    let scope_key = json!({"sdk":scope.sdk,"abis":scope.abis}).to_string();
+    let (revision, scope_key) = if capable {
+        (
+            stream.revision + 1,
+            json!({"sdk":scope.sdk,"abis":scope.abis,"dvpk":ALGORITHM}).to_string(),
+        )
+    } else {
+        (
+            stream.revision,
+            json!({"sdk":scope.sdk,"abis":scope.abis}).to_string(),
+        )
+    };
+    let base_hint = match (&negotiation.base, capable) {
+        (None, _) => "absent",
+        (Some(_), false) => "ignored",
+        (Some(base), true) => {
+            let ready: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vpk_deltas WHERE package_name = ? AND contract_id = ? AND base_archive_sha256 = ? AND state = 'ready')")
+                .bind(&package).bind(&scope.contract).bind(base).fetch_one(&mut *tx).await?;
+            if ready {
+                "ready"
+            } else {
+                "unmatched"
+            }
+        }
+    };
     let cached:Option<(Vec<u8>,String)>=sqlx::query_as("SELECT envelope,sha256 FROM paravoid_heads WHERE package_name = ? AND contract_id = ? AND revision = ? AND scope = ?")
-        .bind(&package).bind(&scope.contract).bind(stream.revision).bind(&scope_key).fetch_optional(&mut *tx).await?;
+        .bind(&package).bind(&scope.contract).bind(revision).bind(&scope_key).fetch_optional(&mut *tx).await?;
     let (envelope, hash) = if let Some(cached) = cached {
         cached
     } else {
@@ -208,17 +283,31 @@ pub async fn head(
         } else {
             "no-compatible-release"
         };
-        let release=selected.map(|r|json!({"releaseId":r.release_id,"payloadVersion":r.payload_version,"manifestSha256":r.manifest_sha256,"archiveSha256":r.archive_sha256,"archiveSize":r.archive_size}));
-        let body = json!({"version":1,"applicationId":package,"shellContractId":scope.contract,"channel":scope.channel,"sdk":scope.sdk,"abis":scope.abis,"runtimeAbi":1,"formatVersion":1,"headRevision":stream.revision,"issuedAt":stream.issued_at,"expiresAt":stream.expires_at,"status":status,"release":release});
+        let mut release = None;
+        if let Some(r) = selected {
+            let mut value = json!({"releaseId":r.release_id,"payloadVersion":r.payload_version,"manifestSha256":r.manifest_sha256,"archiveSha256":r.archive_sha256,"archiveSize":r.archive_size});
+            // Full-only shells reject unknown signed fields: never send `deltas`.
+            if capable {
+                let offers = crate::db::dvpk::ready_offers(&mut tx, &r).await?;
+                if !offers.is_empty() {
+                    value["deltas"] = offers.iter().map(|d| json!({"algorithm":d.algorithm,"baseArchiveSha256":d.base_archive_sha256,"baseArchiveSize":d.base_archive_size,"patchSha256":d.patch_sha256,"patchSize":d.patch_size})).collect();
+                }
+            }
+            release = Some(value);
+        }
+        let body = json!({"version":1,"applicationId":package,"shellContractId":scope.contract,"channel":scope.channel,"sdk":scope.sdk,"abis":scope.abis,"runtimeAbi":1,"formatVersion":1,"headRevision":revision,"issuedAt":stream.issued_at,"expiresAt":stream.expires_at,"status":status,"release":release});
         let envelope = signing
             .sign_head(&body, &contract.policy()?, scope.sdk as u64, &scope.abis)
             .map_err(|_| AppError::Config("Cannot sign a head trusted by this shell".into()))?;
         let hash = hex::encode(Sha256::digest(&envelope));
         sqlx::query("INSERT INTO paravoid_heads(package_name,contract_id,revision,scope,envelope,sha256,expires_at) VALUES (?,?,?,?,?,?,?)")
-            .bind(&package).bind(&scope.contract).bind(stream.revision).bind(scope_key).bind(&envelope).bind(&hash).bind(stream.expires_at).execute(&mut *tx).await?;
+            .bind(&package).bind(&scope.contract).bind(revision).bind(scope_key).bind(&envelope).bind(&hash).bind(stream.expires_at).execute(&mut *tx).await?;
         (envelope, hash)
     };
     tx.commit().await?;
+    metrics::PARAVOID_HEADS
+        .with_label_values(&[if capable { "dvpk" } else { "full" }, base_hint])
+        .inc();
     let etag = format!("\"{hash}\"");
     let unchanged = headers
         .get(header::IF_NONE_MATCH)
@@ -243,7 +332,7 @@ pub async fn head(
     );
     response
         .headers_mut()
-        .insert(header::VARY, HeaderValue::from_static("Authorization"));
+        .insert(header::VARY, HeaderValue::from_static(HEAD_VARY));
     Ok(response)
 }
 pub async fn download(
@@ -272,7 +361,7 @@ pub async fn download(
     .await?;
     authorize(&mut tx, &contract, &headers).await?;
     tx.commit().await?;
-    super::file_response::serve_immutable_file(
+    let response = super::file_response::serve_immutable_file(
         state.config.storage_path.join(&release.archive_path),
         "application/vnd.paravoid.vpk",
         format!("{}.vpk", release.release_id),
@@ -280,7 +369,104 @@ pub async fn download(
         release.archive_size as u64,
         &headers,
     )
-    .await
+    .await;
+    record_transfer("full", &response);
+    response
+}
+
+fn record_transfer(kind: &str, response: &Result<Response, AppError>) {
+    let Ok(response) = response else {
+        metrics::PARAVOID_TRANSFERS
+            .with_label_values(&[kind, "error"])
+            .inc();
+        return;
+    };
+    metrics::PARAVOID_TRANSFERS
+        .with_label_values(&[kind, response.status().as_str()])
+        .inc();
+    if let Some(length) = response
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        metrics::PARAVOID_TRANSFER_BYTES
+            .with_label_values(&[kind])
+            .inc_by(length);
+    }
+}
+
+/// A direct patch into an authorized target. Authorization, publication and
+/// retention checks are those of the full target archive; the lookup is bound
+/// to that target and contract, never to a global patch or base hash.
+pub async fn download_delta(
+    State(state): State<AppState>,
+    Path((package, id, base)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    headers_ok(&headers)?;
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "UPDATE apps SET publication_revision = publication_revision WHERE package_name = ?",
+    )
+    .bind(&package)
+    .execute(&mut *tx)
+    .await?;
+    let release:VpkRelease=sqlx::query_as("SELECT v.* FROM vpk_releases v JOIN published_vpk_identities p ON p.package_name = v.package_name AND p.release_id = v.release_id WHERE v.package_name = ? AND v.release_id = ? AND v.validation_state = 'verified'")
+        .bind(&package).bind(&id).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::NotFound("Payload not found".into()))?;
+    let contract: Contract = sqlx::query_as(
+        "SELECT * FROM paravoid_contracts WHERE package_name = ? AND contract_id = ?",
+    )
+    .bind(&package)
+    .bind(&release.contract_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    authorize(&mut tx, &contract, &headers).await?;
+    let delta = if is_hash(&base) {
+        crate::db::dvpk::servable(&mut tx, &release, &base).await?
+    } else {
+        None
+    };
+    tx.commit().await?;
+    let delta = delta.ok_or_else(|| AppError::NotFound("Delta not found".into()))?;
+    let (Some(relative), Some(sha256), Some(size)) =
+        (&delta.patch_path, &delta.patch_sha256, delta.patch_size)
+    else {
+        return Err(AppError::Internal("Incomplete ready delta".into()));
+    };
+    let relative = std::path::Path::new(relative);
+    if !relative.starts_with("dvpks")
+        || !relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return Err(AppError::Internal("Invalid stored delta path".into()));
+    }
+    let path = state.config.storage_path.join(relative);
+    let stored = tokio::fs::metadata(&path).await.ok().map(|m| m.len());
+    if stored != Some(size as u64) {
+        // Never keep advertising a missing or truncated optional patch; the
+        // shell falls back to the full archive.
+        tracing::warn!(delta = %delta.id, "Stored DVPK is missing or has the wrong size");
+        crate::db::dvpk::discard(
+            &state.db,
+            &delta,
+            "Stored patch is missing or has the wrong size",
+        )
+        .await?;
+        return Err(AppError::NotFound("Delta not found".into()));
+    }
+    let response = super::file_response::serve_immutable_file(
+        path,
+        "application/vnd.paravoid.dvpk",
+        format!("{}-{}.dvpk", release.release_id, &base[..12]),
+        sha256,
+        size as u64,
+        &headers,
+    )
+    .await;
+    record_transfer("delta", &response);
+    response
 }
 
 /// Store adapter for the transport-neutral Paravoid update hint protocol.

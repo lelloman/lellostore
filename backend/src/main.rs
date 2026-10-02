@@ -173,6 +173,16 @@ async fn run() -> Result<(), BoxError> {
             }
         })?;
     }
+    lellostore_backend::db::dvpk::set_generation_enabled(config.dvpk.generation);
+    lellostore_backend::db::dvpk::set_retained_bases(config.dvpk.retained_bases as i64);
+    if config.dvpk.generation {
+        let worker = lellostore_backend::services::dvpk::Worker::new(
+            db.clone(),
+            config.storage_path.clone(),
+            config.dvpk.clone(),
+        )?;
+        lifecycle.service("dvpk-generation", worker.run(lifecycle.shutdown()))?;
+    }
     lifecycle.service(
         "upload-validation",
         lellostore_backend::services::upload_jobs::run(

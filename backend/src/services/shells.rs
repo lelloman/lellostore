@@ -136,7 +136,10 @@ pub async fn register(
             super::vpks::insert_release(conn, package, &policy.contract_id, checked, true, true)
                 .await?;
         sqlx::query("UPDATE paravoid_installers SET embedded_vpk_id=? WHERE package_name=? AND installer_version=?")
-            .bind(id).bind(package).bind(version).execute(&mut *conn).await?;
+            .bind(&id).bind(package).bind(version).execute(&mut *conn).await?;
+        // Optional deltas are generated asynchronously; the draft and its review
+        // never wait for them.
+        crate::db::dvpk::enqueue_for_target(conn, package, &id).await?;
     }
     sqlx::query("UPDATE app_versions SET distribution_mode = 'paravoid' WHERE package_name = ? AND version_code = ?").bind(package).bind(version).execute(&mut *conn).await?;
     sqlx::query(

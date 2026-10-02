@@ -40,6 +40,10 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
         .route(
             "/api/paravoid/v1/apps/{package}/releases/{release}/payload.vpk",
             get(super::delivery::download),
+        )
+        .route(
+            "/api/paravoid/v1/apps/{package}/releases/{release}/deltas/{base}/payload.dvpk",
+            get(super::delivery::download_delta),
         );
 
     router = router.merge(crate::notifications::api::routes());

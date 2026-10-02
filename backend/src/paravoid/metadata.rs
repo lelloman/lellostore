@@ -269,6 +269,14 @@ impl InstalledPolicy {
                 if release.archive_size > MAX_ARCHIVE_BYTES {
                     return Err(Error::LimitExceeded);
                 }
+                // Present deltas must be an array; `null` is not an omission.
+                if authenticated.value["release"]
+                    .get("deltas")
+                    .is_some_and(|v| !v.is_array())
+                {
+                    return Err(Error::Malformed);
+                }
+                validate_deltas(release.deltas.as_deref().unwrap_or_default())?;
             }
             (HeadStatus::Available, None) => return Err(Error::Malformed),
             (_, Some(_)) => return Err(Error::Malformed),
@@ -311,6 +319,32 @@ impl InstalledPolicy {
             authenticated,
         })
     }
+}
+
+/// Delta offers are delivery alternatives inside the signed release object.
+/// Unknown well-formed algorithms are accepted here and ignored by clients.
+fn validate_deltas(deltas: &[DeltaOffer]) -> Result<(), Error> {
+    if deltas.len() > super::dvpk::MAX_OFFERS {
+        return Err(Error::LimitExceeded);
+    }
+    let mut identities = HashSet::new();
+    for delta in deltas {
+        identifier(&delta.algorithm)?;
+        hash(&delta.base_archive_sha256)?;
+        hash(&delta.patch_sha256)?;
+        if delta.base_archive_size == 0 || delta.patch_size == 0 {
+            return Err(Error::Malformed);
+        }
+        if delta.base_archive_size > MAX_ARCHIVE_BYTES
+            || delta.patch_size > super::dvpk::MAX_PATCH_BYTES
+        {
+            return Err(Error::LimitExceeded);
+        }
+        if !identities.insert((&delta.algorithm, &delta.base_archive_sha256)) {
+            return Err(Error::Malformed);
+        }
+    }
+    Ok(())
 }
 
 fn validate_abis(abis: &[String]) -> Result<(), Error> {
@@ -399,6 +433,17 @@ pub struct ArchiveOffer {
     pub manifest_sha256: String,
     pub archive_sha256: String,
     pub archive_size: u64,
+    #[serde(default)]
+    pub deltas: Option<Vec<DeltaOffer>>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeltaOffer {
+    pub algorithm: String,
+    pub base_archive_sha256: String,
+    pub base_archive_size: u64,
+    pub patch_sha256: String,
+    pub patch_size: u64,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

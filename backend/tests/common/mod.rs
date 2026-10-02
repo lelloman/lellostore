@@ -28,11 +28,11 @@ pub async fn create_test_app() -> (TempDir, Router) {
 }
 
 pub async fn create_test_context() -> TestContext {
-    create_test_context_inner(true, None).await
+    create_test_context_inner(true, None, Default::default()).await
 }
 
 pub async fn create_fail_closed_test_app() -> (TempDir, Router) {
-    let ctx = create_test_context_inner(false, None).await;
+    let ctx = create_test_context_inner(false, None, Default::default()).await;
     (ctx.temp_dir, ctx.router)
 }
 
@@ -40,11 +40,20 @@ pub async fn create_fail_closed_test_app() -> (TempDir, Router) {
 pub async fn create_paravoid_test_context(
     signing: Arc<lellostore_backend::paravoid::signing::OnlineSigning>,
 ) -> TestContext {
-    create_test_context_inner(true, Some(signing)).await
+    create_test_context_inner(true, Some(signing), Default::default()).await
+}
+
+#[allow(dead_code)]
+pub async fn create_dvpk_test_context(
+    signing: Arc<lellostore_backend::paravoid::signing::OnlineSigning>,
+    dvpk: lellostore_backend::config::DvpkConfig,
+) -> TestContext {
+    create_test_context_inner(true, Some(signing), dvpk).await
 }
 async fn create_test_context_inner(
     allow_unauthenticated_for_tests: bool,
     signing: Option<Arc<lellostore_backend::paravoid::signing::OnlineSigning>>,
+    dvpk: lellostore_backend::config::DvpkConfig,
 ) -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
@@ -87,6 +96,7 @@ async fn create_test_context_inner(
         bundletool_path: None,
         java_path: None,
         max_upload_size: 100 * 1024 * 1024, // 100MB for tests
+        dvpk,
     };
 
     // Initialize test services

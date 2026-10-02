@@ -44,3 +44,17 @@ it('archives a payload using the displayed revision', async () => {
   expect(api.setArtifactArchived).toHaveBeenCalledWith('example.app', 'vpks', 'draft', 7, true)
   expect(wrapper.emitted('changed')).toHaveLength(1)
 })
+
+it('shows optional delta diagnostics without release actions', async () => {
+  const withDeltas = { ...structuredClone(snapshot), dvpk: { generation: true, advertising: false }, deltas: [
+    { id: 'd1', contract_id: 'c', base_vpk_id: 'base', target_vpk_id: 'draft', base_payload_version: 1, base_archive_size: 10, target_archive_size: 1048576, state: 'ready', attempts: 1, patch_size: 262144, savings: 0.75, duration_ms: 1500, encoder_version: 'reference-dvpk.py:abc', patch_sha256: 'f'.repeat(64), file_removed: false },
+    { id: 'd2', contract_id: 'c', base_vpk_id: 'base', target_vpk_id: 'draft', base_payload_version: 0, base_archive_size: 10, target_archive_size: 10, state: 'skipped', attempts: 1, failure: 'Insufficient savings: 9 of 10 bytes', file_removed: false },
+  ] } as unknown as AppDistribution
+  vi.mocked(api.getAppDistribution).mockResolvedValue(withDeltas)
+  const wrapper = mountView(); await flushPromises()
+  ;(wrapper.vm as unknown as { section: string }).section = 'deltas'; await flushPromises()
+  expect(wrapper.text()).toContain('Generation: on · Offers to shells: off')
+  expect(wrapper.text()).toContain('75% smaller')
+  expect(wrapper.text()).toContain('Insufficient savings')
+  expect(wrapper.findAll('button').map(b => b.text())).toEqual(['Refresh'])
+})

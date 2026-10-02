@@ -260,6 +260,17 @@ export interface AppDistribution {
   streams: { contract_id: string; revision: number; status: string }[]
   grants: ParavoidGrant[]
   events: { id: number; action: string; actor_subject: string; created_at: string; revision: number }[]
+  deltas?: VpkDelta[]
+  dvpk?: { generation: boolean; advertising: boolean }
+}
+
+/** Optional derived DVPK patch and its generation job (diagnostics only). */
+export interface VpkDelta {
+  id: string; contract_id: string; base_vpk_id: string; target_vpk_id: string
+  base_payload_version: number; base_archive_size: number; target_archive_size: number
+  state: 'queued' | 'running' | 'ready' | 'skipped' | 'failed' | 'retired'
+  attempts: number; failure?: string | null; patch_sha256?: string | null; patch_size?: number | null
+  encoder_version?: string | null; duration_ms?: number | null; savings?: number | null; file_removed: boolean
 }
 
 export interface ParavoidConfiguration {

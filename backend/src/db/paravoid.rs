@@ -174,6 +174,7 @@ pub struct Stream {
     pub status: String,
     pub issued_at: i64,
     pub expires_at: i64,
+    pub dvpk_advertising: bool,
 }
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Grant {
@@ -254,7 +255,11 @@ pub async fn lock_app(
     }
     Ok(())
 }
-async fn invalidate_stream(
+/// Each discovery epoch owns two head revisions: `revision` for the full-only
+/// representation and `revision + 1` for DVPK-capable shells. Advancing by two
+/// keeps every newly signed body above both of the previous epoch's revisions.
+pub const EPOCH_REVISIONS: i64 = 2;
+pub(crate) async fn invalidate_stream(
     conn: &mut SqliteConnection,
     package: &str,
     contract: &str,
@@ -264,8 +269,8 @@ async fn invalidate_stream(
         .bind(contract)
         .execute(&mut *conn)
         .await?;
-    let updated = sqlx::query("UPDATE paravoid_streams SET revision = revision + 1, expires_at = 0 WHERE package_name = ? AND contract_id = ? AND revision < ?")
-        .bind(package).bind(contract).bind(MAX_INTEGER as i64).execute(conn).await?.rows_affected();
+    let updated = sqlx::query("UPDATE paravoid_streams SET revision = revision + ?, expires_at = 0 WHERE package_name = ? AND contract_id = ? AND revision < ?")
+        .bind(EPOCH_REVISIONS).bind(package).bind(contract).bind(MAX_INTEGER as i64 - 2 * EPOCH_REVISIONS).execute(conn).await?.rows_affected();
     if updated != 1 {
         return Err(AppError::Conflict("Stream revision exhausted".into()));
     }
@@ -323,6 +328,9 @@ pub(crate) async fn publish_tx(
     sqlx::query("INSERT INTO published_vpk_identities(package_name,payload_version,release_id,archive_sha256,manifest_sha256) VALUES (?,?,?,?,?)")
         .bind(package).bind(release.payload_version).bind(&release.release_id).bind(&release.archive_sha256).bind(&release.manifest_sha256).execute(&mut *conn).await?;
     sqlx::query("UPDATE vpk_releases SET publication_state = 'published', published_at = datetime('now') WHERE id = ?").bind(id).execute(&mut *conn).await?;
+    // Enqueue before replacement marks the previous archives removed; queued
+    // jobs keep their inputs from cleanup until they finish.
+    super::dvpk::enqueue_for_target(conn, package, id).await?;
     super::artifact_retention::replace_vpks(
         conn,
         package,

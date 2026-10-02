@@ -15,6 +15,9 @@ pub enum ConfigError {
 
     #[error("Invalid database URL: {0}")]
     InvalidDatabaseUrl(String),
+
+    #[error("Invalid value for {0}")]
+    InvalidValue(String),
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +35,79 @@ pub struct Config {
     pub bundletool_path: Option<PathBuf>,
     pub java_path: Option<PathBuf>,
     pub max_upload_size: u64,
+    pub dvpk: DvpkConfig,
+}
+
+/// Optional DVPK delta delivery. Generation and advertising are separate so
+/// patches can be inspected before any shell is offered one.
+#[derive(Debug, Clone)]
+pub struct DvpkConfig {
+    pub generation: bool,
+    pub advertising: bool,
+    /// Reference `dvpk.py` encoder, run with `python` in a bounded subprocess.
+    pub encoder: Option<PathBuf>,
+    pub python: PathBuf,
+    /// Earlier published archives kept after replacement as delta bases.
+    pub retained_bases: u64,
+    pub max_input_bytes: u64,
+    pub memory_limit_bytes: u64,
+    pub timeout_secs: u64,
+}
+impl Default for DvpkConfig {
+    fn default() -> Self {
+        Self {
+            generation: false,
+            advertising: false,
+            encoder: None,
+            python: PathBuf::from("python3"),
+            retained_bases: 3,
+            max_input_bytes: 256 * 1024 * 1024,
+            memory_limit_bytes: 4 * 1024 * 1024 * 1024,
+            timeout_secs: 900,
+        }
+    }
+}
+impl DvpkConfig {
+    fn from_env() -> Result<Self, ConfigError> {
+        let defaults = Self::default();
+        let number = |name: &str, default: u64| -> Result<u64, ConfigError> {
+            match std::env::var(name) {
+                Ok(value) => value
+                    .parse()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .ok_or_else(|| ConfigError::InvalidValue(name.to_string())),
+                Err(_) => Ok(default),
+            }
+        };
+        let config = Self {
+            generation: std::env::var("PARAVOID_DVPK_GENERATION").as_deref() == Ok("true"),
+            advertising: std::env::var("PARAVOID_DVPK_ADVERTISING").as_deref() == Ok("true"),
+            encoder: std::env::var("PARAVOID_DVPK_ENCODER")
+                .ok()
+                .map(PathBuf::from),
+            python: std::env::var("PARAVOID_DVPK_PYTHON")
+                .map(PathBuf::from)
+                .unwrap_or(defaults.python),
+            retained_bases: number("PARAVOID_DVPK_RETAINED_BASES", defaults.retained_bases)?,
+            max_input_bytes: number("PARAVOID_DVPK_MAX_INPUT_BYTES", defaults.max_input_bytes)?
+                .min(crate::paravoid::MAX_ARCHIVE_BYTES),
+            memory_limit_bytes: number(
+                "PARAVOID_DVPK_MEMORY_LIMIT_BYTES",
+                defaults.memory_limit_bytes,
+            )?,
+            timeout_secs: number("PARAVOID_DVPK_TIMEOUT_SECS", defaults.timeout_secs)?,
+        };
+        if config.retained_bases > 16 {
+            return Err(ConfigError::InvalidValue(
+                "PARAVOID_DVPK_RETAINED_BASES".into(),
+            ));
+        }
+        if config.generation && config.encoder.is_none() {
+            return Err(ConfigError::MissingEnvVar("PARAVOID_DVPK_ENCODER".into()));
+        }
+        Ok(config)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +173,7 @@ impl Config {
             bundletool_path,
             java_path,
             max_upload_size,
+            dvpk: DvpkConfig::from_env()?,
         })
     }
 }

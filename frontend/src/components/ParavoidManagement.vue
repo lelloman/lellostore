@@ -6,7 +6,7 @@
     <template v-if="data">
       <p class="mb-4">Publishing replaces older unarchived VPKs for the same shell contract and deletes their files. Archive a payload to keep it.</p>
       <p class="mb-4">Current distribution: {{ data.distribution_mode }}. Payload versions are independent of APK versions.</p>
-      <v-tabs v-model="section"><v-tab value="payloads">Payloads</v-tab><v-tab value="contracts">Shells and streams</v-tab><v-tab value="grants">Issued access</v-tab><v-tab value="history">History</v-tab></v-tabs>
+      <v-tabs v-model="section"><v-tab value="payloads">Payloads</v-tab><v-tab value="contracts">Shells and streams</v-tab><v-tab value="deltas">Deltas</v-tab><v-tab value="grants">Issued access</v-tab><v-tab value="history">History</v-tab></v-tabs>
       <section v-if="section === 'payloads'" class="mt-4">
         <v-alert v-if="!data.contracts.length" type="info">A shell APK must register its pinned contract before you can upload payloads.</v-alert>
         <div v-else>
@@ -26,6 +26,18 @@
           <v-card-text><p class="hash">{{ contract.contract_id }}</p><p>{{ contract.base_url }}</p><p>Stream: {{ streamFor(contract.contract_id)?.status ?? 'not published' }} · revision {{ streamFor(contract.contract_id)?.revision ?? 0 }}</p></v-card-text>
           <v-card-actions><v-btn :disabled="busy || contract.verification_state !== 'verified'" @click="pendingStream = contract.contract_id">{{ streamFor(contract.contract_id)?.status === 'retired' ? 'Reactivate stream' : 'Retire stream' }}</v-btn></v-card-actions>
         </v-card>
+      </section>
+      <section v-if="section === 'deltas'" class="mt-4">
+        <p class="mb-4">Delta patches are optional and generated automatically from earlier published payloads. Shells always fall back to the full payload, so a skipped or failed delta never blocks a release. Generation: {{ data.dvpk?.generation ? 'on' : 'off' }} · Offers to shells: {{ data.dvpk?.advertising ? 'on' : 'off' }}.</p>
+        <v-card v-for="delta in data.deltas ?? []" :key="delta.id" class="mb-3" :title="`Payload ${delta.base_payload_version} → ${payloadVersion(delta.target_vpk_id)}`" :subtitle="`${delta.state}${delta.file_removed ? ' · file removed' : ''} · ${delta.attempts} attempt(s)`">
+          <v-card-text>
+            <p v-if="delta.patch_size">{{ size(delta.patch_size) }} instead of {{ size(delta.target_archive_size) }}<span v-if="delta.savings != null"> · {{ Math.round(delta.savings * 100) }}% smaller</span></p>
+            <p v-if="delta.failure">{{ delta.failure }}</p>
+            <p v-if="delta.duration_ms != null">Generated in {{ (delta.duration_ms / 1000).toFixed(1) }} s<span v-if="delta.encoder_version"> · {{ delta.encoder_version }}</span></p>
+            <p v-if="delta.patch_sha256" class="hash">{{ delta.patch_sha256 }}</p>
+          </v-card-text>
+        </v-card>
+        <p v-if="!data.deltas?.length">No delta patches yet.</p>
       </section>
       <section v-if="section === 'grants'" class="mt-4">
         <p class="mb-4">Access is tied to the acquiring user's current app/group permissions. Revoking a grant blocks future requests, including resumed downloads. An already accepted offline payload keeps working. Request counts do not prove payload activation.</p>
@@ -74,6 +86,7 @@ const busy = ref(false), error = ref(''), notice = ref(''), section = ref('paylo
 const file = ref<File | File[] | null>(null), pendingStream = ref<string | null>(null), pendingGrant = ref<string | null>(null)
 const size = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MiB`
 const streamFor = (id: string) => data.value?.streams.find(s => s.contract_id === id)
+const payloadVersion = (id: string) => data.value?.releases.find(r => r.id === id)?.payload_version ?? '?'
 function installerVersions(contract: string, fallback: number) {
   const versions = data.value?.installers?.filter(i => i.contract_id === contract).map(i => i.installer_version)
   return versions?.length ? versions.join(', ') : String(fallback)

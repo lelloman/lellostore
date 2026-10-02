@@ -1,5 +1,6 @@
 pub mod aab;
 pub mod apk;
+pub mod dvpk;
 pub mod storage;
 pub mod upload;
 pub mod upload_jobs;

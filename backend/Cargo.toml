@@ -45,6 +45,8 @@ lazy_static = "1.4"
 
 # Utilities
 adler2 = "2"
+flate2 = "1"
+libc = "0.2"
 tempfile = "3"
 thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }

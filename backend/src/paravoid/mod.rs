@@ -6,6 +6,7 @@ pub mod archive;
 pub mod compatibility;
 mod components;
 pub use components::{ComponentEntry, ComponentInspection};
+pub mod dvpk;
 mod json;
 mod metadata;
 pub mod shell_policy;

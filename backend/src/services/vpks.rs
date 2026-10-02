@@ -63,6 +63,7 @@ pub async fn process_job(
     .execute(&mut *tx)
     .await?;
     let id = insert_release(&mut tx, package, contract_id, &checked, verified, false).await?;
+    crate::db::dvpk::enqueue_for_target(&mut tx, package, &id).await?;
     let result = serde_json::json!({"package_name":package,"vpk_id":id,"release_id":inspection.release.release_id,"payload_version":inspection.release.payload_version});
     sqlx::query("UPDATE upload_jobs SET status = 'ready', result_json = ?, updated_at = datetime('now') WHERE id = ? AND status = 'validating'")
         .bind(result.to_string()).bind(&job.id).execute(&mut *tx).await?;
@@ -75,12 +76,33 @@ pub(crate) async fn store_file(
     input: &Path,
     inspection: &crate::paravoid::archive::ArchiveInspection,
 ) -> Result<(), AppError> {
-    let relative = format!("vpks/{}.vpk", inspection.archive_sha256);
+    store_immutable(
+        storage,
+        "vpks",
+        "vpk",
+        input,
+        &inspection.archive_sha256,
+        inspection.archive_size,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Publish `input` at `<namespace>/<sha256>.<extension>` and return that path.
+pub(crate) async fn store_immutable(
+    storage: &Path,
+    namespace: &str,
+    extension: &str,
+    input: &Path,
+    sha256: &str,
+    size: u64,
+) -> Result<String, AppError> {
+    let relative = format!("{namespace}/{sha256}.{extension}");
     let destination = storage.join(&relative);
-    tokio::fs::create_dir_all(storage.join("vpks")).await?;
+    tokio::fs::create_dir_all(storage.join(namespace)).await?;
     // Link a fully synced temporary file into its immutable content address.
     // A crash during copying cannot leave a truncated canonical artifact.
-    let staging = tempfile::NamedTempFile::new_in(storage.join("vpks"))?;
+    let staging = tempfile::NamedTempFile::new_in(storage.join(namespace))?;
     tokio::fs::copy(input, staging.path()).await?;
     tokio::fs::File::open(staging.path())
         .await?
@@ -91,19 +113,20 @@ pub(crate) async fn store_file(
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error.into()),
     }
-    tokio::fs::File::open(storage.join("vpks"))
+    tokio::fs::File::open(storage.join(namespace))
         .await?
         .sync_all()
         .await?;
     // Never admit replaced/corrupt bytes at an existing content address.
-    if super::upload::calculate_sha256_file(&destination).await? != inspection.archive_sha256
-        || tokio::fs::metadata(&destination).await?.len() != inspection.archive_size
+    if super::upload::calculate_sha256_file(&destination).await? != sha256
+        || tokio::fs::metadata(&destination).await?.len() != size
     {
-        return Err(AppError::Conflict(
-            "Stored VPK failed checksum verification".into(),
-        ));
+        return Err(AppError::Conflict(format!(
+            "Stored {} failed checksum verification",
+            extension.to_uppercase()
+        )));
     }
-    Ok(())
+    Ok(relative)
 }
 
 pub(crate) async fn insert_release(

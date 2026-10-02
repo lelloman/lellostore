@@ -34,8 +34,22 @@ pub async fn overview(
     .bind(&package)
     .fetch_all(&state.db)
     .await?;
+    // Optional delta diagnostics; failures here never make a release unusable.
+    let deltas: Vec<_> = crate::db::dvpk::list(&state.db, &package)
+        .await?
+        .into_iter()
+        .map(|d| {
+            let savings = d
+                .patch_size
+                .map(|p| 1.0 - p as f64 / d.target_archive_size as f64);
+            let mut value = serde_json::to_value(&d).unwrap();
+            value["savings"] = serde_json::json!(savings);
+            value
+        })
+        .collect();
+    let dvpk = serde_json::json!({"generation":state.config.dvpk.generation,"advertising":state.config.dvpk.advertising});
     Ok(Json(
-        serde_json::json!({"distribution_mode":app.distribution_mode,"publication_revision":app.publication_revision,"contracts":contracts,"installers":installers,"releases":releases,"streams":streams,"grants":grants,"events":events}),
+        serde_json::json!({"distribution_mode":app.distribution_mode,"publication_revision":app.publication_revision,"contracts":contracts,"installers":installers,"releases":releases,"streams":streams,"grants":grants,"events":events,"deltas":deltas,"dvpk":dvpk}),
     ))
 }
 pub async fn upload(

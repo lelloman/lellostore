@@ -272,6 +272,11 @@ pub async fn serve_immutable_file(
         header::CACHE_CONTROL,
         HeaderValue::from_static("private, no-cache"),
     );
+    // Immutable artifacts are never recompressed in transit.
+    response.headers_mut().insert(
+        header::CONTENT_ENCODING,
+        HeaderValue::from_static("identity"),
+    );
     response
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("Authorization"));

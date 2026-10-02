@@ -79,9 +79,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     aapt \
     default-jre-headless \
     python3 \
+    python3-venv \
     apksigner \
     unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Isolated environment for the vendored DVPK reference encoder. Binary wheels
+# only: the runtime image has no compiler.
+RUN python3 -m venv /opt/dvpk && \
+    /opt/dvpk/bin/pip install --no-cache-dir --only-binary=:all: bsdiff4==1.2.6
 
 # Download bundletool for AAB support
 ARG BUNDLETOOL_VERSION=1.17.2
@@ -116,6 +122,9 @@ ENV PARAVOID_GRANT_VERIFIER=/usr/local/bin/paravoid-grant-check
 ENV APKSIGNER_PATH=/usr/bin/apksigner
 ENV JAVA_PATH=/usr/bin/java
 ENV AAPT2_PATH=/usr/bin/aapt2
+# DVPK generation and advertising stay off until enabled by the operator.
+ENV PARAVOID_DVPK_ENCODER=/usr/local/lib/lellostore/vendor/paravoid/dvpk.py
+ENV PARAVOID_DVPK_PYTHON=/opt/dvpk/bin/python
 
 # Expose default port
 EXPOSE 8080

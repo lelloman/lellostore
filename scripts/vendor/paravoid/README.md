@@ -10,3 +10,12 @@ personalization must preserve that policy. No verification bypass is used.
 Do not silently update this vendored implementation. Re-run the real signed APK
 and metadata conformance tests when upgrading it. Candidate signing-block ID
 0x50564132 still requires upstream collision review before protocol freeze.
+
+## DVPK reference encoder
+
+`dvpk.py` is copied unchanged from Paravoid commit `33340c6`
+(`delivery/tools/dvpk.py`, "Add DVPK shell delivery and APK-only distributor
+specification"). The Store runs it as a bounded subprocess with `bsdiff4==1.2.6`
+on already verified archives, then independently reconstructs every patch before
+publishing it. `scripts/check-paravoid-dvpk.sh` fails if this copy differs from the
+pinned upstream file. Re-run that gate when upgrading it.

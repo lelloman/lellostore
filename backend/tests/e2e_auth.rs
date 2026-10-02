@@ -83,6 +83,7 @@ async fn create_auth_test_context_options(
         bundletool_path: None,
         java_path: None,
         max_upload_size: 100 * 1024 * 1024,
+        dvpk: Default::default(),
     };
 
     // Initialize auth using mock OIDC
