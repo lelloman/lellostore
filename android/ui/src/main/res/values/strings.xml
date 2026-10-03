@@ -208,5 +208,5 @@
     <string name="paravoid_manage_updates">Manage app updates</string>
     <string name="paravoid_controls_unavailable">Update controls are unavailable. Open the app to manage its updates.</string>
     <string name="settings_keep_update_connection">Shared notifications</string>
-    <string name="settings_keep_update_connection_subtitle">Keep one connection for notifications and app updates. Requires unrestricted battery use and shows an ongoing notification.</string>
+    <string name="settings_keep_update_connection_subtitle">Keep one connection for notifications and app updates. Requires unrestricted battery use and shows an ongoing notification. Without this exemption, no app that relies on LelloStore can receive push notifications.</string>
 </resources>

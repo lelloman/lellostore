@@ -25,8 +25,12 @@
     <string name="audit_exported">Audit log exported</string>
     <string name="audit_error">Could not read or export diagnostics. Try again.</string>
     <string name="audit_summary">Retained bytes: %1$d (capacity: 4 MiB)\nEvents: %2$d\nFinished operations: %3$d\nCompleted: %4$d\nAverage total duration: %5$d ms\nStatistics cover only retained records. Latest 100 events below.</string>
-    <string name="notification_connection_channel">Update connection</string>
-    <string name="notification_connection_title">Fast updates enabled</string>
-    <string name="notification_connection_text">Keeping the store connection open; reconnecting when needed.</string>
+    <string name="notification_connection_channel">Push notification connection</string>
+    <string name="notification_connection_title">Push notifications enabled</string>
+    <string name="notification_connection_text">Keeping the connection open for app updates and push notifications.</string>
     <string name="notification_connection_stop">Stop</string>
+    <string name="notification_push_reminder_channel">Push notification reminders</string>
+    <string name="notification_push_reminder_title">Push notifications unavailable</string>
+    <string name="notification_push_battery_text">Allow unrestricted battery use for LelloStore. Without this exemption, no app that relies on LelloStore can receive push notifications. Tap to enable it.</string>
+    <string name="notification_push_stopped_text">The LelloStore push service could not restart. Apps that rely on LelloStore cannot receive push notifications while it is stopped. Tap to open LelloStore.</string>
 </resources>

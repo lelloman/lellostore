@@ -15,6 +15,7 @@ import android.util.LruCache
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.work.ForegroundInfo
 import com.lelloman.store.MainActivity
 import com.lelloman.store.R
@@ -24,6 +25,7 @@ import com.lelloman.store.domain.preferences.ReleaseChannel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.concurrent.TimeUnit
 
 @Singleton
 class NotificationHelper @Inject constructor(
@@ -47,6 +49,11 @@ class NotificationHelper @Inject constructor(
                     ).apply {
                         description = context.getString(R.string.notification_channel_updates_description)
                     },
+                    NotificationChannel(
+                        PUSH_REMINDERS_CHANNEL_ID,
+                        context.getString(R.string.notification_push_reminder_channel),
+                        NotificationManager.IMPORTANCE_DEFAULT,
+                    ),
                     NotificationChannel(
                         OPERATIONS_CHANNEL_ID,
                         context.getString(R.string.notification_channel_operations),
@@ -93,6 +100,36 @@ class NotificationHelper @Inject constructor(
 
     fun cancelUpdatesNotification() {
         notificationManager.cancel(UPDATES_NOTIFICATION_ID)
+    }
+
+    @SuppressLint("MissingPermission", "BatteryLife") // Permission checked; shared push needs Doze access.
+    fun showPushConnectionReminder(batteryExemptionRequired: Boolean) {
+        if (!hasNotificationPermission()) return
+        val intent = if (batteryExemptionRequired) {
+            Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                "package:${context.packageName}".toUri())
+        } else {
+            Intent(context, MainActivity::class.java)
+        }
+        val pendingIntent = PendingIntent.getActivity(context, PUSH_REMINDER_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = context.getString(if (batteryExemptionRequired)
+            R.string.notification_push_battery_text else R.string.notification_push_stopped_text)
+        val notification = NotificationCompat.Builder(context, PUSH_REMINDERS_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle(context.getString(R.string.notification_push_reminder_title))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setTimeoutAfter(TimeUnit.HOURS.toMillis(1))
+            .build()
+        notificationManager.notify(PUSH_REMINDER_NOTIFICATION_ID, notification)
+    }
+
+    fun cancelPushConnectionReminder() {
+        notificationManager.cancel(PUSH_REMINDER_NOTIFICATION_ID)
     }
 
     fun buildOperationNotification(progresses: Collection<DownloadProgress>): Notification {
@@ -216,6 +253,8 @@ class NotificationHelper @Inject constructor(
     companion object {
         const val UPDATES_CHANNEL_ID = "updates_channel"
         const val OPERATIONS_CHANNEL_ID = "operations_channel"
+        const val PUSH_REMINDERS_CHANNEL_ID = "push_connection_reminders"
+        private const val PUSH_REMINDER_NOTIFICATION_ID = 1005
         const val UPDATES_NOTIFICATION_ID = 1001
         const val BACKGROUND_UPDATE_NOTIFICATION_ID = 1002
         const val DOWNLOAD_SERVICE_NOTIFICATION_ID = 1003

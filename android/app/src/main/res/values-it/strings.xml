@@ -25,8 +25,12 @@
     <string name="audit_exported">Registro esportato</string>
     <string name="audit_error">Impossibile leggere o esportare la diagnostica. Riprova.</string>
     <string name="audit_summary">Byte conservati: %1$d (capacità: 4 MiB)\nEventi: %2$d\nOperazioni terminate: %3$d\nCompletate: %4$d\nDurata media totale: %5$d ms\nStatistiche relative ai soli record conservati. Ultimi 100 eventi di seguito.</string>
-    <string name="notification_connection_channel">Connessione aggiornamenti</string>
-    <string name="notification_connection_title">Aggiornamenti rapidi attivi</string>
-    <string name="notification_connection_text">Connessione allo store mantenuta aperta, con riconnessione quando necessario.</string>
+    <string name="notification_connection_channel">Connessione notifiche push</string>
+    <string name="notification_connection_title">Notifiche push attive</string>
+    <string name="notification_connection_text">Connessione mantenuta aperta per aggiornamenti delle app e notifiche push.</string>
     <string name="notification_connection_stop">Interrompi</string>
+    <string name="notification_push_reminder_channel">Promemoria notifiche push</string>
+    <string name="notification_push_reminder_title">Notifiche push non disponibili</string>
+    <string name="notification_push_battery_text">Consenti un utilizzo della batteria senza restrizioni per LelloStore. Senza questa esenzione, nessuna app che dipende da LelloStore può ricevere notifiche push. Tocca per abilitarla.</string>
+    <string name="notification_push_stopped_text">Il servizio push di LelloStore non è riuscito a riavviarsi. Le app che dipendono da LelloStore non possono ricevere notifiche push mentre è fermo. Tocca per aprire LelloStore.</string>
 </resources>

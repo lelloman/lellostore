@@ -45,6 +45,12 @@ class UpdateConnectionServiceController @Inject constructor(
         context.stopService(Intent(context, UpdateConnectionService::class.java))
     }
 
+    fun restoreNotification() {
+        if (!running.value) return
+        context.startService(Intent(context, UpdateConnectionService::class.java)
+            .setAction(UpdateConnectionService.ACTION_RESTORE_NOTIFICATION))
+    }
+
     fun onStarted() { mutableRunning.value = true }
     fun onStopped() {
         requested = false
@@ -57,6 +63,7 @@ class UpdateConnectionService : Service() {
     @Inject lateinit var controller: UpdateConnectionServiceController
     @Inject lateinit var broker: com.lelloman.store.notification.NotificationBrokerRuntime
     private var statusJob: kotlinx.coroutines.Job? = null
+    private lateinit var notificationBuilder: NotificationCompat.Builder
     @Inject lateinit var preferences: UserPreferencesStore
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
 
@@ -82,6 +89,7 @@ class UpdateConnectionService : Service() {
             .setSilent(true)
             .addAction(0, getString(R.string.notification_connection_stop), stop)
         val notification = builder.build()
+        notificationBuilder = builder
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
         statusJob = scope.launch { broker.status.collect { status ->
@@ -93,6 +101,12 @@ class UpdateConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             scope.launch { preferences.setKeepUpdateConnection(false) }
+        } else if (intent?.action == ACTION_RESTORE_NOTIFICATION) {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (manager.activeNotifications.none { it.id == NOTIFICATION_ID }) {
+                manager.notify(NOTIFICATION_ID,
+                    notificationBuilder.setContentText(broker.status.value).build())
+            }
         }
         return START_STICKY
     }
@@ -106,7 +120,8 @@ class UpdateConnectionService : Service() {
         super.onDestroy()
     }
 
-    private companion object {
+    companion object {
+        internal const val ACTION_RESTORE_NOTIFICATION = "com.lelloman.store.RESTORE_CONNECTION_NOTIFICATION"
         const val CHANNEL = "update_connection"
         const val NOTIFICATION_ID = 1004
         const val ACTION_STOP = "com.lelloman.store.STOP_UPDATE_CONNECTION"

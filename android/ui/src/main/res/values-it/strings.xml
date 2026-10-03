@@ -209,5 +209,5 @@
     <string name="paravoid_manage_updates">Gestisci aggiornamenti app</string>
     <string name="paravoid_controls_unavailable">I controlli degli aggiornamenti non sono disponibili. Apri l’app per gestire gli aggiornamenti.</string>
     <string name="settings_keep_update_connection">Notifiche condivise</string>
-    <string name="settings_keep_update_connection_subtitle">Mantieni una connessione per notifiche e aggiornamenti delle app. Richiede un utilizzo della batteria senza restrizioni e mostra una notifica persistente.</string>
+    <string name="settings_keep_update_connection_subtitle">Mantieni una connessione per notifiche e aggiornamenti delle app. Richiede un utilizzo della batteria senza restrizioni e mostra una notifica persistente. Senza questa esenzione, nessuna app che dipende da LelloStore può ricevere notifiche push.</string>
 </resources>

@@ -2,6 +2,7 @@ package com.lelloman.store.worker
 
 import android.content.Context
 import androidx.work.Constraints
+import androidx.work.BackoffPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -27,6 +28,13 @@ class WorkManagerInitializer @Inject constructor(
     private val workManager = WorkManager.getInstance(context)
 
     fun initialize() {
+        workManager.enqueueUniquePeriodicWork(
+            PushConnectionHealthWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<PushConnectionHealthWorker>(3, TimeUnit.HOURS)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 3, TimeUnit.HOURS)
+                .build(),
+        )
         // Observe interval changes and reschedule work accordingly
         scope.launch {
             userPreferencesStore.updateCheckInterval

@@ -214,6 +214,7 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
 
     override fun onStart(owner: LifecycleOwner) {
         foreground.value = true
+        service.restoreNotification()
         if (authStore.authState.value is AuthState.Authenticated) {
             workManagerInitializer.enqueueImmediateUpdateCheck()
         }

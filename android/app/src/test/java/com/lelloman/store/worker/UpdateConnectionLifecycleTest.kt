@@ -52,6 +52,13 @@ class UpdateConnectionLifecycleTest {
         runCurrent()
         verify { connection.stop(); broker.start(url.value) }
 
+        clearMocks(service, answers = false)
+        observer.onStart(owner)
+        runCurrent()
+        verify(exactly = 1) { service.restoreNotification() }
+        observer.onStop(owner)
+        runCurrent()
+
         url.value = "https://other.example"
         runCurrent()
         verify { broker.start("https://other.example") }
