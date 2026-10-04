@@ -12,7 +12,8 @@ use crate::auth::AuthenticatedUser;
 
 #[derive(Clone)]
 pub struct CatalogEventHub {
-    notifications: std::sync::Arc<std::sync::OnceLock<std::sync::Weak<crate::notifications::Broker>>>,
+    notifications:
+        std::sync::Arc<std::sync::OnceLock<std::sync::Weak<crate::notifications::Broker>>>,
     sender: broadcast::Sender<CatalogEvent>,
     pub(crate) shutdown: Shutdown,
     connections: WorkTracker,
@@ -64,7 +65,9 @@ impl CatalogEventHub {
     pub fn notify_catalog_changed(&self) {
         if let Some(broker) = self.notifications.get().and_then(std::sync::Weak::upgrade) {
             tokio::spawn(async move {
-                if broker.catalog().await.is_err() { tracing::warn!("Notification catalog hint deferred until reconciliation"); }
+                if broker.catalog().await.is_err() {
+                    tracing::warn!("Notification catalog hint deferred until reconciliation");
+                }
             });
         }
         let _ = self.sender.send(CatalogEvent::CatalogChanged);

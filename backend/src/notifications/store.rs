@@ -1,16 +1,19 @@
 use super::{hash, model::*, now, Broker, Error, Result};
-use serde_json::json;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use serde_json::{json, Value};
+use simple_server::web::http::StatusCode;
 use sqlx::Row;
 use uuid::Uuid;
 
 impl Broker {
-    pub async fn sender(&self, credential: &str) -> Result<String> {
-        sqlx::query_scalar("SELECT s.id FROM notification_senders s JOIN notification_credentials c ON c.sender_id=s.id WHERE c.hash=? AND c.revoked=0 AND (c.expires_at IS NULL OR c.expires_at>?) AND s.enabled=1")
-            .bind(hash(credential)).bind(now()).fetch_optional(&self.db).await?.ok_or_else(Error::unauthorized)
-    }
     pub async fn device(&self, credential: &str) -> Result<(String, String, String)> {
-        sqlx::query_as("SELECT id,issuer,subject FROM notification_devices WHERE credential_hash=? AND revoked=0")
-            .bind(hash(credential)).fetch_optional(&self.db).await?.ok_or_else(Error::unauthorized)
+        sqlx::query_as(
+            "SELECT id,issuer,subject FROM push_devices WHERE credential_hash=? AND revoked=0",
+        )
+        .bind(hash(credential))
+        .fetch_optional(&self.db)
+        .await?
+        .ok_or_else(Error::unauthorized)
     }
     pub async fn audit(&self, actor: &str, action: &str, entity: &str) -> Result<()> {
         sqlx::query("INSERT INTO notification_audit(at,actor,action,entity) VALUES(?,?,?,?)")
@@ -22,284 +25,203 @@ impl Broker {
             .await?;
         Ok(())
     }
-    pub async fn publish(&self, sender: &str, message: &Publication) -> Result<serde_json::Value> {
-        let time = now();
-        message.validate(time)?;
-        let request_hash = hash(&serde_json::to_string(message)?);
+    pub async fn subscribe(&self, device: &str, body: &Subscription) -> Result<String> {
+        if body.token.is_empty() || body.token.len() > 100 {
+            return Err(Error::bad("invalid token"));
+        }
+        identifier(&body.package)?;
+        public_key(&body.vapid)?;
+        super::validate_secret(&body.endpoint_secret)?;
         let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
-        let row = sqlx::query("SELECT * FROM notification_senders WHERE id=? AND enabled=1")
-            .bind(sender)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(Error::denied)?;
-        if let Some(existing) = sqlx::query_scalar::<_, String>(
-            "SELECT request_hash FROM notification_events WHERE sender_id=? AND event_id=?",
+        let approved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM push_keys k JOIN push_senders s ON s.id=k.sender_id WHERE k.key=? AND k.revoked=0 AND s.enabled=1)")
+            .bind(&body.vapid).fetch_one(&mut *tx).await?;
+        if !approved {
+            return Err(Error::denied());
+        }
+        let active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM push_devices WHERE id=? AND revoked=0)",
         )
-        .bind(sender)
-        .bind(&message.event_id)
+        .bind(device)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !active {
+            return Err(Error::denied());
+        }
+        if let Some(row) = sqlx::query(
+            "SELECT * FROM push_subscriptions WHERE device_id=? AND token=? AND revoked=0",
+        )
+        .bind(device)
+        .bind(&body.token)
         .fetch_optional(&mut *tx)
         .await?
         {
-            if existing != request_hash {
-                return Err(Error::conflict(
-                    "event_id already used with different content",
-                ));
-            }
-            tx.commit().await?;
-            return self.outcome(sender, &message.event_id).await;
-        }
-        if sender != "lellostore" {
-            let applications: Vec<Application> = serde_json::from_str(row.get("applications"))?;
-            if !applications
-                .iter()
-                .any(|a| a.package == message.application)
-            {
+            if row.get::<String, _>("package") != body.package {
                 return Err(Error::denied());
             }
+            if row.get::<String, _>("vapid") == body.vapid
+                && row.get::<String, _>("endpoint_hash") == hash(&body.endpoint_secret)
+            {
+                return Ok(row.get("id"));
+            }
+            let id: String = row.get("id");
+            sqlx::query("UPDATE push_subscriptions SET revoked=1 WHERE id=?")
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("UPDATE push_messages SET state='revoked',payload=X'' WHERE subscription_id=? AND state='pending'").bind(id).execute(&mut *tx).await?;
         }
-        let manifest: Manifest = serde_json::from_str(row.get("manifest"))?;
-        let overrides: Vec<Rule> = serde_json::from_str(row.get("overrides"))?;
-        let policy = if sender == "lellostore" && message.message_type == "catalog.changed" {
-            overrides
-                .iter()
-                .find(|r| r.matches(message))
-                .map(|r| r.policy.clone())
-                .unwrap_or(Policy {
-                    strategy: Strategy::Latest,
-                    ttl_seconds: Some(86400),
-                })
-        } else {
-            manifest.policy(message, &overrides)?
-        };
-        if policy.strategy == Strategy::Latest && message.replacement_key.is_none() {
-            return Err(Error::bad(
-                "latest-state publications require replacement_key",
-            ));
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM push_subscriptions WHERE device_id=? AND package=? AND revoked=0",
+        )
+        .bind(device)
+        .bind(&body.package)
+        .fetch_one(&mut *tx)
+        .await?;
+        let total: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM push_subscriptions WHERE device_id=? AND revoked=0",
+        )
+        .bind(device)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count >= 1024 || total >= 4096 {
+            return Err(Error::full());
         }
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO push_subscriptions(id,device_id,token,package,vapid,endpoint_hash) VALUES(?,?,?,?,?,?)")
+            .bind(&id).bind(device).bind(&body.token).bind(&body.package).bind(&body.vapid).bind(hash(&body.endpoint_secret)).execute(&mut *tx).await?;
+        tx.commit().await?;
+        self.wake().await;
+        Ok(id)
+    }
+    pub async fn revoke(&self, device: &str, id: Option<&str>) -> Result<()> {
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        if id.is_none() {
+            sqlx::query("UPDATE push_devices SET revoked=1 WHERE id=?")
+                .bind(device)
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query(
+            "UPDATE push_subscriptions SET revoked=1 WHERE device_id=? AND (? IS NULL OR id=?)",
+        )
+        .bind(device)
+        .bind(id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE push_messages SET state='revoked',payload=X'' WHERE state='pending' AND subscription_id IN (SELECT id FROM push_subscriptions WHERE revoked=1)").execute(&mut *tx).await?;
+        tx.commit().await?;
+        self.wake().await;
+        Ok(())
+    }
+    pub async fn publish(
+        &self,
+        secret: &str,
+        authorization: Option<&str>,
+        origin: &str,
+        message: &Publication,
+    ) -> Result<String> {
+        let time = now();
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        let row = sqlx::query("SELECT r.id AS subscription,r.device_id,r.vapid,s.* FROM push_subscriptions r JOIN push_devices d ON d.id=r.device_id JOIN push_keys k ON k.key=r.vapid JOIN push_senders s ON s.id=k.sender_id WHERE r.endpoint_hash=? AND r.revoked=0 AND d.revoked=0 AND k.revoked=0")
+            .bind(hash(secret)).fetch_optional(&mut *tx).await?.ok_or_else(|| Error(StatusCode::GONE,"push endpoint unavailable".into()))?;
+        vapid(authorization, row.get("vapid"), origin, time)?;
+        if !row.get::<bool, _>("enabled") {
+            return Err(Error::denied());
+        }
+        let device: String = row.get("device_id");
+        let sender: String = row.get("id");
+        let subscription: String = row.get("subscription");
         let tokens = (row.get::<f64, _>("tokens")
             + (time - row.get::<i64, _>("refilled_at")).max(0) as f64 * row.get::<f64, _>("rate"))
         .min(row.get::<i64, _>("burst") as f64);
         if tokens < 1.0 {
             return Err(Error::full());
         }
-        sqlx::query("UPDATE notification_senders SET tokens=?,refilled_at=? WHERE id=?")
+        sqlx::query("UPDATE push_messages SET state='expired',payload=X'' WHERE state='pending' AND expires_at<=? AND connection_epoch IS NULL").bind(time).execute(&mut *tx).await?;
+        // Topic replacement and quota checks share a transaction: rejection preserves the old message.
+        if let Some(topic) = &message.topic {
+            sqlx::query("UPDATE push_messages SET state='replaced',payload=X'' WHERE subscription_id=? AND topic=? AND state='pending'").bind(&subscription).bind(topic).execute(&mut *tx).await?;
+        }
+        let (count, bytes): (i64,i64) = sqlx::query_as("SELECT count(*),coalesce(sum(length(m.payload)),0) FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id JOIN push_keys k ON k.key=r.vapid WHERE k.sender_id=? AND m.state='pending'").bind(&sender).fetch_one(&mut *tx).await?;
+        let (device_count,device_bytes): (i64,i64) = sqlx::query_as("SELECT count(*),coalesce(sum(length(m.payload)),0) FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id WHERE r.device_id=? AND m.state='pending'").bind(&device).fetch_one(&mut *tx).await?;
+        let global: i64 = sqlx::query_scalar(
+            "SELECT coalesce(sum(length(payload)),0) FROM push_messages WHERE state='pending'",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let size = message.payload.len() as i64;
+        if count >= row.get::<i64, _>("max_pending")
+            || bytes + size > row.get::<i64, _>("max_bytes")
+            || device_count >= 1024
+            || device_bytes + size > 4194304
+            || global + size > 1073741824
+        {
+            return Err(Error::full());
+        }
+        let epoch = if message.ttl == 0 {
+            self.connections
+                .lock()
+                .await
+                .get(&device)
+                .filter(|c| c.expires > time)
+                .map(|c| c.epoch.clone())
+        } else {
+            None
+        };
+        let state = if message.ttl == 0 && epoch.is_none() {
+            "expired"
+        } else {
+            "pending"
+        };
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO push_messages(id,subscription_id,payload,topic,urgency,accepted_at,expires_at,connection_epoch,state) VALUES(?,?,?,?,?,?,?,?,?)")
+            .bind(&id).bind(subscription).bind(if state=="pending" { message.payload.as_slice() } else { &[] }).bind(&message.topic).bind(&message.urgency).bind(time).bind(time+message.ttl).bind(epoch).bind(state).execute(&mut *tx).await?;
+        sqlx::query("UPDATE push_senders SET tokens=?,refilled_at=? WHERE id=?")
             .bind(tokens - 1.0)
             .bind(time)
             .bind(sender)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE notification_deliveries SET state='expired',envelope='',bytes=0 WHERE state='pending' AND expires_at<=?")
-            .bind(time).execute(&mut *tx).await?;
-        let subscriptions = sqlx::query("SELECT s.* FROM notification_subscriptions s JOIN notification_devices d ON d.id=s.device_id WHERE s.sender_id=? AND s.package=? AND s.subject=? AND s.revoked=0 AND d.revoked=0 AND (? IS NULL OR s.id=?)")
-            .bind(sender).bind(&message.application).bind(&message.target.subject)
-            .bind(&message.target.subscription_id).bind(&message.target.subscription_id).fetch_all(&mut *tx).await?;
-        if subscriptions.is_empty() {
-            return Err(Error::conflict("no enrolled recipient"));
-        }
-        let expires = match (policy.ttl_seconds.map(|t| time + t), message.expires_at) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
-        sqlx::query("INSERT INTO notification_events(sender_id,event_id,request_hash,accepted_at) VALUES(?,?,?,?)")
-            .bind(sender).bind(&message.event_id).bind(request_hash).bind(time).execute(&mut *tx).await?;
-        for sub in subscriptions {
-            let sub_id: String = sub.get("id");
-            let device: String = sub.get("device_id");
-            let epoch = self
-                .connections
-                .lock()
-                .await
-                .get(&device)
-                .map(|c| c.epoch.clone());
-            let mut state = if expires.is_some_and(|e| e <= time) {
-                "expired"
-            } else {
-                "pending"
-            };
-            if policy.strategy == Strategy::OnlineOnly
-                && (epoch.is_none()
-                    || sub.get::<i64, _>("lease_until") <= time
-                    || sub.get::<i64, _>("confirmed") == 0)
-            {
-                state = "offline";
-            }
-            if policy.strategy == Strategy::Latest {
-                let keys:i64=sqlx::query_scalar("SELECT count(*) FROM notification_watermarks WHERE subscription_id=? AND NOT (type=? AND replacement_key=?)").bind(&sub_id).bind(&message.message_type).bind(&message.replacement_key).fetch_one(&mut *tx).await?;
-                if keys >= 256 {
-                    return Err(Error::full());
-                }
-                if let Some((occurrence,revision)) = sqlx::query_as::<_,(i64,i64)>("SELECT occurrence,revision FROM notification_watermarks WHERE subscription_id=? AND type=? AND replacement_key=?")
-                    .bind(&sub_id).bind(&message.message_type).bind(&message.replacement_key).fetch_optional(&mut *tx).await? {
-                    if (message.occurrence,message.revision) <= (occurrence,revision) { state="superseded"; }
-                }
-                if state != "superseded" {
-                    sqlx::query("INSERT INTO notification_watermarks VALUES(?,?,?,?,?,?) ON CONFLICT(subscription_id,type,replacement_key) DO UPDATE SET occurrence=excluded.occurrence,revision=excluded.revision,expires_at=excluded.expires_at")
-                        .bind(&sub_id).bind(&message.message_type).bind(&message.replacement_key).bind(message.occurrence).bind(message.revision).bind(expires).execute(&mut *tx).await?;
-                    sqlx::query("UPDATE notification_deliveries SET state='superseded',envelope='',bytes=0 WHERE subscription_id=? AND type=? AND replacement_key=? AND state='pending'")
-                        .bind(&sub_id).bind(&message.message_type).bind(&message.replacement_key).execute(&mut *tx).await?;
-                }
-            }
-            let id = Uuid::new_v4().to_string();
-            let envelope = Envelope {
-                version: 1,
-                delivery_id: id.clone(),
-                sender_id: sender.into(),
-                subscription_id: sub_id.clone(),
-                generation: sub.get("generation"),
-                installation: sub.get("installation"),
-                component: sub.get("component"),
-                certificate: sub.get("certificate"),
-                policy_version: row.get("policy_version"),
-                accepted_at: time,
-                expires_at: expires,
-                message: message.clone(),
-            };
-            let body = if state == "pending" {
-                serde_json::to_string(&envelope)?
-            } else {
-                String::new()
-            };
-            sqlx::query("INSERT INTO notification_deliveries(id,sender_id,event_id,subscription_id,type,replacement_key,occurrence,revision,envelope,bytes,expires_at,online_only,connection_epoch,state,accepted_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-                .bind(id).bind(sender).bind(&message.event_id).bind(&sub_id).bind(&message.message_type).bind(&message.replacement_key)
-                .bind(message.occurrence).bind(message.revision).bind(&body).bind(body.len() as i64).bind(expires)
-                .bind(policy.strategy==Strategy::OnlineOnly).bind(&epoch).bind(state).bind(time).execute(&mut *tx).await?;
-        }
-        let (count,bytes):(i64,i64)=sqlx::query_as("SELECT count(*),coalesce(sum(bytes),0) FROM notification_deliveries WHERE sender_id=? AND state='pending'")
-            .bind(sender).fetch_one(&mut *tx).await?;
-        let all: i64 = sqlx::query_scalar(
-            "SELECT coalesce(sum(bytes),0) FROM notification_deliveries WHERE state='pending'",
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-        if count > row.get::<i64, _>("max_pending")
-            || bytes > row.get::<i64, _>("max_bytes")
-            || all > 1024 * 1024 * 1024
-        {
-            return Err(Error::full());
-        }
         tx.commit().await?;
         self.wake().await;
-        self.outcome(sender, &message.event_id).await
+        Ok(id)
     }
-    pub async fn outcome(&self, sender: &str, event: &str) -> Result<serde_json::Value> {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM notification_events WHERE sender_id=? AND event_id=?)",
-        )
-        .bind(sender)
-        .bind(event)
-        .fetch_one(&self.db)
-        .await?;
-        if !exists {
-            return Err(Error(
-                simple_server::web::http::StatusCode::NOT_FOUND,
-                "Event not found".into(),
-            ));
-        }
-        let rows=sqlx::query("SELECT id,subscription_id,state,presentation FROM notification_deliveries WHERE sender_id=? AND event_id=? ORDER BY id").bind(sender).bind(event).fetch_all(&self.db).await?;
-        Ok(
-            json!({"event_id":event,"deliveries":rows.iter().map(|r|json!({"delivery_id":r.get::<String,_>("id"),"subscription_id":r.get::<String,_>("subscription_id"),"state":r.get::<String,_>("state"),"presentation":r.get::<Option<String>,_>("presentation")})).collect::<Vec<_>>()}),
-        )
+    pub async fn pending(&self, device: &str, epoch: &str) -> Result<Vec<Value>> {
+        let rows = sqlx::query("SELECT m.*,r.token FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id JOIN push_keys k ON k.key=r.vapid JOIN push_senders s ON s.id=k.sender_id WHERE r.device_id=? AND r.revoked=0 AND k.revoked=0 AND s.enabled=1 AND m.state='pending' AND ((m.connection_epoch IS NULL AND m.expires_at>?) OR m.connection_epoch=?) ORDER BY CASE m.urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,m.accepted_at,m.id LIMIT 32")
+            .bind(device).bind(now()).bind(epoch).fetch_all(&self.db).await?;
+        Ok(rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"subscription_id":r.get::<String,_>("subscription_id"),"token":r.get::<String,_>("token"),"payload":STANDARD.encode(r.get::<Vec<u8>,_>("payload")),"urgency":r.get::<String,_>("urgency"),"expires_at":r.get::<i64,_>("expires_at"),"immediate":r.get::<Option<String>,_>("connection_epoch").is_some()})).collect())
     }
-    pub async fn pending(&self, device: &str) -> Result<Vec<serde_json::Value>> {
-        let epoch = self
-            .connections
-            .lock()
-            .await
-            .get(device)
-            .map(|c| c.epoch.clone());
-        let rows:Vec<String>=sqlx::query_scalar("SELECT envelope FROM (SELECT n.envelope,n.accepted_at,row_number() OVER (PARTITION BY s.package ORDER BY n.accepted_at,n.id) AS slot FROM notification_deliveries n JOIN notification_subscriptions s ON s.id=n.subscription_id JOIN notification_senders p ON p.id=s.sender_id WHERE s.device_id=? AND s.revoked=0 AND s.confirmed=1 AND s.lease_until>? AND p.enabled=1 AND n.state='pending' AND (n.online_only=0 OR n.connection_epoch=?) AND (n.expires_at IS NULL OR n.expires_at>?)) ORDER BY slot,accepted_at LIMIT 32")
-            .bind(device).bind(now()).bind(epoch).bind(now()).fetch_all(&self.db).await?;
-        rows.into_iter()
-            .map(|s| Ok(serde_json::from_str(&s)?))
-            .collect()
-    }
-    pub async fn receipt(&self, device: &str, id: &str, presentation: Option<&str>) -> Result<()> {
-        if presentation.is_some_and(|s| {
-            ![
-                "posted",
-                "suppressed",
-                "permission_blocked",
-                "expired",
-                "superseded",
-            ]
-            .contains(&s)
-        }) {
-            return Err(Error::bad("invalid presentation state"));
-        }
-        let changed=sqlx::query("UPDATE notification_deliveries SET state='persisted',presentation=coalesce(?,presentation),envelope='',bytes=0 WHERE id=? AND state IN ('pending','persisted') AND subscription_id IN (SELECT id FROM notification_subscriptions WHERE device_id=? AND revoked=0)")
-            .bind(presentation).bind(id).bind(device).execute(&self.db).await?.rows_affected();
-        if changed == 0 {
-            return Err(Error::conflict("delivery is no longer pending"));
-        }
+    pub async fn receipt(&self, device: &str, id: &str, token: &str) -> Result<()> {
+        sqlx::query("UPDATE push_messages SET state='acknowledged',payload=X'' WHERE id=? AND state IN ('pending','dispatched') AND subscription_id IN (SELECT id FROM push_subscriptions WHERE device_id=? AND token=?)").bind(id).bind(device).bind(token).execute(&self.db).await?;
         Ok(())
     }
     pub async fn catalog(&self) -> Result<()> {
-        let rows=sqlx::query("SELECT DISTINCT package,subject FROM notification_subscriptions WHERE sender_id='lellostore' AND revoked=0").fetch_all(&self.db).await?;
-        let revision = chrono::Utc::now().timestamp_millis();
-        for row in rows {
-            let p = Publication {
-                event_id: Uuid::new_v4().to_string(),
-                application: row.get("package"),
-                message_type: "catalog.changed".into(),
-                target: Target {
-                    subject: row.get("subject"),
-                    subscription_id: None,
-                },
-                level: "info".into(),
-                tags: vec![],
-                occurred_at: now(),
-                expires_at: None,
-                replacement_key: Some("catalog".into()),
-                occurrence: 0,
-                revision,
-                payload: json!({}),
-            };
-            self.publish("lellostore", &p).await?;
-        }
+        self.catalog_revision
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.wake().await;
         Ok(())
     }
     pub async fn maintenance(&self) -> Result<()> {
-        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
-        let epochs: Vec<String> = self
-            .connections
-            .lock()
-            .await
-            .values()
-            .map(|c| c.epoch.clone())
-            .collect();
-        sqlx::query("UPDATE notification_deliveries SET state='expired',envelope='',bytes=0 WHERE state='pending' AND expires_at<=?").bind(now()).execute(&mut *tx).await?;
-        sqlx::query("UPDATE notification_deliveries SET state='offline',envelope='',bytes=0 WHERE state='pending' AND online_only=1 AND connection_epoch NOT IN (SELECT value FROM json_each(?))").bind(serde_json::to_string(&epochs)?).execute(&mut *tx).await?;
-        sqlx::query("UPDATE notification_events SET terminal_at=? WHERE terminal_at IS NULL AND NOT EXISTS(SELECT 1 FROM notification_deliveries n WHERE n.sender_id=notification_events.sender_id AND n.event_id=notification_events.event_id AND n.state='pending')").bind(now()).execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM notification_deliveries WHERE EXISTS(SELECT 1 FROM notification_events e WHERE e.sender_id=notification_deliveries.sender_id AND e.event_id=notification_deliveries.event_id AND e.terminal_at<?)").bind(now()-30*86400).execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM notification_events WHERE terminal_at<?")
+        sqlx::query("UPDATE push_messages SET state='expired',payload=X'' WHERE state='pending' AND (expires_at<=? AND connection_epoch IS NULL OR connection_epoch IS NOT NULL AND accepted_at<?)").bind(now()).bind(now()-30).execute(&self.db).await?;
+        sqlx::query("DELETE FROM push_messages WHERE state<>'pending' AND accepted_at<?")
             .bind(now() - 30 * 86400)
-            .execute(&mut *tx)
+            .execute(&self.db)
             .await?;
-        sqlx::query("DELETE FROM notification_enrollments WHERE expires_at<?")
-            .bind(now() - 86400)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM notification_invitations WHERE expires_at<?")
-            .bind(now() - 86400)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM notification_audit WHERE id<(SELECT coalesce(max(id),0)-10000 FROM notification_audit)").execute(&mut *tx).await?;
-        tx.commit().await?;
+        sqlx::query("DELETE FROM notification_audit WHERE id NOT IN (SELECT id FROM notification_audit ORDER BY id DESC LIMIT 10000)").execute(&self.db).await?;
         crate::metrics::NOTIFICATION_CONNECTIONS.set(self.connections.lock().await.len() as i64);
         crate::metrics::NOTIFICATION_QUEUE.reset();
-        for row in sqlx::query(
-            "SELECT state,count(*) AS count FROM notification_deliveries GROUP BY state",
-        )
-        .fetch_all(&self.db)
-        .await?
+        for row in sqlx::query("SELECT state,count(*) AS n FROM push_messages GROUP BY state")
+            .fetch_all(&self.db)
+            .await?
         {
             crate::metrics::NOTIFICATION_QUEUE
-                .with_label_values(&[row.get::<&str, _>("state")])
-                .set(row.get("count"));
+                .with_label_values(&[row.get::<String, _>("state")])
+                .set(row.get("n"));
         }
-        let (bytes,oldest):(i64,Option<i64>)=sqlx::query_as("SELECT coalesce(sum(bytes),0),min(accepted_at) FROM notification_deliveries WHERE state='pending'").fetch_one(&self.db).await?;
+        let (bytes,oldest):(i64,i64)=sqlx::query_as("SELECT coalesce(sum(length(payload)),0),coalesce(min(accepted_at),?) FROM push_messages WHERE state='pending'").bind(now()).fetch_one(&self.db).await?;
         crate::metrics::NOTIFICATION_BYTES.set(bytes);
-        crate::metrics::NOTIFICATION_OLDEST.set(oldest.map(|t| (now() - t).max(0)).unwrap_or(0));
+        crate::metrics::NOTIFICATION_OLDEST.set((now() - oldest).max(0));
         Ok(())
     }
 }

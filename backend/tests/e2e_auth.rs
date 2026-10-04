@@ -66,6 +66,7 @@ async fn create_auth_test_context_options(
         .expect("Failed to run migrations");
 
     let config = Config {
+        push_public_base_url: "https://push.example".into(),
         notifications_enabled: true,
         listen_addr: "127.0.0.1:0".parse().unwrap(),
         metrics_addr: "127.0.0.1:0".parse().unwrap(),
@@ -1847,56 +1848,167 @@ async fn archive_controls_require_admin_and_current_revision_and_reject_replaced
     assert_eq!(detail["publication_revision"], 4);
 }
 
+#[path = "support/push.rs"]
+mod push;
 #[tokio::test]
-async fn notification_enrollment_authentication_and_stream_receipts() {
-    use serde_json::{json,Value};
-    let (ctx,oidc)=create_auth_test_context().await;
-    let server=TestServer::tcp(ctx.router.clone()).await.unwrap();
-    let user=format!("Bearer {}",oidc.get_user_token());
-    let admin=format!("Bearer {}",oidc.get_admin_token());
-    let apps=json!([{"package":"app.fixture","certificates":["a".repeat(64)]}]);
-    let invitation=json!({"name":"fixture","applications":apps});
-    server.post("/api/admin/notifications/invitations").header("Authorization",&user).json(&invitation).send().await.unwrap().assert_status(StatusCode::FORBIDDEN);
-    let response=server.post("/api/admin/notifications/invitations").header("Authorization",&admin).json(&invitation).send().await.unwrap();
+async fn unifiedpush_approval_registration_delivery_and_revocation() {
+    use lellostore_backend::notifications::now;
+    use serde_json::{json, Value};
+    let (ctx, oidc) = create_auth_test_context().await;
+    let server = TestServer::tcp(ctx.router.clone()).await.unwrap();
+    let user = format!("Bearer {}", oidc.get_user_token());
+    let admin = format!("Bearer {}", oidc.get_admin_token());
+    let sender = push::Sender::new();
+    let approval = json!({"name":"fixture","key":sender.key});
+    server
+        .post("/api/admin/notifications/senders")
+        .header("Authorization", &user)
+        .json(&approval)
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::FORBIDDEN);
+    let response = server
+        .post("/api/admin/notifications/senders")
+        .header("Authorization", &admin)
+        .json(&approval)
+        .send()
+        .await
+        .unwrap();
     response.assert_status(StatusCode::OK);
-    let invite:Value=response.json().unwrap();
-    let credential="b".repeat(64);
-    let sender=format!("Bearer {credential}");
-    let registration=json!({"invitation":invite["invitation"],"registration_id":"fixture-registration","credential":credential});
-    for _ in 0..2 {server.post("/api/notifications/v1/senders/register").json(&registration).send().await.unwrap().assert_status(StatusCode::OK);}
-    let mut stolen=registration.clone();stolen["credential"]=json!("c".repeat(64));
-    server.post("/api/notifications/v1/senders/register").json(&stolen).send().await.unwrap().assert_status(StatusCode::FORBIDDEN);
-    server.put("/api/notifications/v1/sender/manifest").header("Authorization",&sender).json(&json!({"types":[{"application":"app.fixture","name":"report","levels":["info"],"default":{"strategy":"queue","ttl_seconds":null}}],"rules":[]})).send().await.unwrap().assert_status(StatusCode::OK);
-    let device="d".repeat(64);
-    server.post("/api/notifications/v1/devices").header("Authorization",&user).json(&json!({"installation":"fixture-phone","credential":device,"package":"com.lelloman.store"})).send().await.unwrap().assert_status(StatusCode::OK);
-    let enrollment=json!({"package":"app.fixture","certificate":"a".repeat(64),"component":"app.fixture/Receiver","installation":"install","generation":"generation"});
-    let proof:Value=server.post("/api/notifications/v1/enrollments").header("Authorization",&user).header("X-Device-Credential",&device).json(&enrollment).send().await.unwrap().json().unwrap();
-    let mut redemption=json!({"proof":proof["proof"],"issuer":oidc.issuer_url(),"subject":"test-admin"});
-    server.post("/api/notifications/v1/subscriptions").header("Authorization",&sender).json(&redemption).send().await.unwrap().assert_status(StatusCode::FORBIDDEN);
-    redemption["subject"]=json!("test-user");
-    let subscription:Value=server.post("/api/notifications/v1/subscriptions").header("Authorization",&sender).json(&redemption).send().await.unwrap().json().unwrap();
-    let sub=subscription["subscription_id"].as_str().unwrap();
-    let confirm=format!("/api/notifications/v1/subscriptions/{sub}/confirm");
-    let mut wrong=enrollment.clone();wrong["generation"]=json!("different");
-    server.post(&confirm).header("Authorization",&user).header("X-Device-Credential",&device).json(&wrong).send().await.unwrap().assert_status(StatusCode::FORBIDDEN);
-    server.post(&confirm).header("Authorization",&user).header("X-Device-Credential",&device).json(&enrollment).send().await.unwrap().assert_status(StatusCode::OK);
-    let publication=json!({"event_id":"fixture-event","application":"app.fixture","type":"report","target":{"subject":"test-user"},"level":"info","tags":[],"occurred_at":lellostore_backend::notifications::now(),"occurrence":0,"revision":0,"payload":{"title":"Readable server payload"}});
-    server.post("/api/notifications/v1/messages").header("Authorization",&format!("Bearer {device}")).json(&publication).send().await.unwrap().assert_status(StatusCode::UNAUTHORIZED);
-    server.post("/api/notifications/v1/messages").header("Authorization",&sender).json(&publication).send().await.unwrap().assert_status(StatusCode::OK);
-    let mut socket=server.get("/api/notifications/v1/stream").header("Authorization",&format!("Bearer {device}")).header("Sec-WebSocket-Protocol","lellostore.notifications.v1").websocket().await.unwrap().into_websocket().await;
-    socket.send_json(&json!({"kind":"authenticate","access_token":oidc.get_user_token()})).await;
-    let ready:Value=socket.receive_json().await;assert_eq!(ready["kind"],"ready");
-    let delivery=tokio::time::timeout(std::time::Duration::from_secs(5),async {
-        loop {let frame:Value=socket.receive_json().await;if frame["envelope"]["sender_id"]!= "lellostore" && frame["kind"]=="delivery" {break frame["envelope"].clone();}}
-    }).await.unwrap();
-    assert_eq!(delivery["message"]["payload"]["title"],"Readable server payload");
-    socket.send_json(&json!({"kind":"receipt","delivery_id":delivery["delivery_id"],"presentation":"posted"})).await;
-    tokio::time::timeout(std::time::Duration::from_secs(5),async {
-        loop {let frame:Value=socket.receive_json().await;if frame["kind"]=="receipt_ack" {break;}}
-    }).await.unwrap();
-    let outcome:Value=server.get("/api/notifications/v1/messages/fixture-event").header("Authorization",&sender).send().await.unwrap().json().unwrap();
-    assert_eq!(outcome["deliveries"][0]["state"],"persisted");
-    assert_eq!(outcome["deliveries"][0]["presentation"],"posted");
-    server.delete("/api/notifications/v1/device").header("Authorization",&format!("Bearer {device}")).send().await.unwrap().assert_status(StatusCode::OK);
-    server.get("/api/notifications/v1/stream").header("Authorization",&format!("Bearer {device}")).header("Sec-WebSocket-Protocol","lellostore.notifications.v1").websocket().await.unwrap().assert_status(StatusCode::UNAUTHORIZED);
+    let sender_id: Value = response.json().unwrap();
+    let credential = "a".repeat(64);
+    let device =
+        json!({"installation":"phone","credential":credential,"package":"com.lelloman.store"});
+    server
+        .post("/api/push/v1/devices")
+        .json(&device)
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::UNAUTHORIZED);
+    server
+        .post("/api/push/v1/devices")
+        .header("Authorization", &user)
+        .json(&device)
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::OK);
+    let subscription = json!({"token":"fixture-token","package":"app.fixture","vapid":sender.key,"endpoint_secret":"b".repeat(64)});
+    let response = server
+        .post("/api/push/v1/subscriptions")
+        .header("Authorization", &user)
+        .header("X-Device-Credential", &credential)
+        .json(&subscription)
+        .send()
+        .await
+        .unwrap();
+    response.assert_status(StatusCode::OK);
+    let registration: Value = response.json().unwrap();
+    let path = registration["endpoint"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("https://push.example")
+        .unwrap();
+    let auth = sender.authorization("https://push.example", now() + 100);
+    server
+        .post(path)
+        .header("TTL", "60")
+        .header("Content-Encoding", "aes128gcm")
+        .body(vec![0, 255, 42])
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::UNAUTHORIZED);
+    server
+        .post(path)
+        .header("Authorization", &auth)
+        .header("TTL", "60")
+        .header("Content-Encoding", "aes128gcm")
+        .body(vec![0, 255, 42])
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::CREATED);
+    let mut socket = server
+        .get("/api/push/v1/stream")
+        .header("Authorization", &format!("Bearer {credential}"))
+        .header("Sec-WebSocket-Protocol", "lellostore.push.v1")
+        .websocket()
+        .await
+        .unwrap()
+        .into_websocket()
+        .await;
+    socket
+        .send_json(&json!({"kind":"authenticate","access_token":oidc.get_user_token()}))
+        .await;
+    let ready: Value = socket.receive_json().await;
+    assert_eq!(ready["kind"], "ready");
+    let delivery = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let frame: Value = socket.receive_json().await;
+            if frame["kind"] == "delivery" {
+                break frame["message"].clone();
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(delivery["payload"], "AP8q");
+    socket
+        .send_json(&json!({"kind":"receipt","id":delivery["id"],"token":"fixture-token"}))
+        .await;
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let frame: Value = socket.receive_json().await;
+            if frame["kind"] == "receipt_ack" {
+                break;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let state: String = sqlx::query_scalar("SELECT state FROM push_messages WHERE id=?")
+        .bind(delivery["id"].as_str().unwrap())
+        .fetch_one(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "acknowledged");
+    server
+        .delete(&format!(
+            "/api/admin/notifications/senders/{}/keys/{}",
+            sender_id["id"].as_str().unwrap(),
+            sender.key
+        ))
+        .header("Authorization", &admin)
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::OK);
+    server
+        .post(path)
+        .header("Authorization", &auth)
+        .header("TTL", "60")
+        .header("Content-Encoding", "aes128gcm")
+        .body(vec![1])
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::GONE);
+    server
+        .delete("/api/push/v1/devices")
+        .header("Authorization", &format!("Bearer {credential}"))
+        .send()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::OK);
+    server
+        .get("/api/push/v1/stream")
+        .header("Authorization", &format!("Bearer {credential}"))
+        .header("Sec-WebSocket-Protocol", "lellostore.push.v1")
+        .websocket()
+        .await
+        .unwrap()
+        .assert_status(StatusCode::UNAUTHORIZED);
 }

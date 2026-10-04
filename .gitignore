@@ -28,3 +28,6 @@ data/
 __pycache__/
 *.py[cod]
 .venv/
+
+# Independent UnifiedPush sender test dependencies
+scripts/unifiedpush/node_modules/

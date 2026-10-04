@@ -1,264 +1,335 @@
 use lellostore_backend::notifications::{hash, model::*, now, Broker, Connection};
-use serde_json::json;
+use simple_server::web::http::{HeaderMap, HeaderValue, StatusCode};
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
-
-async fn fixture(strategy: &str, ttl: Option<i64>) -> Arc<Broker> {
+#[path = "support/push.rs"]
+mod push;
+const ORIGIN: &str = "https://push.example";
+#[tokio::test]
+async fn populated_legacy_push_database_can_be_reset() {
+    let db = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::raw_sql(include_str!("../migrations/2026092901_notifications.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::raw_sql(r#"
+      INSERT INTO notification_credentials VALUES('credential','lellostore',NULL,0);
+      INSERT INTO notification_devices VALUES('device','hash','issuer','subject','store',0,1);
+      INSERT INTO notification_subscriptions VALUES('sub','lellostore','device','app','cert','component','install','generation','subject',999,1,0);
+      INSERT INTO notification_events VALUES('lellostore','event','hash',1,NULL);
+      INSERT INTO notification_deliveries VALUES('delivery','lellostore','event','sub','type',NULL,1,1,'{}',2,999,0,NULL,'pending',NULL,1);
+      INSERT INTO notification_watermarks VALUES('sub','type','key',1,1,999);
+      INSERT INTO notification_audit(at,actor,action,entity) VALUES(1,'admin','approve','lellostore');
+    "#).execute(&db).await.unwrap();
+    sqlx::raw_sql(include_str!("../migrations/2026100401_unifiedpush.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
+    let old: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM sqlite_master WHERE name='notification_credentials'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(old, 0);
+    let new: i64 = sqlx::query_scalar("SELECT count(*) FROM push_subscriptions")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(new, 0);
+    let audit: i64 = sqlx::query_scalar("SELECT count(*) FROM notification_audit")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(audit, 1);
+}
+async fn fixture() -> (Arc<Broker>, push::Sender, Subscription, String) {
     let db = SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
         .unwrap();
     lellostore_backend::db::run_migrations(&db).await.unwrap();
-    let manifest = json!({"types":[{"application":"app.test","name":"incident","levels":["warning","info"],"default":{"strategy":strategy,"ttl_seconds":ttl}}],"rules":[]});
-    sqlx::query(
-        "INSERT INTO notification_senders(id,name,applications,manifest) VALUES('test','Test',?,?)",
-    )
-    .bind(json!([{"package":"app.test","certificates":["a".repeat(64)]}]).to_string())
-    .bind(manifest.to_string())
-    .execute(&db)
-    .await
-    .unwrap();
-    sqlx::query("INSERT INTO notification_credentials(hash,sender_id) VALUES(?,'test')")
-        .bind(hash("sender-secret"))
+    let sender = push::Sender::new();
+    sqlx::query("INSERT INTO push_senders(id,name) VALUES('test','Test')")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO notification_devices VALUES('phone',?,'issuer','alice','com.lelloman.store',0,?)").bind(hash("device-secret")).bind(now()).execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO notification_subscriptions VALUES('sub','test','phone','app.test',?,'app.test/Receiver','install','generation','alice',?,1,0)").bind("a".repeat(64)).bind(now()+300).execute(&db).await.unwrap();
-    Broker::new(db)
+    sqlx::query("INSERT INTO push_keys(key,sender_id) VALUES(?,'test')")
+        .bind(&sender.key)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO push_devices VALUES('phone',?,'issuer','alice','com.lelloman.store',0,?)",
+    )
+    .bind(hash("device-secret"))
+    .bind(now())
+    .execute(&db)
+    .await
+    .unwrap();
+    let broker = Broker::new(db);
+    let sub = Subscription {
+        token: "token-one".into(),
+        package: "app.test".into(),
+        vapid: sender.key.clone(),
+        endpoint_secret: "a".repeat(64),
+    };
+    let id = broker.subscribe("phone", &sub).await.unwrap();
+    (broker, sender, sub, id)
 }
-fn event(id: &str, revision: i64) -> Publication {
+fn message(ttl: i64, topic: Option<&str>) -> Publication {
     Publication {
-        event_id: id.into(),
-        application: "app.test".into(),
-        message_type: "incident".into(),
-        target: Target {
-            subject: "alice".into(),
-            subscription_id: None,
-        },
-        level: "warning".into(),
-        tags: vec!["server".into()],
-        occurred_at: now(),
-        expires_at: None,
-        replacement_key: Some("host-down".into()),
-        occurrence: 1,
-        revision,
-        payload: json!({"title":"Host unavailable"}),
+        payload: vec![0, 255, 10, 0, 20],
+        ttl,
+        topic: topic.map(str::to_owned),
+        urgency: "normal".into(),
     }
 }
-
 #[tokio::test]
-async fn replay_is_durable_and_only_recipient_receipt_finishes_delivery() {
-    let b = fixture("queue", None).await;
-    let m = event("first", 1);
-    let accepted = b.publish("test", &m).await.unwrap();
-    assert_eq!(b.publish("test", &m).await.unwrap(), accepted);
+async fn registration_is_idempotent_scoped_and_revocable() {
+    let (b, sender, mut sub, id) = fixture().await;
+    assert_eq!(b.subscribe("phone", &sub).await.unwrap(), id);
+    sub.package = "other.app".into();
+    assert_eq!(
+        b.subscribe("phone", &sub).await.unwrap_err().0,
+        StatusCode::FORBIDDEN
+    );
+    sub.package = "app.test".into();
+    sub.token = "token-two".into();
+    sub.endpoint_secret = "b".repeat(64);
+    assert_ne!(b.subscribe("phone", &sub).await.unwrap(), id);
+    sub.vapid = push::Sender::new().key;
+    assert!(b.subscribe("phone", &sub).await.is_err());
+    b.revoke("phone", Some(&id)).await.unwrap();
+    assert_eq!(
+        b.publish(
+            &"a".repeat(64),
+            Some(&sender.authorization(ORIGIN, now() + 100)),
+            ORIGIN,
+            &message(60, None)
+        )
+        .await
+        .unwrap_err()
+        .0,
+        StatusCode::GONE
+    );
+}
+#[tokio::test]
+async fn encrypted_bytes_survive_restart_and_only_matching_ack_finishes_delivery() {
+    let (b, sender, sub, _) = fixture().await;
+    let id = b
+        .publish(
+            &sub.endpoint_secret,
+            Some(&sender.authorization(ORIGIN, now() + 100)),
+            ORIGIN,
+            &message(60, None),
+        )
+        .await
+        .unwrap();
     let restarted = Broker::new(b.db.clone());
-    let pending = restarted.pending("phone").await.unwrap();
-    assert_eq!(pending.len(), 1);
-    let id = pending[0]["delivery_id"].as_str().unwrap();
-    assert!(restarted.receipt("other-phone", id, None).await.is_err());
-    restarted.receipt("phone", id, None).await.unwrap();
-    assert!(restarted.pending("phone").await.unwrap().is_empty());
+    let pending = restarted.pending("phone", "epoch").await.unwrap();
+    use base64::Engine;
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(pending[0]["payload"].as_str().unwrap())
+            .unwrap(),
+        message(60, None).payload
+    );
     restarted
-        .receipt("phone", id, Some("posted"))
+        .receipt("other-phone", &id, &sub.token)
         .await
         .unwrap();
-    let receipt = restarted.outcome("test", "first").await.unwrap();
-    assert_eq!(receipt["deliveries"][0]["state"], "persisted");
-    assert_eq!(receipt["deliveries"][0]["presentation"], "posted");
-    let mut changed = m;
-    changed.payload = json!({"different":true});
-    assert_eq!(
-        b.publish("test", &changed).await.unwrap_err().0.as_u16(),
-        409
-    );
+    restarted
+        .receipt("phone", &id, "wrong-token")
+        .await
+        .unwrap();
+    assert_eq!(restarted.pending("phone", "epoch").await.unwrap().len(), 1);
+    restarted.receipt("phone", &id, &sub.token).await.unwrap();
+    assert!(restarted
+        .pending("phone", "epoch")
+        .await
+        .unwrap()
+        .is_empty());
+    restarted.receipt("phone", &id, &sub.token).await.unwrap();
 }
-
 #[tokio::test]
-async fn device_credentials_do_not_authorize_sending_and_types_are_scoped() {
-    let b = fixture("queue", None).await;
-    assert!(b.sender("device-secret").await.is_err());
-    assert!(b.device("sender-secret").await.is_err());
-    assert_eq!(b.sender("sender-secret").await.unwrap(), "test");
-    let mut m = event("one", 1);
-    m.application = "another.app".into();
-    assert!(b.publish("test", &m).await.is_err());
-    m.application = "app.test".into();
-    m.target.subject = "bob".into();
-    assert!(b.publish("test", &m).await.is_err());
-    sqlx::query("UPDATE notification_senders SET enabled=0 WHERE id='test'")
+async fn vapid_rejects_unapproved_mismatched_expired_and_wrong_audience() {
+    let (b, sender, sub, _) = fixture().await;
+    for auth in [
+        None,
+        Some(push::Sender::new().authorization(ORIGIN, now() + 100)),
+        Some(sender.authorization("https://wrong.example", now() + 100)),
+        Some(sender.authorization(ORIGIN, now() - 1)),
+        Some(sender.authorization(ORIGIN, now() + 86401)),
+    ] {
+        assert!(b
+            .publish(
+                &sub.endpoint_secret,
+                auth.as_deref(),
+                ORIGIN,
+                &message(60, None)
+            )
+            .await
+            .is_err());
+    }
+    let mut auth = sender.authorization(ORIGIN, now() + 100);
+    auth = auth.replacen("vapid t=", "vapid t=x", 1);
+    assert!(b
+        .publish(
+            &sub.endpoint_secret,
+            Some(&auth),
+            ORIGIN,
+            &message(60, None)
+        )
+        .await
+        .is_err());
+    sqlx::query("UPDATE push_senders SET enabled=0")
         .execute(&b.db)
         .await
         .unwrap();
-    assert!(b.sender("sender-secret").await.is_err());
-    assert!(b.publish("test", &event("two", 1)).await.is_err());
+    assert!(b
+        .publish(
+            &sub.endpoint_secret,
+            Some(&sender.authorization(ORIGIN, now() + 100)),
+            ORIGIN,
+            &message(60, None)
+        )
+        .await
+        .is_err());
 }
-
 #[tokio::test]
-async fn recovery_supersedes_firing_and_watermarks_survive_expiry() {
-    let b = fixture("latest", None).await;
-    b.publish("test", &event("firing", 1)).await.unwrap();
-    let mut recovery = event("recovery", 2);
-    recovery.level = "info".into();
-    recovery.expires_at = Some(now() - 1);
-    b.publish("test", &recovery).await.unwrap();
-    assert!(b.pending("phone").await.unwrap().is_empty());
-    b.publish("test", &event("late-firing", 1)).await.unwrap();
-    assert!(b.pending("phone").await.unwrap().is_empty());
-    assert_eq!(
-        b.outcome("test", "late-firing").await.unwrap()["deliveries"][0]["state"],
-        "superseded"
-    );
-    let mut new_occurrence = event("new-occurrence", 0);
-    new_occurrence.occurrence = 2;
-    b.publish("test", &new_occurrence).await.unwrap();
-    assert_eq!(b.pending("phone").await.unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn policy_precedence_is_ordered_and_existing_expiry_is_frozen() {
-    let b = fixture("queue", Some(600)).await;
-    let overrides = json!([
-        {"application":"app.test","level":"warning","tags":["server"],"policy":{"strategy":"queue","ttl_seconds":60}},
-        {"application":"app.test","policy":{"strategy":"queue","ttl_seconds":120}}
-    ]);
-    sqlx::query("UPDATE notification_senders SET overrides=? WHERE id='test'")
-        .bind(overrides.to_string())
+async fn topic_replacement_is_atomic_with_quota_checks_and_expiry() {
+    let (b, sender, sub, _) = fixture().await;
+    let auth = sender.authorization(ORIGIN, now() + 100);
+    let original = b
+        .publish(
+            &sub.endpoint_secret,
+            Some(&auth),
+            ORIGIN,
+            &message(60, Some("topic")),
+        )
+        .await
+        .unwrap();
+    sqlx::query("UPDATE push_senders SET max_bytes=5")
         .execute(&b.db)
         .await
         .unwrap();
-    b.publish("test", &event("one", 1)).await.unwrap();
-    let before = b.pending("phone").await.unwrap();
+    let mut large = message(60, Some("topic"));
+    large.payload = vec![1; 6];
     assert_eq!(
-        before[0]["expires_at"].as_i64().unwrap() - before[0]["accepted_at"].as_i64().unwrap(),
-        60
-    );
-    sqlx::query("UPDATE notification_senders SET overrides='[]' WHERE id='test'")
-        .execute(&b.db)
-        .await
-        .unwrap();
-    assert_eq!(before, b.pending("phone").await.unwrap());
-}
-
-#[tokio::test]
-async fn atomic_fanout_rejects_full_queue_without_losing_old_messages() {
-    let b = fixture("queue", None).await;
-    b.publish("test", &event("old", 1)).await.unwrap();
-    sqlx::query("UPDATE notification_senders SET max_pending=2 WHERE id='test'")
-        .execute(&b.db)
-        .await
-        .unwrap();
-    sqlx::query("INSERT INTO notification_subscriptions SELECT 'second',sender_id,device_id,package,certificate,component,'second-install',generation,subject,lease_until,confirmed,revoked FROM notification_subscriptions WHERE id='sub'").execute(&b.db).await.unwrap();
-    assert_eq!(
-        b.publish("test", &event("new", 2))
+        b.publish(&sub.endpoint_secret, Some(&auth), ORIGIN, &large)
             .await
             .unwrap_err()
-            .0
-            .as_u16(),
-        429
+            .0,
+        StatusCode::TOO_MANY_REQUESTS
     );
-    assert_eq!(b.pending("phone").await.unwrap().len(), 1);
-    assert!(b.outcome("test", "new").await.is_err());
-}
-
-#[tokio::test]
-async fn leases_and_confirmation_gate_replay_without_deleting_backlog() {
-    let b = fixture("queue", None).await;
-    b.publish("test", &event("one", 1)).await.unwrap();
-    sqlx::query("UPDATE notification_subscriptions SET lease_until=0")
-        .execute(&b.db)
-        .await
-        .unwrap();
-    assert!(b.pending("phone").await.unwrap().is_empty());
-    sqlx::query("UPDATE notification_subscriptions SET lease_until=?,confirmed=0")
-        .bind(now() + 300)
-        .execute(&b.db)
-        .await
-        .unwrap();
-    assert!(b.pending("phone").await.unwrap().is_empty());
-    sqlx::query("UPDATE notification_subscriptions SET confirmed=1")
-        .execute(&b.db)
-        .await
-        .unwrap();
-    assert_eq!(b.pending("phone").await.unwrap().len(), 1);
-    sqlx::query("UPDATE notification_subscriptions SET revoked=1")
-        .execute(&b.db)
-        .await
-        .unwrap();
-    assert!(b.pending("phone").await.unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn online_only_never_queues_for_offline_devices() {
-    let b = fixture("online_only", None).await;
     assert_eq!(
-        b.publish("test", &event("offline", 1)).await.unwrap()["deliveries"][0]["state"],
-        "offline"
+        b.pending("phone", "epoch").await.unwrap()[0]["id"],
+        original
     );
-    b.connections.lock().await.insert(
-        "phone".into(),
-        Connection {
-            epoch: "1".into(),
-            wake: Default::default(),
-        },
+    let replacement = b
+        .publish(
+            &sub.endpoint_secret,
+            Some(&auth),
+            ORIGIN,
+            &message(60, Some("topic")),
+        )
+        .await
+        .unwrap();
+    b.receipt("phone", &original, &sub.token).await.unwrap();
+    assert_eq!(
+        b.pending("phone", "epoch").await.unwrap()[0]["id"],
+        replacement
     );
-    b.publish("test", &event("online", 2)).await.unwrap();
-    assert_eq!(b.pending("phone").await.unwrap().len(), 1);
+    sqlx::query("UPDATE push_messages SET expires_at=0")
+        .execute(&b.db)
+        .await
+        .unwrap();
+    b.maintenance().await.unwrap();
+    assert!(b.pending("phone", "epoch").await.unwrap().is_empty());
 }
-
-#[test]
-fn manifest_rejects_cross_application_rules_and_invalid_policies() {
-    let app = Application {
-        package: "app.test".into(),
-        certificates: vec!["a".repeat(64)],
-    };
-    let manifest:Manifest=serde_json::from_value(json!({"types":[{"application":"other","name":"incident","levels":["info"],"default":{"strategy":"queue","ttl_seconds":null}}]})).unwrap();
-    assert!(manifest.validate(&[app]).is_err());
-    assert!(Policy {
-        strategy: Strategy::Queue,
-        ttl_seconds: Some(0)
-    }
-    .validate()
-    .is_err());
-}
-
 #[tokio::test]
-async fn ephemeral_deliveries_cannot_cross_connection_epochs_or_server_restart() {
-    let b = fixture("online_only", None).await;
+async fn zero_ttl_is_never_replayed_on_a_new_connection_or_without_valid_session() {
+    let (b, sender, sub, _) = fixture().await;
+    let auth = sender.authorization(ORIGIN, now() + 100);
+    b.publish(&sub.endpoint_secret, Some(&auth), ORIGIN, &message(0, None))
+        .await
+        .unwrap();
     b.connections.lock().await.insert(
         "phone".into(),
         Connection {
             epoch: "old".into(),
             wake: Arc::new(tokio::sync::Notify::new()),
+            expires: now() + 100,
         },
     );
-    b.publish("test", &event("ephemeral", 1)).await.unwrap();
-    assert_eq!(b.pending("phone").await.unwrap().len(), 1);
-    b.connections.lock().await.insert(
-        "phone".into(),
-        Connection {
-            epoch: "new".into(),
-            wake: Arc::new(tokio::sync::Notify::new()),
-        },
-    );
-    assert!(b.pending("phone").await.unwrap().is_empty());
-    let restarted = Broker::new(b.db.clone());
-    assert!(restarted.pending("phone").await.unwrap().is_empty());
-    restarted.maintenance().await.unwrap();
-    assert_eq!(
-        b.outcome("test", "ephemeral").await.unwrap()["deliveries"][0]["state"],
-        "offline"
-    );
-}
-
-#[tokio::test]
-async fn shrinking_application_scope_blocks_stale_manifest_publication() {
-    let b = fixture("queue", None).await;
-    sqlx::query("UPDATE notification_senders SET applications='[]' WHERE id='test'")
-        .execute(&b.db)
+    assert!(b.pending("phone", "old").await.unwrap().is_empty());
+    b.publish(&sub.endpoint_secret, Some(&auth), ORIGIN, &message(0, None))
         .await
         .unwrap();
-    assert!(b.publish("test", &event("removed-app", 1)).await.is_err());
+    assert_eq!(b.pending("phone", "old").await.unwrap().len(), 1);
+    assert!(b.pending("phone", "new").await.unwrap().is_empty());
+    b.connections.lock().await.get_mut("phone").unwrap().expires = 0;
+    b.publish(&sub.endpoint_secret, Some(&auth), ORIGIN, &message(0, None))
+        .await
+        .unwrap();
+    assert_eq!(b.pending("phone", "old").await.unwrap().len(), 1);
+}
+#[test]
+fn webpush_header_validation() {
+    let mut h = HeaderMap::new();
+    h.insert("content-encoding", HeaderValue::from_static("aes128gcm"));
+    assert!(Publication::parse(&h, vec![0; 4096]).is_err());
+    h.insert("ttl", HeaderValue::from_static("3000000"));
+    assert_eq!(Publication::parse(&h, vec![0; 4096]).unwrap().ttl, MAX_TTL);
+    assert!(Publication::parse(&h, vec![0; 4097]).is_err());
+    h.insert("topic", HeaderValue::from_static("illegal/topic"));
+    assert!(Publication::parse(&h, vec![1]).is_err());
+    h.remove("topic");
+    h.insert("urgency", HeaderValue::from_static("urgent"));
+    assert!(Publication::parse(&h, vec![1]).is_err());
+    h.remove("urgency");
+    h.append("ttl", HeaderValue::from_static("1"));
+    assert!(Publication::parse(&h, vec![1]).is_err());
+    assert!(public_key(&"A".repeat(87)).is_err());
+    assert!(public_key(&push::Sender::new().key).is_ok());
+}
+
+#[test]
+fn independent_node_webpush_request_is_accepted_without_wire_conversion() {
+    use base64::Engine;
+    let vector: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/unifiedpush/webpush.json")).unwrap();
+    vapid(
+        vector["authorization"].as_str(),
+        vector["vapid"].as_str().unwrap(),
+        ORIGIN,
+        vector["generated_at"].as_i64().unwrap(),
+    )
+    .unwrap();
+    let mut headers = HeaderMap::new();
+    for (name, value) in vector["headers"].as_object().unwrap() {
+        headers.insert(
+            simple_server::web::http::header::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+            HeaderValue::from_str(
+                &value
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| value.to_string()),
+            )
+            .unwrap(),
+        );
+    }
+    let payload = base64::engine::general_purpose::STANDARD
+        .decode(vector["body"].as_str().unwrap())
+        .unwrap();
+    let parsed = Publication::parse(&headers, payload.clone()).unwrap();
+    assert_eq!(parsed.payload, payload);
+    assert_eq!(parsed.ttl, 300);
+    assert_eq!(parsed.urgency, "high");
 }

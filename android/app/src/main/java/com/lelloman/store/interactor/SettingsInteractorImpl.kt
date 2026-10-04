@@ -1,6 +1,6 @@
 package com.lelloman.store.interactor
 
-import androidx.core.net.toUri
+import com.lelloman.store.ui.screen.settings.openPushBatterySettings
 import com.lelloman.store.domain.auth.AuthState
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
@@ -62,8 +62,7 @@ class SettingsInteractorImpl @Inject constructor(
     override suspend fun setKeepUpdateConnection(enabled: Boolean) {
         userPreferencesStore.setKeepUpdateConnection(enabled)
         if (enabled && !broker.hasBatteryExemption()) {
-            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                "package:${context.packageName}".toUri()).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.openPushBatterySettings()
         }
     }
 

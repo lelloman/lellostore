@@ -10,8 +10,7 @@ function overview() {
     connections: 2, outcomes: [],
     senders: [{
       id: 'talia', name: 'Talìa', enabled: true,
-      applications: [{ package: 'com.lelloman.talia', certificates: ['a'.repeat(64)] }],
-      manifest: { types: [] }, overrides: [], max_pending: 100, max_bytes: 4096,
+      keys: [{ key: 'B'.repeat(87), revoked: false }], registrations: 2, max_pending: 100, max_bytes: 4096,
       rate: 1, burst: 10, pending: 3, queued_bytes: 256,
     }],
   }
@@ -36,55 +35,39 @@ function mountView() {
 }
 
 describe('AdminNotificationsView', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(request).mockResolvedValue(overview())
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(request).mockResolvedValue(overview()) })
+  it('lists approved servers and registrations', async () => {
+    const wrapper = mountView(); await flushPromises()
+    expect(wrapper.text()).toContain('Talìa'); expect(wrapper.text()).toContain('Enabled')
+    expect(wrapper.text()).toContain('2 registrations'); expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
-
-  it('lists registered apps without opening invitation or policy forms', async () => {
-    const wrapper = mountView()
-    await flushPromises()
-    expect(wrapper.text()).toContain('com.lelloman.talia')
-    expect(wrapper.text()).toContain('Talìa')
-    expect(wrapper.text()).toContain('Enabled')
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Administrator overrides')
+  it('approves a public key without sender credentials or app identity', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.find('input[aria-label="Server name"]').setValue(' New server ')
+    await wrapper.find('input[aria-label="VAPID public key"]').setValue('B'.repeat(87))
+    await wrapper.find('form').trigger('submit'); await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/admin/notifications/senders', { method: 'POST', body: JSON.stringify({ name: 'New server', key: 'B'.repeat(87) }) })
+    expect(wrapper.text()).toContain('Server approved')
   })
-
-  it('creates an invitation with normalized certificate without inventing a registration', async () => {
-    const wrapper = mountView()
-    await flushPromises()
-    await wrapper.findAll('button').find(b => b.text() === 'Create invitation')!.trigger('click')
-    await wrapper.find('input[aria-label="App / backend name"]').setValue(' New app ')
-    await wrapper.find('input[aria-label="Android package"]').setValue(' com.example.new ')
-    await wrapper.find('input[aria-label="Signing certificate SHA-256"]').setValue('A'.repeat(64))
-    vi.mocked(request).mockResolvedValueOnce({ invitation: 'private-invitation' })
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-    expect(request).toHaveBeenLastCalledWith('/api/admin/notifications/invitations', {
-      method: 'POST', body: JSON.stringify({ name: 'New app', applications: [{ package: 'com.example.new', certificates: ['a'.repeat(64)] }] }),
-    })
-    expect(wrapper.text()).toContain('Invitation created')
-    expect(wrapper.text()).toContain('after registration')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
-  })
-
-  it('discards unsaved registration changes when management closes', async () => {
-    const wrapper = mountView()
-    await flushPromises()
-    await wrapper.find('button[aria-label="Manage com.lelloman.talia"]').trigger('click')
-    await wrapper.find('input[aria-label="Package"]').setValue('com.example.unsaved')
-    await wrapper.find('button[aria-label="Close registration"]').trigger('click')
-    expect(wrapper.text()).toContain('com.lelloman.talia')
-    expect(wrapper.text()).not.toContain('com.example.unsaved')
+  it('discards unsaved changes', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.find('button[aria-label="Manage Talìa"]').trigger('click')
+    const inputs = wrapper.findAll('input[aria-label="Server name"]')
+    await inputs[inputs.length - 1]!.setValue('Unsaved')
+    await wrapper.find('button[aria-label="Close server"]').trigger('click')
+    expect(wrapper.text()).toContain('Talìa'); expect(wrapper.text()).not.toContain('Unsaved')
     expect(request).toHaveBeenCalledTimes(1)
   })
-
-  it('shows registration guidance when no apps are registered', async () => {
-    vi.mocked(request).mockResolvedValueOnce({ connections: 0, outcomes: [], senders: [] })
-    const wrapper = mountView()
-    await flushPromises()
-    expect(wrapper.text()).toContain('No apps registered yet')
-    expect(wrapper.text()).toContain('share it privately')
+  it('requires confirmation before revoking an approved key', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.find('button[aria-label="Manage Talìa"]').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Revoke key')!.trigger('click')
+    expect(request).toHaveBeenCalledTimes(1)
+    await wrapper.findAll('button').find(b => b.text() === 'Confirm revocation')!.trigger('click'); await flushPromises()
+    expect(request).toHaveBeenCalledWith(`/api/admin/notifications/senders/talia/keys/${'B'.repeat(87)}`, { method: 'DELETE' })
+  })
+  it('shows backend errors', async () => {
+    vi.mocked(request).mockRejectedValueOnce(new Error('Unavailable'))
+    const wrapper = mountView(); await flushPromises(); expect(wrapper.text()).toContain('Unavailable')
   })
 })

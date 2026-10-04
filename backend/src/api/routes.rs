@@ -25,7 +25,11 @@ pub fn create_test_router(state: AppState) -> Router {
 
 fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -> Router {
     let max_upload_size = state.config.max_upload_size;
-    if state.config.notifications_enabled { state.catalog_events.attach_notifications(&state.notifications); }
+    if state.config.notifications_enabled {
+        state
+            .catalog_events
+            .attach_notifications(&state.notifications);
+    }
     let mut router = Router::new().route(
         "/health",
         get_service(simple_server::health::Probe::liveness().endpoint(handlers::health_check)),
@@ -242,6 +246,10 @@ async fn http_trace(
     request: simple_server::web::extract::Request,
     next: simple_server::web::middleware::Next,
 ) -> simple_server::web::response::Response {
+    // Capability URLs are secrets. Never pass their raw URI to request tracing.
+    if request.uri().path().starts_with("/api/push/v1/send/") {
+        return next.run(request).await;
+    }
     simple_server::web::tracing::trace_with_observer(
         request,
         simple_server::web::tracing::TracingObserver,

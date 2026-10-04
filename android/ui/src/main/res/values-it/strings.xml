@@ -210,4 +210,7 @@
     <string name="paravoid_controls_unavailable">I controlli degli aggiornamenti non sono disponibili. Apri l’app per gestire gli aggiornamenti.</string>
     <string name="settings_keep_update_connection">Notifiche condivise</string>
     <string name="settings_keep_update_connection_subtitle">Mantieni una connessione per notifiche e aggiornamenti delle app. Richiede un utilizzo della batteria senza restrizioni e mostra una notifica persistente. Senza questa esenzione, nessuna app che dipende da LelloStore può ricevere notifiche push.</string>
+    <string name="push_battery_warning_title">L’ottimizzazione della batteria blocca le notifiche push</string>
+    <string name="push_battery_warning_text">LelloStore non è escluso dall’ottimizzazione della batteria (Doze). Consenti un utilizzo senza restrizioni per ricevere le notifiche push di LelloStore e delle app che lo usano.</string>
+    <string name="push_battery_open_settings">Apri impostazioni batteria</string>
 </resources>

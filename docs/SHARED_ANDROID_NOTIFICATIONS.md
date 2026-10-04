@@ -1,315 +1,178 @@
-# Shared Android notifications through LelloStore
+# UnifiedPush through LelloStore
 
-Version 1, 2026-09-29. Implemented behind `NOTIFICATIONS_ENABLED=true`.
-Device qualification is required before production rollout; no measured battery
-or Doze latency claim is made by this document.
+LelloStore implements the Android AND_3.1.0 distributor interface and accepts
+RFC8291-encrypted Web Push publications authenticated with RFC8292 VAPID.
+The internal distributor-to-server connection remains an authenticated WebSocket.
+This is an Android distributor, not a browser Push API service or a D-Bus distributor.
 
-## Architecture and trust
+## Accounts and sender approval
 
-The Rust Store backend hosts the queue and notification APIs at the existing
-public HTTPS origin, `https://store.lelloman.com`. Android Store owns one WSS
-connection per Android user/profile. Participating apps use the shared Binder
-client library and post their own Android notifications. No Firebase, system
-privilege, root, automatic broker election, or UnifiedPush compatibility is used.
+LelloStore itself must be signed in to LelloAuth with shared notifications enabled.
+Both the device credential and a valid OIDC session are required for its connection.
+The server closes the connection when the token expires unless it is renewed.
+Identity-provider revocation remains bounded by the access token's lifetime.
 
-**The self-hosted server and Android Store can read notification contents.**
-HTTPS/WSS protects transport. Payloads are ordinary JSON, not end-to-end encrypted
-ciphertext. Application databases and server backups must be protected as other
-private application data. Payloads and bearer credentials must not enter logs.
+Recipient apps do not need LelloAuth accounts. They can use unrelated accounts or
+no account. Administrators approve the sending backend's VAPID public key in
+**Administration → Notifications**. Private signing keys stay on the sender.
+Approved keys are required both during subscription creation and publication.
 
-```mermaid
-flowchart LR
-    T[Talìa backend + transactional outbox] --> Q[Store backend + SQLite queue]
-    O[Other registered senders] --> Q
-    Q -->|One WSS connection per profile| S[Android LelloStore]
-    S -->|Verified Binder calls| A[Talìa receiver]
-    S -->|Verified Binder calls| B[Other recipient apps]
-    A --> N[App-owned notification channels]
-```
+An app registers through the standard connector with the approved VAPID key and
+receives a private endpoint. It sends the endpoint and its Web Push encryption
+subscription (`p256dh`, `auth`) to its own backend through its normal authenticated
+API. The sender uses a standard Web Push library; there is no LelloStore sender
+credential, invitation, account-subject targeting, or custom message envelope.
+An endpoint authorizes only its own registration and is bound to its VAPID key.
 
-Sender service authentication is separate from recipient authentication. A
-sender credential never authenticates a phone, a user, or an administrator.
-Recipient identities use the canonical OIDC issuer and subject, not email.
-Version 1 implements the same-account assumption: the app backend's authenticated
-recipient issuer/subject must match the Store installation's issuer/subject.
-Personal and work profiles have separate installations, credentials and sockets.
+Missing VAPID keys receive `VAPID_REQUIRED`. Unapproved/suspended keys or exhausted
+registration quotas receive `ACTION_REQUIRED`; LelloStore shows registration
+failure guidance in its connection status. Malformed broadcasts are ignored.
+An app that cannot supply VAPID is not supported by this service's approval policy.
 
-## Sender provisioning and administration
+## Delivery and lifetime
 
-An administrator opens **Notifications** in the Store web UI and creates a
-30-minute, one-use invitation scoped to recipient package names and approved
-current signing-certificate SHA-256 digests. A sender persists a randomly
-generated 256-bit credential and registration ID **before** redeeming the
-invitation. Retrying the same registration is idempotent. The server stores
-credential hashes; it does not need recoverable sender secrets.
+Sender → HTTPS push endpoint → SQLite ciphertext queue → authenticated WSS →
+UnifiedPush MESSAGE broadcast → recipient connector decryption.
 
-The sender registers its message types, allowed levels, type defaults and
-ordered matching rules. Administrators can add ordered policy overrides, change
-package/certificate scopes, suspend delivery, cancel pending messages, rotate
-credentials with a 24-hour overlap, and revoke a sender. Removing a package or
-pin revokes affected subscriptions. Revocation invalidates credentials and
-subscriptions and cancels queued messages. Administrative changes are audited.
+Payloads are opaque encrypted bytes, 1–4096 bytes inclusive, with
+`Content-Encoding: aes128gcm`. LelloStore does not hold application decryption keys.
+Subscription routing and transport metadata remain visible to the service.
 
-Publication policy precedence is:
+- `TTL` is mandatory; retention is capped at 28 days and returned in the response.
+- TTL zero attempts delivery only on the currently authenticated connection and
+  is never replayed to a later connection.
+- `Topic` replaces a pending message for the same subscription atomically.
+  It does not provide application-level event ordering or clear posted notifications.
+- `Urgency` defaults to normal. Android defers lower urgency messages according
+  to power, Wi-Fi, and battery state.
+- Normal acceptance returns 201 with a message Location and effective TTL.
+- Invalid headers return 400, unsupported encoding 415, oversized bodies 413,
+  missing/invalid VAPID 401/403, unavailable endpoints 410, and quotas 429.
+- Delivery is acknowledged only after the recipient sends `MESSAGE_ACK`.
+  ACKs are bound to token and random message ID. Android persists an ACK outbox;
+  reconnect replays receipts safely. A socket write is not an acknowledgment.
+- Retries can duplicate deliveries. Applications must handle their own event
+  deduplication and notification presentation. There are no presentation receipts.
 
-1. First matching administrator override.
-2. First matching sender rule.
-3. Registered message-type default.
+The server is authoritative for pending messages. Android does not persist
+ciphertext for independent offline replay. Registrations and receipt state live
+in no-backup storage; device credentials are protected by Android Keystore.
 
-Rules match an application, optional type, optional level, and all specified
-tags. Effective policy/version and expiration are frozen at acceptance. Changing
-policy affects future publications; cancelling pending messages is a separate
-operation. LelloStore is also a built-in sender for `catalog.changed` latest-state
-hints and uses the same connection when background notifications are enabled.
-The legacy foreground catalog endpoint remains available.
+The connection retains the existing foreground service, adaptive heartbeat,
+network callbacks, boot recovery, and battery guidance. Explicit logout, account
+or server changes, disabling shared push, uninstall, and registration removal
+invalidate applicable routes. Offline deletions are persisted and retried.
+Startup checks the Doze exemption and shows a separate one-minute notification
+with a battery-settings action when it is missing. If system notifications are
+blocked, an in-app snackbar provides the action. Settings keeps a warning visible
+until the exemption is granted and refreshes it when returning from Android settings.
+Force-stopped apps require reopening; no exact Doze latency guarantee is made.
 
-## Enrollment and authorization leases
+Store catalog updates use an internal control frame on the same connection.
+Every reconnect triggers catalog reconciliation and the installed-app update
+relay. The foreground catalog endpoint and polling fallback remain available.
 
-1. The recipient calls `NotificationClient.beginSession(issuer, subject)` after
-   authenticating with its own backend. Local installation/generation state and
-   received messages live in `noBackupFilesDir`.
-2. The SDK binds explicitly to Store. Both sides verify the actual Binder UID,
-   unambiguous package ownership and approved current signing certificates.
-   Shared UIDs and unknown signing keys are rejected.
-3. Store verifies the exported receiver component and obtains a five-minute
-   enrollment proof using its own authenticated device registration.
-4. The recipient submits that proof to its own backend over its authenticated
-   session. The backend independently authorizes the user and redeems the proof
-   with its sender credential and canonical recipient identity.
-5. Store binds local confirmation to the verified package, certificate, receiver,
-   installation and generation. A different local app cannot confirm that route.
-6. The backend renews the subscription's five-minute authorization lease every
-   two minutes. Renewal happens on the backend, not by polling from the phone.
+## Administration and limits
 
-Delivery pauses while a lease is expired; retained backlog remains queued.
-Revocation cancels backlog. Talìa renews only while its native session remains
-valid and its user retains administrator access to reports/incidents. Provider
-unavailability fails closed. Store authenticates the WSS stream with both a
-device credential and a current OIDC token, and closes it at token expiration.
-Upstream Store-account revocation is bounded by the JWT lifetime; there is no
-claim of immediate provider introspection by the Store backend.
+Approve a server name and valid P-256 public key. Multiple approved keys can
+belong to one sender and share its quotas. For rotation, approve the new key,
+migrate apps to new subscriptions, then revoke the old key. A revoked key cannot
+be reactivated: old endpoints must remain invalid.
 
-Local sign-out invalidates generation/presentation state before network cleanup.
-Store retires its encrypted device credential and persists offline revocation
-work for a subsequent connection. Force-stop requires reopening the app.
+Suspension rejects new publications and pauses queued delivery; expiration
+continues. Revocation invalidates endpoints and cancels pending messages. The
+Android distributor reconciles revocations before replay and informs recipients.
+Use **Settings → UnifiedPush registrations** on Android to inspect/remove routes.
 
-## Delivery policies and receipts
+Defaults:
 
-| Strategy | Behavior |
+- Per sender: 10 messages/second, burst 100, 100,000 pending messages, 256 MiB.
+- Global pending ciphertext: 1 GiB.
+- Per device: 1,024 pending messages, 4 MiB; 4,096 active registrations.
+- Per app/device: 1,024 registrations; 32 deliveries per server window and at most
+  four simultaneous Android foreground bindings.
+- Terminal message metadata: 30 days. Ciphertext is erased on terminal outcomes.
+- Audit: latest 10,000 administrative records.
+
+Metrics expose active connections, queued bytes/age, retained delivery outcomes,
+and push API rejection counts by status. Capability path segments are redacted
+from metric labels and excluded from request tracing. Never enable request-body
+or authorization-header logging. Configure the reverse proxy to suppress or
+redact `/api/push/v1/send/*` access logs as well.
+
+## Backend contract and configuration
+
+Set `NOTIFICATIONS_ENABLED=true` and `PUSH_PUBLIC_BASE_URL=https://store.lelloman.com`.
+The latter must be an HTTPS origin without credentials, path, query, or fragment;
+it determines returned endpoints and VAPID audience validation. Preserve WSS
+upgrades and idle timeouts longer than heartbeat plus acknowledgment deadline.
+
+| Interface | Authorization |
 | --- | --- |
-| `queue`, positive TTL | Each event is retained until recipient persistence or expiry. |
-| `queue`, null TTL | Until delivered, subject to queue quotas and explicit cancellation/revocation. |
-| `latest` | Latest `(occurrence, revision)` wins for subscription/type/replacement key. |
-| `online_only` | Accepted only for a live authorized connection; never replayed on a later connection. |
+| `POST /api/push/v1/devices` | OIDC bearer; persisted installation ID/device credential |
+| `DELETE /api/push/v1/devices` | Device bearer, permitting cleanup after logout |
+| `POST /api/push/v1/subscriptions` | OIDC bearer + X-Device-Credential |
+| `DELETE /api/push/v1/subscriptions` | Same; JSON `token` removes an owned registration, including a registration whose response was lost |
+| `DELETE /api/push/v1/subscriptions/{id}` | Same, restricted to device ownership |
+| `GET /api/push/v1/stream` | Device bearer, then OIDC authenticate frame |
+| `POST /api/push/v1/send/{secret}` | Standard VAPID, restricted to the approved subscription key |
+| `DELETE /api/push/v1/message/{id}` | Subscription VAPID signature |
+| `/api/admin/notifications` | Existing OIDC administrator role |
 
-Producer expiry can shorten server retention, not extend it. A reused event ID
-with different content is rejected. Retrying identical content returns the same
-outcome. Fan-out, replacement, watermark updates and quota checks are atomic.
-Quota failure does not partially publish or delete the previous latest state.
+Subscriptions contain `token`, `package`, `vapid`, and a persist-before-request
+256-bit hexadecimal `endpoint_secret`. Replies contain `id` and `endpoint`.
+The backend stores only the capability hash. A retry with the same fields is
+idempotent; changing the key/capability replaces the old registration.
 
-Latest-state watermarks survive payload expiry. Reconnect reconciliation sends
-bounded state snapshots so a superseded or expired recovery can clear an older
-posted incident. The receiver compares occurrence/revision before presentation;
-old snapshots cannot cancel newer state.
+WSS subprotocol: `lellostore.push.v1`. Client frames are `authenticate` with
+`access_token`, `ping` with `nonce`, and `receipt` with `id` and `token`. Server
+frames are `ready`, `authenticated`, `pong`, `routes_begin`, chunked `routes`,
+`routes_end`, `delivery`, `receipt_ack`, and `catalog_changed`. Delivery payloads
+are base64-encoded for the internal JSON transport and decoded without mutation.
+The Android interface carries the original ByteArray. No HTTP/2 browser
+subscription/receipt service is exposed by this private WSS transport.
 
-Store durably stages an envelope, then binds the verified recipient for a bounded
-operation. The SDK persists/deduplicates it before returning `persisted`. Only
-then does Store acknowledge durable delivery to the server. Presentation has a
-separate result: `posted`, `suppressed`, `permission_blocked`, `expired`, or
-`superseded`. Store retains local recovery markers until presentation settles.
-A socket write or Binder dispatch alone is not delivery.
+## Upgrade and migration
 
-Stable Android notification tags and `onlyAlertOnce` make normal retries quiet.
-There is no exactly-once sound guarantee across a process crash between posting
-and recording presentation. Notification taps reopen normal authenticated app
-flows and never carry sender credentials or authorize an action by themselves.
+This release deliberately breaks the old custom push integration.
+Migration `2026100401_unifiedpush.sql` drops the old notification sender grants,
+credentials, enrollment records, subscriptions, and queued messages. Other Store
+data and historical migration files remain intact. Android uses fresh broker
+state and removes legacy broker state/credentials on first initialization.
 
-## Resource limits
+Back up SQLite before release. Disable shared notifications during the coordinated
+backend and Store APK upgrade; configure the public origin, approve sender keys,
+then enable push and re-register recipient apps. The old API and Binder SDK have
+been removed. Existing consumers such as Talìa require a separate migration;
+there is no automatic conversion of sender credentials or subscriptions. Rolling
+back requires restoring the pre-migration database together with the old binaries.
 
-- Application payload: 16 KiB; JSON HTTP bodies and WSS frames: 64 KiB.
-- Default sender quota: 100,000 pending deliveries, 256 MiB queued payload.
-- Global queued payload ceiling: 1 GiB.
-- Sender token bucket: 10 publications/second, burst 100; administrator configurable.
-- 32 outstanding server deliveries/device, interleaved across recipient packages.
-- At most 64 active subscriptions/device and 256 latest-state keys/subscription.
-- At most four concurrent local Binder deliveries, each bounded to ten seconds.
-- Terminal event/receipt retention: 30 days; latest-state watermarks persist.
-- Administrative audit retention: latest 10,000 records.
+## Interoperability fixture and validation
 
-Unlimited TTL does not mean unlimited capacity. Senders keep their own durable
-outbox, use stable event IDs, and back off on unavailable/capacity responses.
+The `notification-fixture` module uses official connector **3.3.5**, without
+LelloStore-specific IPC or signing pins. Its Java implementation avoids upgrading
+the main app's Kotlin compiler just to consume the connector's newer metadata.
 
-## Android lifecycle and adaptive heartbeat
+1. Build Store and the fixture: `cd android && ./gradlew :app:assembleDebug :notification-fixture:assembleDebug`.
+2. Sign into Store, enable shared push and grant unrestricted battery use.
+3. Install sender tooling: `npm ci --prefix scripts/unifiedpush` from the repo root.
+4. Generate test sender keys: `node scripts/unifiedpush/interop.mjs keys /tmp/push-test-keys.json`.
+5. Approve the printed public key in the admin panel; enter it in the fixture,
+   select LelloStore, and register. Refresh the fixture result to obtain subscription
+   JSON, then save that JSON as `/tmp/push-test-subscription.json`.
+6. Send: `node scripts/unifiedpush/interop.mjs send /tmp/push-test-keys.json /tmp/push-test-subscription.json 'Hello UnifiedPush'`.
+7. Confirm decrypted text in the fixture, its notification, and an acknowledged
+   outcome in the admin panel. Revoke the key and confirm further sends fail.
 
-The user enables **Shared notifications** and grants unrestricted battery use.
-Store uses a `specialUse` foreground service with an ongoing status notification,
-network-change callbacks, explicit alarm scheduling, and bounded operation wake
-locks. It never holds a permanent wake lock. Boot, unlock and package-replacement
-receivers restore an opted-in connection after credential-protected storage is
-available. The stop action turns off the preference.
+Committed test vectors are synthetic, generated by Node `web-push` 3.6.7.
+Backend tests verify their standard headers/VAPID and exact ciphertext. The fixture
+JVM test decrypts them using the official connector's decryptor and rejects tampering.
+To regenerate both JSON and properties vectors, use `node scripts/unifiedpush/interop.mjs vector`
+and update the corresponding test-only properties fields.
 
-Heartbeat learning uses monotonic time and separate Wi-Fi, cellular, VPN and
-other-network categories. Cached learning expires after seven days:
-
-- Initial idle interval: five minutes; lower bound one minute; upper bound fifteen.
-- Three qualifying idle successes increase the interval by 2%.
-- A classified idle timeout reduces it by 20% after reconnection demonstrates
-  reachability on the same network.
-- Acknowledgement deadline: 90 seconds.
-- Traffic-active samples, alarms over ten seconds late, network changes and
-  server outages do not count as successful idle-learning samples.
-- Reconnect uses exponential jittered backoff, bounded to five minutes.
-
-Battery exemption permits network/partial-wake-lock use during Doze, but does not
-promise exact alarm timing on every device. Android documents limits on
-while-idle alarms; the implementation records alarm lateness and excludes those
-samples from learning. Authentication renewal can also shorten an otherwise idle
-interval. The heartbeat target is therefore not a universal Doze latency SLA.
-See [Android Doze restrictions](https://developer.android.com/training/monitoring-device-state/doze-standby)
-and [AlarmManager](https://developer.android.com/reference/android/app/AlarmManager).
-
-## HTTP and WSS contract
-
-All paths below are relative to `/api/notifications/v1`. Credentials belong in
-headers, never URLs. Sender endpoints use `Authorization: Bearer <sender-secret>`.
-Device management/enrollment use the Store OIDC bearer and, after registration,
-`X-Device-Credential`. Self-revocation accepts the device bearer alone.
-
-| Method/path | Purpose |
-| --- | --- |
-| `POST /senders/register` | Redeem invitation with persisted registration ID/credential. |
-| `PUT /sender/manifest` | Register types, defaults and ordered rules. |
-| `POST /sender/rotate` | Idempotently install a successor credential. |
-| `POST /devices` | Register Store installation under its authenticated user. |
-| `DELETE /device` | Revoke the credential's own device and subscriptions. |
-| `POST /enrollments` | Issue a locally verified enrollment proof. |
-| `POST /subscriptions` | Sender redeems proof with authorized issuer/subject. |
-| `POST /subscriptions/{id}/confirm` | Device confirms exact local enrollment identity. |
-| `POST /subscriptions/renew` | Sender renews authorized subscriptions, batches up to 1,000. |
-| `DELETE /subscriptions/{id}` | Owning sender/device revokes a subscription. |
-| `POST /messages` | Publish idempotent typed JSON message. |
-| `GET /messages/{event_id}` | Sender reads per-subscription outcomes. |
-| `GET /stream` | WSS, subprotocol `lellostore.notifications.v1`. |
-
-The WSS upgrade uses the device bearer. Within ten seconds the client sends
-`{"kind":"authenticate","access_token":"..."}`. Only successful user
-validation displaces an older connection. Server frames are `ready`, `routes`,
-`snapshots`, `delivery`, `pong`, `authenticated`, and `receipt_ack`. Client frames
-are `authenticate`, `ping` with a nonce, and `receipt` with delivery ID and optional
-presentation. Routine lease renewals do not emit phone traffic.
-
-Example sender manifest and message:
-
-```json
-{
-  "types": [{
-    "application": "com.lelloman.talia", "name": "incident.state",
-    "levels": ["info", "warning", "critical", "error"],
-    "default": {"strategy": "latest", "ttl_seconds": null}
-  }],
-  "rules": []
-}
-```
-
-```json
-{
-  "event_id": "host-7-occurrence-3-revision-2",
-  "application": "com.lelloman.talia", "type": "incident.state",
-  "target": {"subject": "canonical-user-subject"},
-  "level": "info", "tags": ["incident"], "occurred_at": 1790700000,
-  "replacement_key": "host-7", "occurrence": 3, "revision": 2,
-  "payload": {"key": "host-7", "active": false, "summary": "Recovered"}
-}
-```
-
-Use current epoch seconds for `occurred_at`; this example is illustrative.
-Unknown types/levels, scope violations, stale identity and oversized payloads
-are rejected. Admin endpoints live under `/api/admin/notifications` and require
-the existing Store administrator role, independently of sender credentials.
-
-## Talìa integration and local build
-
-Talìa's migration 019 adds subscription/outbox tables and transaction-bound
-triggers for report completion and incident transitions. Report previews
-(`send=false`) do not publish. Report severity remains distinct from execution
-status. Incidents use replacement keys with occurrence/revision ordering;
-recovery and acknowledgement suppress the old Android notification.
-
-The Talìa worker is disabled unless `TALIA_STORE_NOTIFICATIONS_FILE` names a
-private writable configuration file. Initial contents:
-
-```json
-{
-  "url": "https://store.lelloman.com",
-  "invitation": "ADMIN_CREATED_ONE_TIME_INVITATION",
-  "applications": ["com.lelloman.talia"]
-}
-```
-
-The worker persists its generated sender credential before registration and
-removes the invitation afterward. Keep the file and its directory private and
-writable by the service account. On administrator credential rotation, replace
-the file's `credential` and restart the worker before the overlap expires.
-
-Build the shared artifacts into the Store build directory, without publishing
-outside the workspace:
-
-```sh
-cd android
-./gradlew :notification-protocol:publishReleasePublicationToMavenRepository \
-  :notification-client:publishReleasePublicationToMavenRepository
-```
-
-Talìa resolves `com.lelloman.store:notification-client:0.1.0` from that local
-repository (override with `LELLOSTORE_NOTIFICATION_REPOSITORY`). Supply trusted
-Store signing pins in `LELLOSTORE_SIGNING_CERTIFICATES`, comma-separated lowercase
-SHA-256 hex, when building Talìa. An unconfigured build cannot enroll. Approve
-Talìa's own release signing pin in its sender invitation. Do not substitute debug
-certificates in production.
-
-Talìa APK 4 adds a receiver and notification permission. This requires a **new
-signed shell APK**, not a payload-only update to APK 3. Establish an APK-4
-Paravoid baseline as part of the separately authorized release process. Use
-`-PparavoidNewShell=true` only when building/exporting that new shell; ordinary
-payload builds continue to require the accepted APK-4 baseline. No
-release or deployment is part of this implementation.
-
-The `notification-fixture` Android module is an independent manual recipient.
-Build with `-PfixtureStoreCertificate=<debug-Store-SHA256>`; it binds only the debug
-Store package. Enter the canonical identity, copy the generated proof to an
-authenticated fixture backend/operator, redeem it, and enter the returned
-subscription ID to confirm. It has no sender secret or persistent network loop.
-
-## Operations and qualification
-
-Enable the backend feature flag only after migrating SQLite and configuring
-normal OIDC validation. Existing catalog APIs remain available. The reverse
-proxy must preserve WSS upgrades and allow idle connections longer than the
-chosen heartbeat plus acknowledgement deadline. Server process restart replays
-retained deliveries after authentication and repairs Store catalog hints.
-
-The administrator page exposes connected devices and delivery outcome counts.
-Metrics include `lellostore_notification_connections`,
-`lellostore_notification_deliveries{state}`,
-`lellostore_notification_pending_bytes`, and
-`lellostore_notification_oldest_pending_seconds`. Background maintenance samples
-these once a minute. Android records heartbeat interval, RTT and alarm lateness
-in its private broker diagnostics; the foreground notification shows connection
-and setup status.
-
-Automated checks cover policy precedence, durable replay, idempotency, atomic
-fan-out quotas, recovery watermarks, credential separation, enrollment account
-and generation binding, authenticated WSS receipts, heartbeat learning, and
-Talìa transactional outbox behavior. Android instrumentation tests cover durable
-recipient storage, generation changes and signing identity checks; they require
-a device/emulator to execute.
-
-Before rollout, record results for two recipients under: ordinary screen-off,
-forced Doze and maintenance windows, Wi-Fi/cellular transitions, interrupted
-server/OIDC access, boot/unlock, broker and recipient process death around each
-receipt boundary, permission denial, logout/account switch, signing changes,
-uninstall/reinstall, force-stop/reopen, queue expiry and incident recovery.
-Compare an overnight no-broker baseline with an idle connected run and a
-controlled message run. Record battery use, transferred bytes, reconnects,
-wakelock time, alarm lateness and delivery latency. `adb devices` showed no
-attached device during implementation; those measurements remain unperformed.
+Automated checks: backend fmt/clippy/tests, frontend lint/typecheck/tests/build,
+Android unit tests/lint, and fixture interoperability tests. Physical qualification
+must additionally cover API 24/33/34/36, screen-off/Doze, Wi-Fi/cellular transitions,
+process death, reboot, force-stop recovery, token refresh failure, logout, and key
+rotation. A JVM cryptographic test does not establish Android background delivery
+or battery performance.

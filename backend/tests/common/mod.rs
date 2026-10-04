@@ -79,6 +79,7 @@ async fn create_test_context_inner(
         .expect("Failed to run migrations");
 
     let config = Config {
+        push_public_base_url: "https://push.example".into(),
         notifications_enabled: false,
         listen_addr: "127.0.0.1:0".parse().unwrap(),
         metrics_addr: "127.0.0.1:0".parse().unwrap(),

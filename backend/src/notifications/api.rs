@@ -1,10 +1,11 @@
-use super::{hash, model::*, now, secret, validate_secret, Broker, Error, Result};
+use super::{hash, model::*, now, validate_secret, Broker, Error, Result};
 use crate::{api::AppState, auth::TokenClaims};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use simple_server::web::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
     Json, Router,
 };
@@ -14,42 +15,25 @@ use uuid::Uuid;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/push/v1/devices", post(device).delete(revoke_device))
         .route(
-            "/api/notifications/v1/senders/register",
-            post(register_sender),
+            "/api/push/v1/subscriptions",
+            post(subscribe).delete(unsubscribe_token),
         )
-        .route("/api/notifications/v1/sender/manifest", put(manifest))
-        .route("/api/notifications/v1/sender/rotate", post(rotate))
-        .route("/api/notifications/v1/devices", post(device))
-        .route("/api/notifications/v1/device", delete(revoke_device))
-        .route("/api/notifications/v1/enrollments", post(enrollment))
-        .route("/api/notifications/v1/subscriptions", post(subscribe))
-        .route("/api/notifications/v1/subscriptions/renew", post(renew))
+        .route("/api/push/v1/subscriptions/{id}", delete(unsubscribe))
+        .route("/api/push/v1/stream", get(super::stream::upgrade))
         .route(
-            "/api/notifications/v1/subscriptions/{id}/confirm",
-            post(confirm),
+            "/api/push/v1/send/{secret}",
+            post(publish).layer(simple_server::body_limit::BodyLimit::max(4096)),
         )
-        .route(
-            "/api/notifications/v1/subscriptions/{id}",
-            delete(revoke_subscription),
-        )
-        .route("/api/notifications/v1/messages", post(publish))
-        .route("/api/notifications/v1/messages/{id}", get(outcome))
-        .route("/api/notifications/v1/stream", get(super::stream::upgrade))
+        .route("/api/push/v1/message/{id}", delete(cancel_message))
         .route("/api/admin/notifications", get(overview))
-        .route("/api/admin/notifications/invitations", post(invite))
-        .route("/api/admin/notifications/senders/{id}", put(admin_sender))
+        .route("/api/admin/notifications/senders", post(approve))
+        .route("/api/admin/notifications/senders/{id}", put(update_sender))
+        .route("/api/admin/notifications/senders/{id}/keys", post(add_key))
         .route(
-            "/api/admin/notifications/senders/{id}/cancel",
-            post(cancel_pending),
-        )
-        .route(
-            "/api/admin/notifications/senders/{id}/credentials",
-            post(admin_rotate),
-        )
-        .route(
-            "/api/admin/notifications/senders/{id}/revoke",
-            post(revoke_sender),
+            "/api/admin/notifications/senders/{id}/keys/{key}",
+            delete(revoke_key),
         )
         .layer(simple_server::body_limit::BodyLimit::max(65536))
 }
@@ -105,172 +89,6 @@ async fn owned_device(state: &AppState, h: &HeaderMap) -> Result<(String, TokenC
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Invitation {
-    name: String,
-    applications: Vec<Application>,
-}
-async fn invite(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Json(body): Json<Invitation>,
-) -> Result<Json<Value>> {
-    let actor = admin(&s, &h).await?;
-    identifier(&body.name)?;
-    validate_apps(&body.applications)?;
-    let token = secret();
-    sqlx::query(
-        "INSERT INTO notification_invitations(hash,name,applications,expires_at) VALUES(?,?,?,?)",
-    )
-    .bind(hash(&token))
-    .bind(&body.name)
-    .bind(serde_json::to_string(&body.applications)?)
-    .bind(now() + 1800)
-    .execute(&s.db)
-    .await?;
-    s.notifications
-        .audit(&actor, "sender.invited", &body.name)
-        .await?;
-    Ok(Json(json!({"invitation":token,"expires_at":now()+1800})))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Registration {
-    invitation: String,
-    registration_id: String,
-    credential: String,
-}
-// Clients generate and persist the credential before redemption. A lost HTTP reply
-// can be retried without storing a recoverable copy of the sender secret on Store.
-async fn register_sender(
-    State(s): State<AppState>,
-    Json(body): Json<Registration>,
-) -> Result<Json<Value>> {
-    broker(&s)?;
-    identifier(&body.registration_id)?;
-    validate_secret(&body.credential)?;
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    let row = sqlx::query("SELECT * FROM notification_invitations WHERE hash=? AND expires_at>?")
-        .bind(hash(&body.invitation))
-        .bind(now())
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(Error::denied)?;
-    let credential_hash = hash(&body.credential);
-    if let Some(id) = row.get::<Option<String>, _>("sender_id") {
-        if row.get::<Option<String>, _>("registration_id").as_deref() != Some(&body.registration_id)
-            || row.get::<Option<String>, _>("credential_hash").as_deref() != Some(&credential_hash)
-        {
-            return Err(Error::denied());
-        }
-        return Ok(Json(json!({"sender_id":id})));
-    }
-    let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO notification_senders(id,name,applications) VALUES(?,?,?)")
-        .bind(&id)
-        .bind(row.get::<String, _>("name"))
-        .bind(row.get::<String, _>("applications"))
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("INSERT INTO notification_credentials(hash,sender_id) VALUES(?,?)")
-        .bind(&credential_hash)
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_invitations SET sender_id=?,registration_id=?,credential_hash=? WHERE hash=?").bind(&id).bind(body.registration_id).bind(credential_hash).bind(hash(&body.invitation)).execute(&mut *tx).await?;
-    tx.commit().await?;
-    s.notifications.audit(&id, "sender.registered", &id).await?;
-    Ok(Json(json!({"sender_id":id})))
-}
-async fn manifest(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Json(body): Json<Manifest>,
-) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let id = b.sender(bearer(&h)?).await?;
-    let apps: String = sqlx::query_scalar(
-        "SELECT applications FROM notification_senders WHERE id=? AND enabled=1",
-    )
-    .bind(&id)
-    .fetch_one(&s.db)
-    .await?;
-    body.validate(&serde_json::from_str::<Vec<Application>>(&apps)?)?;
-    sqlx::query(
-        "UPDATE notification_senders SET manifest=?,policy_version=policy_version+1 WHERE id=?",
-    )
-    .bind(serde_json::to_string(&body)?)
-    .bind(&id)
-    .execute(&s.db)
-    .await?;
-    b.audit(&id, "manifest.updated", &id).await?;
-    Ok(Json(json!({"ok":true})))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Rotation {
-    request_id: String,
-    credential: String,
-}
-async fn rotate(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Json(body): Json<Rotation>,
-) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let id = b.sender(bearer(&h)?).await?;
-    rotate_credential(&s, &id, body).await
-}
-async fn admin_rotate(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<Rotation>,
-) -> Result<Json<Value>> {
-    let actor = admin(&s, &h).await?;
-    if id == "lellostore" {
-        return Err(Error::denied());
-    }
-    let result = rotate_credential(&s, &id, body).await?;
-    s.notifications
-        .audit(&actor, "credential.rotated", &id)
-        .await?;
-    Ok(result)
-}
-async fn rotate_credential(s: &AppState, id: &str, body: Rotation) -> Result<Json<Value>> {
-    identifier(&body.request_id)?;
-    validate_secret(&body.credential)?;
-    let next = hash(&body.credential);
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    if let Some(previous) = sqlx::query_scalar::<_, String>(
-        "SELECT credential_hash FROM notification_rotations WHERE sender_id=? AND request_id=?",
-    )
-    .bind(&id)
-    .bind(&body.request_id)
-    .fetch_optional(&mut *tx)
-    .await?
-    {
-        if previous != next {
-            return Err(Error::conflict("rotation request changed"));
-        }
-    } else {
-        sqlx::query("UPDATE notification_credentials SET expires_at=CASE WHEN expires_at IS NULL THEN ? ELSE min(expires_at,?) END WHERE sender_id=?").bind(now()+86400).bind(now()+86400).bind(&id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO notification_credentials(hash,sender_id) VALUES(?,?)")
-            .bind(&next)
-            .bind(&id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("INSERT INTO notification_rotations VALUES(?,?,?)")
-            .bind(&id)
-            .bind(&body.request_id)
-            .bind(next)
-            .execute(&mut *tx)
-            .await?;
-    }
-    tx.commit().await?;
-    Ok(Json(json!({"sender_id":id})))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Device {
     installation: String,
     credential: String,
@@ -291,7 +109,7 @@ async fn device(
     let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
     if let Some((issuer, subject, credential_hash, revoked)) =
         sqlx::query_as::<_, (String, String, String, bool)>(
-            "SELECT issuer,subject,credential_hash,revoked FROM notification_devices WHERE id=?",
+            "SELECT issuer,subject,credential_hash,revoked FROM push_devices WHERE id=?",
         )
         .bind(&body.installation)
         .fetch_optional(&mut *tx)
@@ -305,346 +123,256 @@ async fn device(
             return Err(Error::denied());
         }
     } else {
-        sqlx::query("INSERT INTO notification_devices(id,credential_hash,issuer,subject,package,created_at) VALUES(?,?,?,?,?,?)").bind(&body.installation).bind(hash(&body.credential)).bind(&c.iss).bind(&c.sub).bind(&body.package).bind(now()).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO notification_subscriptions(id,sender_id,device_id,package,certificate,component,installation,generation,subject,lease_until,confirmed) VALUES(?,'lellostore',?,?,'','self',?,?,?,9223372036854775807,1)")
-            .bind(format!("store:{}",body.installation)).bind(&body.installation).bind(&body.package).bind(&body.installation).bind(&body.installation).bind(&c.sub).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO push_devices(id,credential_hash,issuer,subject,package,created_at) VALUES(?,?,?,?,?,?)").bind(&body.installation).bind(hash(&body.credential)).bind(&c.iss).bind(&c.sub).bind(&body.package).bind(now()).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(Json(
         json!({"device_id":body.installation,"issuer":c.iss,"subject":c.sub}),
     ))
 }
+
 async fn revoke_device(State(s): State<AppState>, h: HeaderMap) -> Result<Json<Value>> {
-    // A device credential can only revoke itself, including after user logout.
     let (id, _, _) = broker(&s)?.device(bearer(&h)?).await?;
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("UPDATE notification_devices SET revoked=1 WHERE id=?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_subscriptions SET revoked=1 WHERE device_id=?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_deliveries SET state='revoked',envelope='',bytes=0 WHERE subscription_id IN (SELECT id FROM notification_subscriptions WHERE device_id=?) AND state='pending'").bind(&id).execute(&mut *tx).await?;
-    tx.commit().await?;
-    s.notifications.wake().await;
+    s.notifications.revoke(&id, None).await?;
     Ok(Json(json!({"ok":true})))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Enrollment {
-    package: String,
-    certificate: String,
-    component: String,
-    installation: String,
-    generation: String,
-}
-async fn enrollment(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Json(body): Json<Enrollment>,
-) -> Result<Json<Value>> {
-    let (device, _) = owned_device(&s, &h).await?;
-    for v in [
-        &body.package,
-        &body.component,
-        &body.installation,
-        &body.generation,
-    ] {
-        identifier(v)?;
-    }
-    if !body.component.starts_with(&format!("{}/", body.package)) {
-        return Err(Error::bad("component outside package"));
-    }
-    let token = secret();
-    sqlx::query("INSERT INTO notification_enrollments(proof_hash,device_id,package,certificate,component,installation,generation,expires_at) VALUES(?,?,?,?,?,?,?,?)")
-        .bind(hash(&token)).bind(device).bind(body.package).bind(body.certificate).bind(body.component).bind(body.installation).bind(body.generation).bind(now()+300).execute(&s.db).await?;
-    Ok(Json(json!({"proof":token,"expires_at":now()+300})))
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Subscription {
-    proof: String,
-    issuer: String,
-    subject: String,
 }
 async fn subscribe(
     State(s): State<AppState>,
     h: HeaderMap,
     Json(body): Json<Subscription>,
 ) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let sender = b.sender(bearer(&h)?).await?;
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    let proof=sqlx::query("SELECT e.*,d.issuer,d.subject FROM notification_enrollments e JOIN notification_devices d ON d.id=e.device_id WHERE proof_hash=? AND expires_at>? AND d.revoked=0")
-        .bind(hash(&body.proof)).bind(now()).fetch_optional(&mut *tx).await?.ok_or_else(Error::denied)?;
-    if body.issuer != proof.get::<String, _>("issuer")
-        || body.subject != proof.get::<String, _>("subject")
-    {
-        return Err(Error::denied());
-    }
-    let package: String = proof.get("package");
-    let cert: String = proof.get("certificate");
-    let apps: String = sqlx::query_scalar(
-        "SELECT applications FROM notification_senders WHERE id=? AND enabled=1",
-    )
-    .bind(&sender)
-    .fetch_one(&mut *tx)
-    .await?;
-    if !serde_json::from_str::<Vec<Application>>(&apps)?
-        .iter()
-        .any(|a| a.package == package && a.certificates.contains(&cert))
-    {
-        return Err(Error::denied());
-    }
-    let device: String = proof.get("device_id");
-    if let Some(id) = proof.get::<Option<String>, _>("subscription_id") {
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notification_subscriptions WHERE id=? AND sender_id=? AND revoked=0)").bind(&id).bind(&sender).fetch_one(&mut *tx).await?;
-        if !valid {
-            return Err(Error::denied());
-        }
-        return Ok(Json(json!({"subscription_id":id,"application":package})));
-    }
-    let installation: String = proof.get("installation");
-    let generation: String = proof.get("generation");
-    sqlx::query("UPDATE notification_subscriptions SET revoked=1 WHERE device_id=? AND package=? AND sender_id=? AND (installation<>? OR generation<>?)")
-        .bind(&device).bind(&package).bind(&sender).bind(&installation).bind(&generation).execute(&mut *tx).await?;
-    let existing:Option<String>=sqlx::query_scalar("SELECT id FROM notification_subscriptions WHERE device_id=? AND package=? AND sender_id=? AND installation=? AND generation=? AND revoked=0")
-        .bind(&device).bind(&package).bind(&sender).bind(&installation).bind(&generation).fetch_optional(&mut *tx).await?;
-    if existing.is_none() {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM notification_subscriptions WHERE device_id=? AND revoked=0",
-        )
-        .bind(&device)
-        .fetch_one(&mut *tx)
-        .await?;
-        if count >= 64 {
-            return Err(Error::full());
-        }
-    }
-    let id = existing.unwrap_or_else(|| Uuid::new_v4().to_string());
-    sqlx::query("INSERT INTO notification_subscriptions(id,sender_id,device_id,package,certificate,component,installation,generation,subject,lease_until) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET lease_until=excluded.lease_until")
-        .bind(&id).bind(&sender).bind(device).bind(&package).bind(cert).bind(proof.get::<String,_>("component")).bind(installation).bind(generation).bind(body.subject).bind(now()+300).execute(&mut *tx).await?;
-    sqlx::query("UPDATE notification_enrollments SET subscription_id=? WHERE proof_hash=?")
-        .bind(&id)
-        .bind(hash(&body.proof))
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
-    b.wake().await;
+    let (device, _) = owned_device(&s, &h).await?;
+    let id = s.notifications.subscribe(&device, &body).await?;
     Ok(Json(
-        json!({"subscription_id":id,"application":package,"lease_until":now()+300}),
+        json!({"id":id,"endpoint":format!("{}/api/push/v1/send/{}",s.config.push_public_base_url,body.endpoint_secret)}),
     ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Renew {
-    subscriptions: Vec<String>,
+struct ConnectionToken {
+    token: String,
 }
-async fn renew(
+async fn unsubscribe_token(
     State(s): State<AppState>,
     h: HeaderMap,
-    Json(body): Json<Renew>,
-) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let sender = b.sender(bearer(&h)?).await?;
-    if body.subscriptions.len() > 1000 {
-        return Err(Error::bad("batch exceeds 1000"));
-    }
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    for id in body.subscriptions {
-        if sqlx::query("UPDATE notification_subscriptions SET lease_until=? WHERE id=? AND sender_id=? AND revoked=0")
-            .bind(now()+300).bind(id).bind(&sender).execute(&mut *tx).await?.rows_affected()!=1 {return Err(Error::denied());}
-    }
-    tx.commit().await?;
-    b.wake().await;
-    Ok(Json(json!({"lease_until":now()+300})))
-}
-async fn confirm(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<Enrollment>,
+    Json(body): Json<ConnectionToken>,
 ) -> Result<Json<Value>> {
     let (device, _) = owned_device(&s, &h).await?;
-    if sqlx::query("UPDATE notification_subscriptions SET confirmed=1 WHERE id=? AND device_id=? AND package=? AND certificate=? AND component=? AND installation=? AND generation=? AND revoked=0").bind(id).bind(device).bind(body.package).bind(body.certificate).bind(body.component).bind(body.installation).bind(body.generation).execute(&s.db).await?.rows_affected()!=1 {return Err(Error::denied());}
-    s.notifications.wake().await;
+    let ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM push_subscriptions WHERE device_id=? AND token=? AND revoked=0",
+    )
+    .bind(&device)
+    .bind(body.token)
+    .fetch_all(&s.db)
+    .await?;
+    for id in ids {
+        s.notifications.revoke(&device, Some(&id)).await?;
+    }
     Ok(Json(json!({"ok":true})))
 }
-async fn revoke_subscription(
+async fn unsubscribe(
     State(s): State<AppState>,
     h: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let authorized = if h.contains_key("x-device-credential") {
-        let (device, _) = owned_device(&s, &h).await?;
-        sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM notification_subscriptions WHERE id=? AND device_id=?)",
-        )
-        .bind(&id)
-        .bind(device)
-        .fetch_one(&s.db)
-        .await?
-    } else {
-        let sender = b.sender(bearer(&h)?).await?;
-        sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM notification_subscriptions WHERE id=? AND sender_id=?)",
-        )
-        .bind(&id)
-        .bind(sender)
-        .fetch_one(&s.db)
-        .await?
-    };
-    if !authorized {
-        return Err(Error::denied());
-    }
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("UPDATE notification_subscriptions SET revoked=1 WHERE id=?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_deliveries SET state='revoked',envelope='',bytes=0 WHERE subscription_id=? AND state='pending'").bind(&id).execute(&mut *tx).await?;
-    tx.commit().await?;
-    b.wake().await;
+    let (device, _) = owned_device(&s, &h).await?;
+    s.notifications.revoke(&device, Some(&id)).await?;
     Ok(Json(json!({"ok":true})))
 }
 async fn publish(
     State(s): State<AppState>,
     h: HeaderMap,
-    Json(body): Json<Publication>,
-) -> Result<Json<Value>> {
+    Path(secret): Path<String>,
+    body: simple_server::web::Bytes,
+) -> Result<Response> {
     let b = broker(&s)?;
-    let sender = b.sender(bearer(&h)?).await?;
-    Ok(Json(b.publish(&sender, &body).await?))
+    let message = Publication::parse(&h, body.to_vec())?;
+    let id = b
+        .publish(
+            &secret,
+            h.get("authorization").and_then(|v| v.to_str().ok()),
+            &s.config.push_public_base_url,
+            &message,
+        )
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        [
+            (
+                "location",
+                format!("{}/api/push/v1/message/{id}", s.config.push_public_base_url),
+            ),
+            ("ttl", message.ttl.to_string()),
+            ("cache-control", "no-store".into()),
+        ],
+    )
+        .into_response())
 }
-async fn outcome(
+async fn cancel_message(
     State(s): State<AppState>,
     h: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Json<Value>> {
-    let b = broker(&s)?;
-    let sender = b.sender(bearer(&h)?).await?;
-    Ok(Json(b.outcome(&sender, &id).await?))
+) -> Result<StatusCode> {
+    broker(&s)?;
+    let key: String=sqlx::query_scalar("SELECT r.vapid FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id WHERE m.id=?").bind(&id).fetch_optional(&s.db).await?.ok_or_else(||Error(StatusCode::NOT_FOUND,"message not found".into()))?;
+    vapid(
+        h.get("authorization").and_then(|v| v.to_str().ok()),
+        &key,
+        &s.config.push_public_base_url,
+        now(),
+    )?;
+    sqlx::query(
+        "UPDATE push_messages SET state='cancelled',payload=X'' WHERE id=? AND state='pending'",
+    )
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
-async fn overview(State(s): State<AppState>, h: HeaderMap) -> Result<Json<Value>> {
-    admin(&s, &h).await?;
-    let rows=sqlx::query("SELECT s.*, (SELECT count(*) FROM notification_deliveries n WHERE n.sender_id=s.id AND n.state='pending') AS pending,(SELECT coalesce(sum(bytes),0) FROM notification_deliveries n WHERE n.sender_id=s.id AND n.state='pending') AS queued_bytes FROM notification_senders s ORDER BY name").fetch_all(&s.db).await?;
-    let senders:Vec<Value>=rows.iter().map(|r| json!({"id":r.get::<String,_>("id"),"name":r.get::<String,_>("name"),"enabled":r.get::<bool,_>("enabled"),"applications":serde_json::from_str::<Value>(r.get("applications")).unwrap_or(Value::Null),"manifest":serde_json::from_str::<Value>(r.get("manifest")).unwrap_or(Value::Null),"overrides":serde_json::from_str::<Value>(r.get("overrides")).unwrap_or(Value::Null),"max_pending":r.get::<i64,_>("max_pending"),"max_bytes":r.get::<i64,_>("max_bytes"),"rate":r.get::<f64,_>("rate"),"burst":r.get::<i64,_>("burst"),"pending":r.get::<i64,_>("pending"),"queued_bytes":r.get::<i64,_>("queued_bytes")})).collect();
-    let states =
-        sqlx::query("SELECT state,count(*) AS count FROM notification_deliveries GROUP BY state")
-            .fetch_all(&s.db)
-            .await?;
-    Ok(Json(
-        json!({"senders":senders,"connections":s.notifications.connections.lock().await.len(),"outcomes":states.iter().map(|r|json!({"state":r.get::<String,_>("state"),"count":r.get::<i64,_>("count")})).collect::<Vec<_>>()}),
-    ))
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Approval {
+    name: String,
+    key: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Key {
+    key: String,
+}
+async fn approve(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Json(body): Json<Approval>,
+) -> Result<Json<Value>> {
+    let actor = admin(&s, &h).await?;
+    identifier(&body.name)?;
+    public_key(&body.key)?;
+    let id = Uuid::new_v4().to_string();
+    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM push_keys WHERE key=?)")
+        .bind(&body.key)
+        .fetch_one(&mut *tx)
+        .await?;
+    if exists {
+        return Err(Error::conflict("key already registered"));
+    }
+    sqlx::query("INSERT INTO push_senders(id,name) VALUES(?,?)")
+        .bind(&id)
+        .bind(body.name)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO push_keys(key,sender_id) VALUES(?,?)")
+        .bind(body.key)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    s.notifications
+        .audit(&actor, "sender.approved", &id)
+        .await?;
+    Ok(Json(json!({"id":id})))
+}
+async fn add_key(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<Key>,
+) -> Result<Json<Value>> {
+    let actor = admin(&s, &h).await?;
+    public_key(&body.key)?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM push_senders WHERE id=?)")
+        .bind(&id)
+        .fetch_one(&s.db)
+        .await?;
+    if !exists {
+        return Err(Error::bad("unknown sender"));
+    }
+    if sqlx::query("INSERT INTO push_keys(key,sender_id) VALUES(?,?) ON CONFLICT(key) DO NOTHING")
+        .bind(body.key)
+        .bind(&id)
+        .execute(&s.db)
+        .await?
+        .rows_affected()
+        == 0
+    {
+        return Err(Error::conflict(
+            "key already registered; revoked keys cannot be reused",
+        ));
+    }
+    s.notifications.audit(&actor, "key.approved", &id).await?;
+    Ok(Json(json!({"ok":true})))
+}
+async fn revoke_key(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Path((id, key)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let actor = admin(&s, &h).await?;
+    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
+    sqlx::query("UPDATE push_keys SET revoked=1 WHERE key=? AND sender_id=?")
+        .bind(&key)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE push_subscriptions SET revoked=1 WHERE vapid IN (SELECT key FROM push_keys WHERE revoked=1)").execute(&mut *tx).await?;
+    sqlx::query("UPDATE push_messages SET state='revoked',payload=X'' WHERE state='pending' AND subscription_id IN (SELECT id FROM push_subscriptions WHERE revoked=1)").execute(&mut *tx).await?;
+    tx.commit().await?;
+    s.notifications.wake().await;
+    s.notifications.audit(&actor, "key.revoked", &id).await?;
+    Ok(Json(json!({"ok":true})))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SenderUpdate {
+    name: String,
     enabled: bool,
-    applications: Vec<Application>,
-    overrides: Vec<Rule>,
     max_pending: i64,
     max_bytes: i64,
     rate: f64,
     burst: i64,
 }
-async fn admin_sender(
+async fn update_sender(
     State(s): State<AppState>,
     h: HeaderMap,
     Path(id): Path<String>,
-    Json(mut body): Json<SenderUpdate>,
+    Json(body): Json<SenderUpdate>,
 ) -> Result<Json<Value>> {
     let actor = admin(&s, &h).await?;
-    if id != "lellostore" {
-        validate_apps(&body.applications)?;
-    } else {
-        body.applications = vec![
-            Application {
-                package: "com.lelloman.store".into(),
-                certificates: vec![],
-            },
-            Application {
-                package: "com.lelloman.store.debug".into(),
-                certificates: vec![],
-            },
-        ];
-    }
-    validate_rules(&body.overrides, &body.applications)?;
-    if !(1..=1000000).contains(&body.max_pending)
-        || !(16384..=1073741824).contains(&body.max_bytes)
-        || !(0.1..=1000.0).contains(&body.rate)
-        || !(1..=10000).contains(&body.burst)
+    identifier(&body.name)?;
+    if body.max_pending < 1
+        || body.max_pending > 1000000
+        || body.max_bytes < 4096
+        || body.max_bytes > 1073741824
+        || !body.rate.is_finite()
+        || body.rate <= 0.0
+        || body.rate > 10000.0
+        || body.burst < 1
+        || body.burst > 100000
     {
-        return Err(Error::bad("invalid quota"));
+        return Err(Error::bad("invalid quotas"));
     }
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("UPDATE notification_senders SET enabled=?,applications=?,overrides=?,policy_version=policy_version+1,max_pending=?,max_bytes=?,rate=?,burst=? WHERE id=?")
-        .bind(body.enabled).bind(serde_json::to_string(&body.applications)?).bind(serde_json::to_string(&body.overrides)?).bind(body.max_pending).bind(body.max_bytes).bind(body.rate).bind(body.burst).bind(&id).execute(&mut *tx).await?;
-    if id != "lellostore" {
-        let subscriptions=sqlx::query("SELECT id,package,certificate FROM notification_subscriptions WHERE sender_id=? AND revoked=0").bind(&id).fetch_all(&mut *tx).await?;
-        for subscription in subscriptions {
-            let package: String = subscription.get("package");
-            let certificate: String = subscription.get("certificate");
-            if !body
-                .applications
-                .iter()
-                .any(|a| a.package == package && a.certificates.contains(&certificate))
-            {
-                let sub: String = subscription.get("id");
-                sqlx::query("UPDATE notification_subscriptions SET revoked=1 WHERE id=?")
-                    .bind(&sub)
-                    .execute(&mut *tx)
-                    .await?;
-                sqlx::query("UPDATE notification_deliveries SET state='revoked',envelope='',bytes=0 WHERE subscription_id=? AND state='pending'").bind(&sub).execute(&mut *tx).await?;
-            }
-        }
-    }
-    tx.commit().await?;
+    sqlx::query("UPDATE push_senders SET name=?,enabled=?,max_pending=?,max_bytes=?,rate=?,burst=?,tokens=min(tokens,?) WHERE id=?").bind(body.name).bind(body.enabled).bind(body.max_pending).bind(body.max_bytes).bind(body.rate).bind(body.burst).bind(body.burst).bind(&id).execute(&s.db).await?;
     s.notifications.audit(&actor, "sender.updated", &id).await?;
     s.notifications.wake().await;
     Ok(Json(json!({"ok":true})))
 }
-async fn cancel_pending(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<Value>> {
-    let actor = admin(&s, &h).await?;
-    sqlx::query("UPDATE notification_deliveries SET state='cancelled',envelope='',bytes=0 WHERE sender_id=? AND state='pending'").bind(&id).execute(&s.db).await?;
-    s.notifications
-        .audit(&actor, "queue.cancelled", &id)
-        .await?;
-    s.notifications.wake().await;
-    Ok(Json(json!({"ok":true})))
-}
-async fn revoke_sender(
-    State(s): State<AppState>,
-    h: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<Value>> {
-    let actor = admin(&s, &h).await?;
-    if id == "lellostore" {
-        return Err(Error::bad("built-in sender can be suspended, not revoked"));
+async fn overview(State(s): State<AppState>, h: HeaderMap) -> Result<Json<Value>> {
+    admin(&s, &h).await?;
+    let rows=sqlx::query("SELECT s.*,(SELECT count(*) FROM push_subscriptions r JOIN push_keys k ON k.key=r.vapid WHERE k.sender_id=s.id AND r.revoked=0) AS registrations,(SELECT count(*) FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id JOIN push_keys k ON k.key=r.vapid WHERE k.sender_id=s.id AND m.state='pending') AS pending,(SELECT coalesce(sum(length(m.payload)),0) FROM push_messages m JOIN push_subscriptions r ON r.id=m.subscription_id JOIN push_keys k ON k.key=r.vapid WHERE k.sender_id=s.id AND m.state='pending') AS queued_bytes FROM push_senders s ORDER BY name").fetch_all(&s.db).await?;
+    let mut senders = Vec::new();
+    for r in rows {
+        let id: String = r.get("id");
+        let keys = sqlx::query("SELECT key,revoked FROM push_keys WHERE sender_id=? ORDER BY key")
+            .bind(&id)
+            .fetch_all(&s.db)
+            .await?;
+        senders.push(json!({"id":id,"name":r.get::<String,_>("name"),"enabled":r.get::<bool,_>("enabled"),"max_pending":r.get::<i64,_>("max_pending"),"max_bytes":r.get::<i64,_>("max_bytes"),"rate":r.get::<f64,_>("rate"),"burst":r.get::<i64,_>("burst"),"registrations":r.get::<i64,_>("registrations"),"pending":r.get::<i64,_>("pending"),"queued_bytes":r.get::<i64,_>("queued_bytes"),"keys":keys.iter().map(|k|json!({"key":k.get::<String,_>("key"),"revoked":k.get::<bool,_>("revoked")})).collect::<Vec<_>>()}));
     }
-    let mut tx = s.db.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("UPDATE notification_senders SET enabled=0 WHERE id=?")
-        .bind(&id)
-        .execute(&mut *tx)
+    let outcomes = sqlx::query("SELECT state,count(*) AS count FROM push_messages GROUP BY state")
+        .fetch_all(&s.db)
         .await?;
-    sqlx::query("UPDATE notification_credentials SET revoked=1 WHERE sender_id=?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_subscriptions SET revoked=1 WHERE sender_id=?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE notification_deliveries SET state='revoked',envelope='',bytes=0 WHERE sender_id=? AND state='pending'").bind(&id).execute(&mut *tx).await?;
-    tx.commit().await?;
-    s.notifications.audit(&actor, "sender.revoked", &id).await?;
-    s.notifications.wake().await;
-    Ok(Json(json!({"ok":true})))
+    Ok(Json(
+        json!({"senders":senders,"connections":s.notifications.connections.lock().await.len(),"outcomes":outcomes.iter().map(|r|json!({"state":r.get::<String,_>("state"),"count":r.get::<i64,_>("count")})).collect::<Vec<_>>()}),
+    ))
 }

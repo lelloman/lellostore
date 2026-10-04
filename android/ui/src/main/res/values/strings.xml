@@ -209,4 +209,7 @@
     <string name="paravoid_controls_unavailable">Update controls are unavailable. Open the app to manage its updates.</string>
     <string name="settings_keep_update_connection">Shared notifications</string>
     <string name="settings_keep_update_connection_subtitle">Keep one connection for notifications and app updates. Requires unrestricted battery use and shows an ongoing notification. Without this exemption, no app that relies on LelloStore can receive push notifications.</string>
+    <string name="push_battery_warning_title">Battery optimization blocks push notifications</string>
+    <string name="push_battery_warning_text">LelloStore is not excluded from battery optimization (Doze). Allow unrestricted battery use so LelloStore and apps using it can receive push notifications.</string>
+    <string name="push_battery_open_settings">Open battery settings</string>
 </resources>

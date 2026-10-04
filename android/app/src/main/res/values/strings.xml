@@ -33,4 +33,8 @@
     <string name="notification_push_reminder_title">Push notifications unavailable</string>
     <string name="notification_push_battery_text">Allow unrestricted battery use for LelloStore. Without this exemption, no app that relies on LelloStore can receive push notifications. Tap to enable it.</string>
     <string name="notification_push_stopped_text">The LelloStore push service could not restart. Apps that rely on LelloStore cannot receive push notifications while it is stopped. Tap to open LelloStore.</string>
+    <string name="push_registration_status">UnifiedPush\n%1$s</string>
+    <string name="push_registration_details">%1$s\n%2$s</string>
+    <string name="push_registration_empty">No registered apps. Apps register using an administrator-approved server key.</string>
+    <string name="push_registration_remove">Remove registration</string>
 </resources>

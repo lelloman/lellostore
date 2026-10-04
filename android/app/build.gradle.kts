@@ -34,6 +34,7 @@ val bundleRecoveryCompanion by tasks.registering(Copy::class) {
 }
 
 android {
+    testOptions { unitTests.isIncludeAndroidResources = true }
     lint {
         warningsAsErrors = true
         disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable", "OldTargetApi")
@@ -113,7 +114,6 @@ dependencies {
             version { require(requestedVersion) }
         }
     }
-    implementation(project(":notification-client"))
     // Modules
     implementation(project(":ui"))
     implementation(project(":domain"))
@@ -198,4 +198,10 @@ dependencies {
     // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Robolectric supplies the desktop Conscrypt provider. The Android JNI provider
+// from remote-adb must not shadow it in local JVM tests.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
 }

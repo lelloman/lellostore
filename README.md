@@ -35,6 +35,10 @@ Cargo downloads `lelloman-simple-server = "=0.1.0"` from crates.io, aliased as
 [the lifecycle migration notes](docs/STEP_02_LIFECYCLE.md) and
 [the logging migration notes](docs/STEP_03A_LOGGING.md).
 See [shared routing and multipart](docs/STEP_11_ROUTING.md) for the HTTP integration.
+Shared push uses UnifiedPush with administrator-approved VAPID keys. LelloStore's
+connection requires login; recipient apps do not need LelloAuth integration.
+See [UnifiedPush setup and migration](docs/SHARED_ANDROID_NOTIFICATIONS.md).
+
 See [owned WebSocket transport](docs/STEP_11_WEBSOCKETS.md) for catalog and Paravoid events.
 See [owned HTTP tracing](docs/STEP_11_HTTP_TRACING.md) for request lifecycle logging.
 See [owned HTTP test fixtures](docs/STEP_11_TEST_HARNESS.md) for the backend test transport.

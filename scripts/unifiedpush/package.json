@@ -1,0 +1,7 @@
+{
+  "name": "lellostore-push-interop",
+  "private": true,
+  "type": "module",
+  "scripts": { "vector": "node interop.mjs vector" },
+  "dependencies": { "web-push": "3.6.7" }
+}

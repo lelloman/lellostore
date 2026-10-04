@@ -23,6 +23,7 @@ pub enum ConfigError {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub notifications_enabled: bool,
+    pub push_public_base_url: String,
     pub listen_addr: SocketAddr,
     pub metrics_addr: SocketAddr,
     pub shutdown_grace_secs: u64,
@@ -160,8 +161,32 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(500 * 1024 * 1024); // 500MB default
 
+        let notifications_enabled = std::env::var("NOTIFICATIONS_ENABLED").as_deref() == Ok("true");
+        let mut push_public_base_url = std::env::var("PUSH_PUBLIC_BASE_URL")
+            .unwrap_or_default()
+            .trim_end_matches('/')
+            .to_owned();
+        if notifications_enabled {
+            let url = reqwest::Url::parse(&push_public_base_url)
+                .map_err(|_| ConfigError::InvalidValue("PUSH_PUBLIC_BASE_URL".into()))?;
+            if url.scheme() != "https"
+                || url.host_str().is_none()
+                || !url.username().is_empty()
+                || url.password().is_some()
+                || url.query().is_some()
+                || url.fragment().is_some()
+                || url.path() != "/"
+                || push_public_base_url.len() > 900
+            {
+                return Err(ConfigError::InvalidValue(
+                    "PUSH_PUBLIC_BASE_URL (HTTPS origin required)".into(),
+                ));
+            }
+            push_public_base_url = url.origin().ascii_serialization();
+        }
         Ok(Config {
-            notifications_enabled: std::env::var("NOTIFICATIONS_ENABLED").as_deref() == Ok("true"),
+            notifications_enabled,
+            push_public_base_url,
             listen_addr,
             metrics_addr,
             shutdown_grace_secs,

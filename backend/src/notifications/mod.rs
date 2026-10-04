@@ -55,6 +55,9 @@ impl From<serde_json::Error> for Error {
 }
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
+        crate::metrics::NOTIFICATION_REJECTIONS
+            .with_label_values(&[self.0.as_str()])
+            .inc();
         (
             self.0,
             [("cache-control", "no-store"), ("retry-after", "30")],
@@ -88,16 +91,19 @@ pub fn validate_secret(s: &str) -> Result<()> {
 pub struct Connection {
     pub epoch: String,
     pub wake: Arc<Notify>,
+    pub expires: i64,
 }
 pub struct Broker {
     pub db: sqlx::SqlitePool,
     pub connections: Mutex<HashMap<String, Connection>>,
+    pub catalog_revision: std::sync::atomic::AtomicU64,
 }
 impl Broker {
     pub fn new(db: sqlx::SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
             connections: Mutex::new(HashMap::new()),
+            catalog_revision: std::sync::atomic::AtomicU64::new(1),
         })
     }
     pub async fn wake(&self) {

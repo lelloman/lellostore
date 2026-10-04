@@ -35,6 +35,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -162,6 +166,15 @@ internal fun SettingsContent(
             }
 
             SettingsSection(title = stringResource(R.string.settings_updates)) {
+                PushBatteryWarning()
+                val pushContext = androidx.compose.ui.platform.LocalContext.current
+                SettingsClickableItem(
+                    title = "UnifiedPush registrations",
+                    subtitle = "Manage apps using the shared push connection",
+                    onClick = { pushContext.startActivity(android.content.Intent().setClassName(pushContext.packageName, "com.lelloman.store.notification.PushRegistrationsActivity")) },
+                )
+                SettingsDivider()
+
                 SettingsSwitchItem(
                     title = stringResource(R.string.settings_keep_update_connection),
                     subtitle = stringResource(R.string.settings_keep_update_connection_subtitle),
@@ -825,6 +838,31 @@ private fun ServerUrlInput(
             colors = lelloStoreButtonColors(),
         ) {
             Text(stringResource(if (isSaved) R.string.saved else R.string.save))
+        }
+    }
+}
+
+@Composable
+private fun PushBatteryWarning() {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var exempt by remember { mutableStateOf(context.hasPushBatteryExemption()) }
+    DisposableEffect(lifecycle, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) exempt = context.hasPushBatteryExemption()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    if (!exempt) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text(stringResource(R.string.push_battery_warning_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.push_battery_warning_text))
+                TextButton(onClick = { context.openPushBatterySettings() }) {
+                    Text(stringResource(R.string.push_battery_open_settings))
+                }
+            }
         }
     }
 }

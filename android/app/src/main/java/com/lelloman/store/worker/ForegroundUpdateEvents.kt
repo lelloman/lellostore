@@ -181,6 +181,7 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
             .distinctUntilChanged()
             .collect { state ->
                 if (!state.authenticated || !state.keep) {
+                    broker.invalidateRegistrations()
                     service.stop()
                 } else if (state.foreground) {
                     try {

@@ -16,12 +16,6 @@ import android.os.SystemClock
 import com.lelloman.store.di.ApplicationScope
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
-import com.lelloman.store.notifications.client.CredentialFile
-import com.lelloman.store.notifications.client.PrivateStore
-import com.lelloman.store.notifications.client.SigningIdentity
-import com.lelloman.store.notifications.protocol.AdaptiveHeartbeat
-import com.lelloman.store.notifications.protocol.INotificationCallback
-import com.lelloman.store.notifications.protocol.INotificationReceiver
 import com.lelloman.store.updates.LocalUpdateRelay
 import com.lelloman.store.worker.WorkManagerInitializer
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -56,9 +50,9 @@ class NotificationBrokerRuntime @Inject constructor(
 ) {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).pingInterval(0, TimeUnit.SECONDS).build()
-    internal val db = PrivateStore(context, "notification-broker")
-    private val credentials = CredentialFile(context, "notification-device")
-    private val pendingRevocations = CredentialFile(context, "notification-revocations")
+    internal val db = PrivateStore(context, "unifiedpush-broker")
+    private val credentials = CredentialFile(context, "unifiedpush-device")
+    private val pendingRevocations = CredentialFile(context, "unifiedpush-revocations")
     private val lifecycleEpoch = java.util.concurrent.atomic.AtomicLong()
     private val mutex = Mutex()
     private val deliverySlots = Semaphore(4)
@@ -72,6 +66,8 @@ class NotificationBrokerRuntime @Inject constructor(
     @Volatile private var socket: WebSocket? = null
     private var ready = false
     private var activeRoutes = emptySet<String>()
+    private val incomingRoutes = mutableSetOf<String>()
+    private val revokedRoutes = mutableSetOf<String>()
     private var device: JSONObject? = null
     private var serverUrl = ""
     private var connectionEpoch = ""
@@ -98,6 +94,16 @@ class NotificationBrokerRuntime @Inject constructor(
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) { scope.launch { pulse() } }
     }
 
+    init {
+        if (db.setting("legacy-cleared") == null) {
+            val legacy = PrivateStore(context, "notification-broker")
+            try { legacy.clear() } finally { legacy.close() }
+            CredentialFile(context, "notification-device").clear()
+            CredentialFile(context, "notification-revocations").clear()
+            db.setting("legacy-cleared", "true")
+        }
+    }
+
     fun start(url: String) {
         if (!url.startsWith("https://")) { mutableStatus.value = "HTTPS is required"; return }
         val lifecycle = lifecycleEpoch.incrementAndGet()
@@ -108,6 +114,7 @@ class NotificationBrokerRuntime @Inject constructor(
                 closeSocket()
                 serverUrl = url.trimEnd('/')
                 enabled = true
+                setAvailable(true)
                 if (!callbackRegistered) { networkManager.registerDefaultNetworkCallback(networkCallback); callbackRegistered = true }
                 retryAt = 0
             }
@@ -136,7 +143,9 @@ class NotificationBrokerRuntime @Inject constructor(
                 pending.getJSONArray("devices").put(JSONObject().put("url", old.getString("identity").substringBefore('\n')).put("credential", old.getString("credential")))
                 pendingRevocations.write(pending)
             }
+            (registrations() + db.entries("pending-registration")).distinctBy { it.second.getString("token") }.forEach { (_, r) -> broadcast(r, "UNREGISTERED") }
             db.clear(); credentials.clear(); device = null
+            setAvailable(false)
             mutableStatus.value = "Signed out"
         }
         scope.launch { revokeRetiredDevices() }
@@ -149,7 +158,7 @@ class NotificationBrokerRuntime @Inject constructor(
             for (i in 0 until items.length()) {
                 val retired = items.getJSONObject(i)
                 val done = runCatching {
-                    http.newCall(Request.Builder().url(retired.getString("url") + "/api/notifications/v1/device")
+                    http.newCall(Request.Builder().url(retired.getString("url") + "/api/push/v1/devices")
                         .header("Authorization", "Bearer ${retired.getString("credential")}").delete().build()).execute().use { it.isSuccessful || it.code == 401 }
                 }.getOrDefault(false)
                 if (!done) remaining.put(retired)
@@ -205,7 +214,7 @@ class NotificationBrokerRuntime @Inject constructor(
             pingLate = (elapsed - scheduledAt).coerceAtLeast(0)
             socket?.send(JSONObject().put("kind", "ping").put("nonce", pingNonce).toString())
         }
-        recoverLocalDeliveries()
+        recoverReceipts()
         schedule()
     }
 
@@ -228,9 +237,9 @@ class NotificationBrokerRuntime @Inject constructor(
             connectedAt = SystemClock.elapsedRealtime()
             lastTraffic = connectedAt; lastIncoming = connectedAt
             val epoch = UUID.randomUUID().toString(); connectionEpoch = epoch
-            val wsRequest = Request.Builder().url(serverUrl.replaceFirst("https://", "wss://") + "/api/notifications/v1/stream")
+            val wsRequest = Request.Builder().url(serverUrl.replaceFirst("https://", "wss://") + "/api/push/v1/stream")
                 .header("Authorization", "Bearer ${device!!.getString("credential")}")
-                .header("Sec-WebSocket-Protocol", "lellostore.notifications.v1").build()
+                .header("Sec-WebSocket-Protocol", "lellostore.push.v1").build()
             socket = http.newWebSocket(wsRequest, object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) { ws.send(JSONObject().put("kind", "authenticate").put("access_token", token).toString()) }
                 override fun onMessage(ws: WebSocket, text: String) { scope.launch { mutex.withLock {
@@ -245,7 +254,15 @@ class NotificationBrokerRuntime @Inject constructor(
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { disconnect("Server or sign-in unavailable") }
     }
-    private fun resetIdentity() { closeSocket(); db.clear(); credentials.clear(); device = null }
+    private fun resetIdentity() {
+        (registrations() + db.entries("pending-registration")).distinctBy { it.second.getString("token") }.forEach { (_, r) -> broadcast(r, "UNREGISTERED") }
+        device?.let { old ->
+            val pending = pendingRevocations.read() ?: JSONObject().put("devices", JSONArray())
+            pending.getJSONArray("devices").put(JSONObject().put("url", old.getString("identity").substringBefore('\n')).put("credential", old.getString("credential")))
+            pendingRevocations.write(pending)
+        }
+        closeSocket(); db.clear(); credentials.clear(); device = null
+    }
     private fun sameIdentity(token: String): Boolean {
         val c = tokenClaims(token)
         return device?.optString("identity") == "$serverUrl\n${c.getString("iss")}\n${c.getString("sub")}"
@@ -282,156 +299,195 @@ class NotificationBrokerRuntime @Inject constructor(
             "ready" -> {
                 ready = true; authExpires = frame.getLong("expires_at"); mutableStatus.value = "Connected"
                 if (candidateIdleFailure != null) { heartbeat.failed(candidateIdleFailure == network, true, true); saveHeartbeat(); candidateIdleFailure = null }
-                recoverLocalDeliveries()
+                recoverReceipts()
             }
             "authenticated" -> authExpires = frame.getLong("expires_at")
             "pong" -> if (frame.optString("nonce") == pingNonce) {
                 heartbeat.acknowledged(pingIdle, pingLate); saveHeartbeat(); pingNonce = null
                 db.setting("diagnostics", JSONObject().put("heartbeat_ms", heartbeat.interval).put("rtt_ms", elapsed - pingAt).put("alarm_late_ms", pingLate).toString())
             }
+            "routes_begin" -> { incomingRoutes.clear(); revokedRoutes.clear() }
             "routes" -> {
                 val routes = frame.getJSONArray("routes")
-                val active = (0 until routes.length()).map { routes.getJSONObject(it).getString("subscription_id") }.toSet()
-                activeRoutes = active
-                db.setting("active-routes", JSONArray(active.toList()).toString())
-                db.entries().forEach { (id, envelope) -> if (envelope.optString("subscription_id") !in active) db.remove(id) }
-                recoverLocalDeliveries()
-            }
-            "snapshots" -> {
-                val states = frame.getJSONArray("states")
-                for (i in 0 until states.length()) {
-                    val state = states.getJSONObject(i)
-                    val sub = state.getString("subscription_id")
-                    if (sub !in activeRoutes) continue
-                    val route = db.setting("route:$sub")?.let(::JSONObject) ?: continue
-                    val component = ComponentName.unflattenFromString(route.getString("component")) ?: continue
-                    if (SigningIdentity.certificates(context, component.packageName) != setOf(route.getString("certificate"))) continue
-                    scope.launch { deliverySlots.withPermit {
-                        runCatching { dispatch(component, JSONObject().put("kind", "reconcile").put("state", state)) { } }
-                    } }
+                for (i in 0 until routes.length()) {
+                    val r = routes.getJSONObject(i)
+                    if (r.optBoolean("revoked")) revokedRoutes.add(r.getString("id"))
+                    else if (r.optBoolean("enabled")) incomingRoutes.add(r.getString("id"))
                 }
             }
-            "delivery" -> {
-                val envelope = frame.getJSONObject("envelope")
-                val id = envelope.getString("delivery_id")
-                if (db.entry(id) == null) db.put(id, envelope)
-                deliver(id, envelope)
+            "routes_end" -> {
+                activeRoutes = incomingRoutes.toSet()
+                registrations().filter { (_, r) -> r.has("id") && r.getString("id") in revokedRoutes }.forEach { (key, r) ->
+                    broadcast(r, "UNREGISTERED"); db.remove(key)
+                }
+                recoverReceipts()
             }
-            "receipt_ack" -> {
-                val id = frame.getString("delivery_id")
-                val entry = db.entry(id)
-                if (entry != null && entry.second == "settled:${frame.optString("presentation")}") db.remove(id)
-            }
+            "catalog_changed" -> { updates.enqueueImmediateUpdateCheck(); relay.notifyInstalledApps() }
+            "delivery" -> deliver(frame.getJSONObject("message"))
+            "receipt_ack" -> db.remove("message:${frame.getString("id")}")
         }
         lastIncoming = elapsed; lastTraffic = elapsed
     }
-    private fun recoverLocalDeliveries() {
-        if (!ready) return
-        db.entries().forEach { (id, envelope) ->
-            val state = db.entry(id)?.second ?: return@forEach
-            if (state != "pending") receipt(id, state.removePrefix("settled:").takeIf { state.startsWith("settled:") })
-            if (!state.startsWith("settled:")) deliver(id, envelope)
+    private fun registrations() = db.entries("registration")
+    private fun registration(token: String) = db.entry("registration:$token")?.first
+    private fun broadcast(registration: JSONObject, action: String, extras: (Intent.() -> Unit)? = null) {
+        val intent = Intent("org.unifiedpush.android.connector.$action").setPackage(registration.getString("package"))
+            .putExtra("token", registration.getString("token")).addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        extras?.invoke(intent)
+        context.sendBroadcast(intent)
+    }
+    private fun setAvailable(available: Boolean) {
+        val pm = context.packageManager
+        listOf(UnifiedPushReceiver::class.java, UnifiedPushLinkActivity::class.java).forEach {
+            pm.setComponentEnabledSetting(ComponentName(context, it), if (available) android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
         }
     }
-    private fun receipt(id: String, presentation: String?) {
+    suspend fun invalidateRegistrations() { signedOut() }
+    private fun recoverReceipts() {
         if (!ready) return
-        socket?.send(JSONObject().put("kind", "receipt").put("delivery_id", id).put("presentation", presentation).toString())
+        db.prune()
+        db.entries("ack").forEach { (_, ack) -> socket?.send(ack.toString()) }
+        scope.launch { cleanupRemovedRegistrations() }
     }
-    private fun deliver(id: String, envelope: JSONObject) {
-        if (!ready || envelope.optString("subscription_id") !in activeRoutes) return
-        if (!delivering.add(id)) return
+    private suspend fun cleanupRemovedRegistrations() = mutex.withLock {
+        val token = auth.getAccessToken() ?: return@withLock
+        db.entries("unregister").forEach { (key, value) ->
+            if (runCatching { request("DELETE", "/subscriptions", JSONObject().put("token", value.getString("token")), token) }.isSuccess) db.remove(key)
+        }
+        registrations().forEach { (key, r) ->
+            if (!validIdentity(r)) { removeRegistration(key, r) }
+        }
+    }
+    private fun validIdentity(r: JSONObject): Boolean = runCatching {
+        val known = r.getString("certificate")
+        if (Build.VERSION.SDK_INT >= 28) {
+            context.packageManager.hasSigningCertificate(r.getString("package"), known.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), android.content.pm.PackageManager.CERT_INPUT_SHA256)
+        } else SigningIdentity.certificates(context, r.getString("package")) == setOf(known)
+    }.getOrDefault(false)
+    private fun removeRegistration(key: String, r: JSONObject) {
+        db.remove(key)
+        db.remove("pending-registration:${r.getString("token")}")
+        db.put("unregister:${r.getString("token")}", r, "unregister")
+        broadcast(r, "UNREGISTERED")
+    }
+    suspend fun process(packageName: String, intent: Intent) = mutex.withLock {
+        val token = intent.getStringExtra("token") ?: return@withLock
+        val active = registration(token)
+        val pending = db.entry("pending-registration:$token")?.first
+        val old = active ?: pending
+        val response = JSONObject().put("package", packageName).put("token", token)
+        val action = intent.action?.substringAfterLast('.')
+        if (action != "MESSAGE_ACK" && old != null && (old.getString("package") != packageName || !validIdentity(old))) {
+            if (action == "REGISTER") broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "INTERNAL_ERROR") }
+            return@withLock
+        }
+        if (action == "MESSAGE_ACK") {
+            val id = intent.getStringExtra("id") ?: return@withLock
+            val entry = db.entry("message:$id") ?: return@withLock
+            if (entry.first.optString("token") != token || old == null) return@withLock
+            if (entry.second == "endpoint") { db.remove("message:$id"); return@withLock }
+            val ack = JSONObject().put("kind", "receipt").put("id", id).put("token", token)
+            db.put("message:$id", ack, "ack")
+            if (ready) socket?.send(ack.toString())
+            return@withLock
+        }
+        if (action == "UNREGISTER") {
+            if (old != null) removeRegistration("registration:$token", old)
+            scope.launch { cleanupRemovedRegistrations() }
+            return@withLock
+        }
+        if (action != "REGISTER") return@withLock
+        val vapid = intent.getStringExtra("vapid")
+        if (vapid.isNullOrEmpty()) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "VAPID_REQUIRED") }; return@withLock }
+        val accessToken = auth.getAccessToken()
+        if (!enabled || accessToken == null) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "ACTION_REQUIRED") }; return@withLock }
+        if (!ready) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "NETWORK") }; return@withLock }
+        val r = pending?.takeIf { it.optString("vapid") == vapid } ?: active ?: response.put("certificate", SigningIdentity.certificates(context, packageName).single())
+        if (r.optString("vapid") != vapid) { r.remove("id"); r.remove("endpoint"); r.put("endpoint_secret", newSecret()) }
+        r.put("vapid", vapid).put("description", intent.getStringExtra("message") ?: "")
+        // Persist the capability before making the idempotent network request.
+        db.put("pending-registration:$token", r, "pending-registration")
+        try {
+            // Finish an earlier unregister before reusing this token.
+            if (db.entry("unregister:$token") != null) {
+                request("DELETE", "/subscriptions", JSONObject().put("token", token), accessToken)
+                db.remove("unregister:$token")
+            }
+            val body = JSONObject().put("token", token).put("package", packageName).put("vapid", vapid).put("endpoint_secret", r.getString("endpoint_secret"))
+            val result = request("POST", "/subscriptions", body, accessToken)
+            r.put("id", result.getString("id")).put("endpoint", result.getString("endpoint"))
+            db.put("registration:$token", r, "registration")
+            db.remove("pending-registration:$token")
+            val id = UUID.randomUUID().toString()
+            db.put("message:$id", JSONObject().put("token", token), "endpoint")
+            broadcast(r, "NEW_ENDPOINT") { putExtra("endpoint", r.getString("endpoint")); putExtra("id", id) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            val reason = if (e is PushRequestException && e.code in listOf(401,403,429)) "ACTION_REQUIRED" else "NETWORK"
+            mutableStatus.value = if (reason == "ACTION_REQUIRED") "Push registration needs an approved server key or available quota" else "Push server unavailable"
+            broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", reason) }
+        }
+    }
+    private fun newSecret() = ByteArray(32).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
+    fun registeredApps(): List<JSONObject> = registrations().map { it.second }
+    suspend fun removeAppRegistration(token: String) = mutex.withLock {
+        registration(token)?.let { removeRegistration("registration:$token", it) }
+        scope.launch { cleanupRemovedRegistrations() }
+    }
+    private fun deliver(message: JSONObject) {
+        if (!ready || System.currentTimeMillis()/1000 >= authExpires || message.getString("subscription_id") !in activeRoutes) return
+        val id = message.getString("id")
+        val token = message.getString("token")
+        val r = registration(token) ?: return
+        if (!validIdentity(r)) { removeRegistration("registration:$token", r); return }
+        val previous = db.entry("message:$id")
+        if (previous?.second == "ack") { socket?.send(previous.first.toString()); return }
+        if (!message.optBoolean("immediate") && message.getLong("expires_at") <= System.currentTimeMillis()/1000) return
+        val charging = context.getSystemService(android.os.BatteryManager::class.java).isCharging
+        val wifi = networkManager.getNetworkCapabilities(networkManager.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val battery = context.getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val minimum = if (!charging && battery in 0..15) 3 else if (charging && wifi) 0 else if (charging || wifi) 1 else 2
+        val urgency = listOf("very-low", "low", "normal", "high").indexOf(message.optString("urgency", "normal"))
+        if (urgency < minimum || !delivering.add(id)) return
+        val bytes = android.util.Base64.decode(message.getString("payload"), android.util.Base64.DEFAULT)
+        if (bytes.isEmpty() || bytes.size > 4096) { delivering.remove(id); return }
+        db.put("message:$id", JSONObject().put("token", token), "offered")
+        val epoch = connectionEpoch
         scope.launch {
             try { deliverySlots.withPermit {
-                if (envelope.getString("sender_id") == "lellostore" && envelope.getString("component") == "self") {
-                    updates.enqueueImmediateUpdateCheck(); relay.notifyInstalledApps()
-                    mutex.withLock { db.state(id, "settled:suppressed"); receipt(id, "suppressed") }
-                } else {
-                    val route = db.setting("route:${envelope.getString("subscription_id")}")?.let(::JSONObject) ?: return@withPermit
-                    if (route.optString("generation") != envelope.optString("generation") || route.optString("installation") != envelope.optString("installation")) return@withPermit
-                    val component = ComponentName.unflattenFromString(route.getString("component")) ?: return@withPermit
-                    val installed = SigningIdentity.certificates(context, component.packageName)
-                    if (installed != setOf(route.getString("certificate"))) return@withPermit
-                    dispatch(component, envelope) { result ->
-                        scope.launch { mutex.withLock {
-                            if (db.entry(id) == null) return@withLock
-                            when (result.optString("state")) {
-                                "persisted" -> { if (db.entry(id)?.second?.startsWith("settled:") != true) { db.state(id, "persisted"); receipt(id, null) } }
-                                "settled" -> { val presentation = result.getString("presentation"); db.state(id, "settled:$presentation"); receipt(id, presentation) }
-                            }
-                        } }
+                withContext(Dispatchers.Main.immediate) {
+                    val pm = context.packageManager
+                    val serviceIntent = Intent("org.unifiedpush.android.connector.RAISE_TO_FOREGROUND").setPackage(r.getString("package"))
+                    val info = pm.queryIntentServices(serviceIntent, 0).firstOrNull { it.serviceInfo.exported && it.serviceInfo.enabled }?.serviceInfo ?: return@withContext
+                    serviceIntent.component = ComponentName(info.packageName, info.name)
+                    val connected = CompletableDeferred<Unit>()
+                    val conn = object : ServiceConnection {
+                        override fun onServiceConnected(name: ComponentName, binder: IBinder) { connected.complete(Unit) }
+                        override fun onServiceDisconnected(name: ComponentName) = Unit
+                        override fun onNullBinding(name: ComponentName) { connected.completeExceptionally(IllegalStateException("No foreground service")) }
                     }
+                    val bound = context.bindService(serviceIntent, conn, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)
+                    if (bound) try {
+                        withTimeout(5000) { connected.await() }
+                        mutex.withLock {
+                            if (ready && epoch == connectionEpoch && message.getString("subscription_id") in activeRoutes && System.currentTimeMillis()/1000 < authExpires && registration(token)?.optString("id") == message.getString("subscription_id") && (message.optBoolean("immediate") || message.getLong("expires_at") > System.currentTimeMillis()/1000)) {
+                                broadcast(r, "MESSAGE") { putExtra("bytesMessage", bytes); putExtra("id", id) }
+                            }
+                        }
+                        delay(5000)
+                    } finally { context.unbindService(conn) }
                 }
-            } } catch (_: Exception) { /* Durable queue retries on reconnect/heartbeat. */ }
+            } } catch (_: Exception) { /* The server retries until acknowledgment or expiry. */ }
             finally { mutex.withLock { delivering.remove(id) } }
         }
     }
-    private suspend fun dispatch(component: ComponentName, envelope: JSONObject, result: (JSONObject) -> Unit) = withContext(Dispatchers.Main.immediate) {
-        var conn: ServiceConnection? = null
-        var bound = false
-        val wake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LelloStore:notification-delivery")
-        try {
-            wake.acquire(10_000)
-            withTimeout(10_000) { suspendCancellableCoroutine<Unit> { continuation ->
-                val connection = object : ServiceConnection {
-                    override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-                        try { INotificationReceiver.Stub.asInterface(binder).deliver(envelope.toString(), object : INotificationCallback.Stub() {
-                            override fun onResult(json: String) {
-                                try {
-                                    val response = JSONObject(json); result(response)
-                                    if ((response.optString("state") == "settled" || response.has("error")) && continuation.isActive) continuation.resume(Unit)
-                                } catch (e: Exception) { if (continuation.isActive) continuation.resumeWith(Result.failure(e)) }
-                            }
-                        }) } catch (e: Exception) { if (continuation.isActive) continuation.resumeWith(Result.failure(e)) }
-                    }
-                    override fun onServiceDisconnected(name: ComponentName) { if (continuation.isActive) continuation.resume(Unit) }
-                    override fun onNullBinding(name: ComponentName) = onServiceDisconnected(name)
-                    override fun onBindingDied(name: ComponentName) = onServiceDisconnected(name)
-                }
-                conn = connection; bound = context.bindService(Intent().setComponent(component), connection, Context.BIND_AUTO_CREATE)
-                if (!bound) continuation.resume(Unit)
-            } }
-        } finally { if (bound) conn?.let(context::unbindService); if (wake.isHeld) wake.release() }
-    }
-
-    internal suspend fun ipc(packageName: String, certificate: String, body: JSONObject): JSONObject = mutex.withLock {
-        check(enabled && ready) { "Store notification connection unavailable" }
-        val token = auth.getAccessToken() ?: error("Sign-in required")
-        check(sameIdentity(token))
-        when (body.getString("op")) {
-            "enroll" -> {
-                val component = ComponentName.unflattenFromString(body.getString("component")) ?: error("Invalid receiver")
-                check(component.packageName == packageName)
-                val info = context.packageManager.getServiceInfo(component, 0)
-                check(info.exported && info.enabled && info.applicationInfo.enabled)
-                val registration = JSONObject(body.toString()).apply { remove("op"); put("package", packageName); put("certificate", certificate) }
-                db.setting("enrollment:$packageName", registration.toString())
-                request("POST", "/enrollments", registration, token)
-            }
-            "confirm" -> {
-                val registration = JSONObject(db.setting("enrollment:$packageName") ?: error("No pending enrollment"))
-                check(registration.getString("certificate") == certificate && registration.getString("generation") == body.getString("generation"))
-                val id = body.getString("subscription_id")
-                request("POST", "/subscriptions/$id/confirm", registration, token)
-                db.setting("route:$id", registration.toString())
-                JSONObject().put("ok", true)
-            }
-            "unregister" -> {
-                val id = body.getString("subscription_id")
-                val route = JSONObject(db.setting("route:$id") ?: error("Unknown subscription"))
-                check(route.getString("package") == packageName && route.getString("certificate") == certificate)
-                db.entries().filter { it.second.optString("subscription_id") == id }.forEach { db.remove(it.first) }
-                db.setting("route:$id", "{}")
-                request("DELETE", "/subscriptions/$id", null, token)
-            }
-            else -> error("Unsupported notification operation")
-        }
-    }
+    private class PushRequestException(val code: Int) : Exception("Push request failed ($code)")
     private suspend fun request(method: String, path: String, body: JSONObject?, token: String, includeDevice: Boolean = true): JSONObject = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url("$serverUrl/api/notifications/v1$path").header("Authorization", "Bearer $token")
+        val request = Request.Builder().url("$serverUrl/api/push/v1$path").header("Authorization", "Bearer $token")
         if (includeDevice) request.header("X-Device-Credential", device!!.getString("credential"))
         request.method(method, body?.toString()?.toRequestBody("application/json".toMediaType()))
         execute(request.build()).use { response ->
-            check(response.isSuccessful) { "Notification request failed (${response.code})" }
+            if (!response.isSuccessful) throw PushRequestException(response.code)
             val source = response.body?.source() ?: error("Missing response")
             check(!source.request(65537)) { "Oversized response" }
             JSONObject(source.readUtf8())

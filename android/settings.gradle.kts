@@ -36,6 +36,5 @@ include(":recovery-protocol")
 include(":recovery")
 include(":remote-adb")
 
-include(":notification-protocol", ":notification-client")
 
 include(":notification-fixture")

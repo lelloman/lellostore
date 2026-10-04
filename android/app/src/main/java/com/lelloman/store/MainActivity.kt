@@ -1,5 +1,18 @@
 package com.lelloman.store
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import com.lelloman.store.notification.NotificationHelper
+import com.lelloman.store.ui.screen.settings.hasPushBatteryExemption
+import com.lelloman.store.ui.screen.settings.openPushBatterySettings
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -41,7 +54,11 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { }
+    ) { granted ->
+        if (granted) notifications.showStartupBatteryWarning()
+    }
+
+    @Inject lateinit var notifications: NotificationHelper
 
     @Inject
     lateinit var userPreferencesStore: UserPreferencesStore
@@ -59,12 +76,14 @@ class MainActivity : ComponentActivity() {
     private val _sessionExpiredNavigation = MutableStateFlow(false)
     private val sessionExpiredNavigation = _sessionExpiredNavigation.asStateFlow()
     private val openPesce = MutableStateFlow(false)
+    private var openedBatterySettings = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openPesce.value = intent.getBooleanExtra("open_pesce", false)
         enableEdgeToEdge()
         observeSessionExpiredEvents()
+        handleBatterySettingsIntent()
         setContent {
             val domainThemeMode by userPreferencesStore.themeMode.collectAsState()
             val domainAuthState by authStore.authState.collectAsState()
@@ -96,25 +115,40 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            AppUi(
-                themeMode = themeMode,
-                isLoggedIn = isLoggedIn,
-                userEmail = userEmail,
-                onAuthResponse = { response, exception, onResult ->
-                    authStoreImpl.handleAuthResponse(response, exception) { domainResult ->
-                        onResult(domainResult.toUiModel())
-                    }
-                },
-                onLogout = {
-                    lifecycleScope.launch {
-                        authStore.logout()
-                    }
-                },
-                forceNavigateToLogin = shouldNavigateToLogin,
-                onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
-                openPesce = shouldOpenPesce,
-                onOpenPesceHandled = { openPesce.value = false; intent.removeExtra("open_pesce") },
-            )
+            val batterySnackbar = remember { SnackbarHostState() }
+            Box(Modifier.fillMaxSize()) {
+                AppUi(
+                    themeMode = themeMode,
+                    isLoggedIn = isLoggedIn,
+                    userEmail = userEmail,
+                    onAuthResponse = { response, exception, onResult ->
+                        authStoreImpl.handleAuthResponse(response, exception) { domainResult ->
+                            onResult(domainResult.toUiModel())
+                        }
+                    },
+                    onLogout = {
+                        lifecycleScope.launch {
+                            authStore.logout()
+                        }
+                    },
+                    forceNavigateToLogin = shouldNavigateToLogin,
+                    onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
+                    openPesce = shouldOpenPesce,
+                    onOpenPesceHandled = { openPesce.value = false; intent.removeExtra("open_pesce") },
+                )
+                SnackbarHost(batterySnackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            }
+            LaunchedEffect(Unit) {
+                if (savedInstanceState == null && !openedBatterySettings && !hasPushBatteryExemption() && !notifications.showStartupBatteryWarning()) {
+                    val result = batterySnackbar.showSnackbar(
+                        getString(com.lelloman.store.ui.R.string.push_battery_warning_text),
+                        getString(com.lelloman.store.ui.R.string.push_battery_open_settings),
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Long,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) openPushBatterySettings()
+                }
+            }
             LaunchedEffect(isLoggedIn) {
                 if (isLoggedIn) requestNotificationPermissionIfNeeded()
             }
@@ -130,7 +164,21 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleBatterySettingsIntent()
         openPesce.value = intent.getBooleanExtra("open_pesce", false)
+    }
+
+    private fun handleBatterySettingsIntent() {
+        if (intent.getBooleanExtra("open_battery_settings", false)) {
+            openedBatterySettings = true
+            intent.removeExtra("open_battery_settings")
+            openPushBatterySettings()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (hasPushBatteryExemption()) notifications.cancelStartupBatteryWarning()
     }
 
     private fun requestNotificationPermissionIfNeeded() {

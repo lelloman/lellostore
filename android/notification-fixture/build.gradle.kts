@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
 }
 android {
     namespace = "com.lelloman.store.notificationfixture"
@@ -11,15 +10,14 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
-        val pin = providers.gradleProperty("fixtureStoreCertificate").orElse("0".repeat(64)).get()
-        require(pin.matches(Regex("[0-9a-f]{64}")))
-        buildConfigField("String", "STORE_CERTIFICATE", "\"$pin\"")
+
     }
+    sourceSets.getByName("test").resources.srcDir("../../backend/tests/fixtures/unifiedpush")
     buildFeatures { buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_11; targetCompatibility = JavaVersion.VERSION_11 }
-    kotlinOptions { jvmTarget = "11" }
 }
 dependencies {
-    implementation(project(":notification-client"))
-    implementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.junit)
+    testImplementation("com.google.crypto.tink:tink:1.23.0")
+    implementation("org.unifiedpush.android:connector:3.3.5")
 }

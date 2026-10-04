@@ -30,6 +30,7 @@ lazy_static! {
         &["method", "path"]
     ).unwrap();
 
+    pub static ref NOTIFICATION_REJECTIONS: prometheus::IntCounterVec = prometheus::IntCounterVec::new(Opts::new("lellostore_push_rejections_total", "Rejected push API requests"), &["status"]).unwrap();
     pub static ref NOTIFICATION_CONNECTIONS: IntGauge = IntGauge::new("lellostore_notification_connections", "Authenticated notification connections").unwrap();
     pub static ref NOTIFICATION_QUEUE: IntGaugeVec = IntGaugeVec::new(Opts::new("lellostore_notification_deliveries", "Retained notification deliveries by outcome"), &["state"]).unwrap();
     pub static ref NOTIFICATION_BYTES: IntGauge = IntGauge::new("lellostore_notification_pending_bytes", "Pending notification payload bytes").unwrap();
@@ -79,10 +80,21 @@ lazy_static! {
 }
 
 pub fn register_metrics() {
-    REGISTRY.register(Box::new(NOTIFICATION_CONNECTIONS.clone())).unwrap();
-    REGISTRY.register(Box::new(NOTIFICATION_QUEUE.clone())).unwrap();
-    REGISTRY.register(Box::new(NOTIFICATION_BYTES.clone())).unwrap();
-    REGISTRY.register(Box::new(NOTIFICATION_OLDEST.clone())).unwrap();
+    REGISTRY
+        .register(Box::new(NOTIFICATION_REJECTIONS.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(NOTIFICATION_CONNECTIONS.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(NOTIFICATION_QUEUE.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(NOTIFICATION_BYTES.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(NOTIFICATION_OLDEST.clone()))
+        .unwrap();
     REGISTRY
         .register(Box::new(HTTP_REQUESTS_TOTAL.clone()))
         .unwrap();
@@ -226,7 +238,18 @@ fn normalize_path(path: &str) -> String {
         // Opaque identifiers must not create unbounded labels or expose grant IDs.
         if matches!(
             segment,
-            "acquisitions" | "uploads" | "contracts" | "streams" | "grants" | "vpks" | "releases"
+            "acquisitions"
+                | "uploads"
+                | "contracts"
+                | "streams"
+                | "grants"
+                | "vpks"
+                | "releases"
+                | "send"
+                | "message"
+                | "subscriptions"
+                | "senders"
+                | "keys"
         ) && segments.get(i + 1).is_some_and(|part| !part.is_empty())
         {
             result.push(segment);
@@ -314,6 +337,14 @@ mod tests {
 
     #[test]
     fn test_normalize_path() {
+        assert_eq!(
+            normalize_path("/api/push/v1/send/secret-capability"),
+            "/api/push/v1/send/:id"
+        );
+        assert_eq!(
+            normalize_path("/api/admin/notifications/senders/private-id/keys/public-key"),
+            "/api/admin/notifications/senders/:id/keys/:id"
+        );
         assert_eq!(
             normalize_path("/api/paravoid/v1/apps/example.app/releases/release-1/payload.vpk"),
             "/api/paravoid/v1/apps/:package_name/releases/:id/payload.vpk"

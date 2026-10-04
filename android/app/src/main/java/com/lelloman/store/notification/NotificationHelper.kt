@@ -128,6 +128,45 @@ class NotificationHelper @Inject constructor(
         notificationManager.notify(PUSH_REMINDER_NOTIFICATION_ID, notification)
     }
 
+    /** Separate ID so background health checks cannot overwrite the startup warning. */
+    @SuppressLint("MissingPermission")
+    fun showStartupBatteryWarning(): Boolean {
+        if (context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) {
+            cancelStartupBatteryWarning()
+            return true
+        }
+        if (!hasNotificationPermission() || !notificationManager.areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 26 && notificationManager.getNotificationChannel(PUSH_REMINDERS_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
+        val intent = Intent(context, MainActivity::class.java).putExtra("open_battery_settings", true)
+        val pending = PendingIntent.getActivity(context, STARTUP_BATTERY_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = context.getString(com.lelloman.store.ui.R.string.push_battery_warning_text)
+        notificationManager.notify(STARTUP_BATTERY_NOTIFICATION_ID,
+            NotificationCompat.Builder(context, PUSH_REMINDERS_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle(context.getString(com.lelloman.store.ui.R.string.push_battery_warning_title))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(pending)
+                .addAction(0, context.getString(com.lelloman.store.ui.R.string.push_battery_open_settings), pending)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setTimeoutAfter(60_000)
+                .build())
+        // Android 24/25 do not implement notification timeoutAfter.
+        startupWarningHandler.removeCallbacks(startupWarningTimeout)
+        startupWarningHandler.postDelayed(startupWarningTimeout, 60_000)
+        return true
+    }
+
+    private val startupWarningHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val startupWarningTimeout = Runnable { cancelStartupBatteryWarning() }
+
+    fun cancelStartupBatteryWarning() {
+        startupWarningHandler.removeCallbacks(startupWarningTimeout)
+        notificationManager.cancel(STARTUP_BATTERY_NOTIFICATION_ID)
+    }
+
     fun cancelPushConnectionReminder() {
         notificationManager.cancel(PUSH_REMINDER_NOTIFICATION_ID)
     }
@@ -254,6 +293,7 @@ class NotificationHelper @Inject constructor(
         const val UPDATES_CHANNEL_ID = "updates_channel"
         const val OPERATIONS_CHANNEL_ID = "operations_channel"
         const val PUSH_REMINDERS_CHANNEL_ID = "push_connection_reminders"
+        internal const val STARTUP_BATTERY_NOTIFICATION_ID = 1006
         private const val PUSH_REMINDER_NOTIFICATION_ID = 1005
         const val UPDATES_NOTIFICATION_ID = 1001
         const val BACKGROUND_UPDATE_NOTIFICATION_ID = 1002
