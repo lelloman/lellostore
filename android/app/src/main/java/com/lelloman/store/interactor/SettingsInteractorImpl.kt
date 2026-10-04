@@ -98,8 +98,7 @@ class SettingsInteractorImpl @Inject constructor(
     }
 
     override fun getAppVersion(): String {
-        // Version info from build.gradle.kts
-        return "1.0 (1)"
+        return "${com.lelloman.store.BuildConfig.VERSION_NAME} (${com.lelloman.store.BuildConfig.VERSION_CODE})"
     }
 
     override suspend fun setThemeMode(mode: ThemeModeOption) {

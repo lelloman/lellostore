@@ -39,6 +39,7 @@ jobs:
         with:
           persist-credentials: false
           path: lellostore
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -81,6 +82,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@v6
         with:
           distribution: temurin

@@ -18,6 +18,19 @@ val localProperties = Properties().apply {
 
 val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
 
+fun gitOutput(vararg arguments: String): String = providers.exec {
+    workingDir(rootProject.projectDir)
+    commandLine("git", *arguments)
+}.standardOutput.asText.get().trim()
+
+check(gitOutput("rev-parse", "--is-shallow-repository") == "false") {
+    "Android versioning requires full Git history. Run git fetch --unshallow."
+}
+val storeCommitCount = gitOutput("rev-list", "--count", "HEAD").toInt()
+val storeVersionMajor = providers.gradleProperty("storeVersionMajor").get().toInt()
+val storeVersionMinor = providers.gradleProperty("storeVersionMinor").get().toInt()
+require(storeVersionMajor >= 0 && storeVersionMinor >= 0 && storeCommitCount > 0)
+
 val signingProperties = Properties().apply {
     val signingPropertiesFile = rootProject.file("signing.properties")
     if (signingPropertiesFile.exists()) {
@@ -47,8 +60,8 @@ android {
         applicationId = "com.lelloman.store"
         minSdk = 24
         targetSdk = 36
-        versionCode = providers.gradleProperty("storeVersionCode").orElse("18").get().toInt()
-        versionName = providers.gradleProperty("storeVersionName").orElse("1.17").get()
+        versionCode = storeCommitCount
+        versionName = "$storeVersionMajor.$storeVersionMinor.$storeCommitCount"
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
