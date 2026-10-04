@@ -34,6 +34,10 @@ RUN VITE_OIDC_ISSUER_URL="$VITE_OIDC_ISSUER_URL" \
 # =============================================================================
 FROM rust:1.92-bookworm AS backend-builder
 
+# Allow rustc enough stack for recursive dependency AST processing. This stays
+# in the build stage and does not change the runtime service's thread stacks.
+ENV RUST_MIN_STACK=16777216
+
 WORKDIR /app
 
 # Install build dependencies
