@@ -32,16 +32,13 @@ class UpdateConnectionServiceController @Inject constructor(
 ) {
     private val mutableRunning = MutableStateFlow(false)
     val running = mutableRunning.asStateFlow()
-    private var requested = false
 
     fun start() {
-        if (requested) return
+        if (running.value) return
         ContextCompat.startForegroundService(context, Intent(context, UpdateConnectionService::class.java))
-        requested = true
     }
 
     fun stop() {
-        requested = false
         context.stopService(Intent(context, UpdateConnectionService::class.java))
     }
 
@@ -53,7 +50,6 @@ class UpdateConnectionServiceController @Inject constructor(
 
     fun onStarted() { mutableRunning.value = true }
     fun onStopped() {
-        requested = false
         mutableRunning.value = false
     }
 }

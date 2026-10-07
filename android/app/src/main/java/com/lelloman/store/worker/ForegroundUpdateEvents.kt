@@ -192,7 +192,8 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
                         service.start()
                     } catch (error: RuntimeException) {
                         logger.w("UpdateConnection", "Cannot start update connection service", error)
-                        preferences.setKeepUpdateConnection(false)
+                        logger.audit("push.service_start_failed", mapOf("error_type" to error.javaClass.simpleName))
+                        workManagerInitializer.enqueuePushConnectionRecovery()
                     }
                 }
                 val active = shouldKeepCatalogConnection(state.foreground, state.authenticated,

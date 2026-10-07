@@ -44,6 +44,16 @@ class WorkManagerInitializer @Inject constructor(
         }
     }
 
+    fun enqueuePushConnectionRecovery() {
+        workManager.enqueueUniqueWork(
+            "push_connection_recovery",
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<PushConnectionHealthWorker>()
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .build(),
+        )
+    }
+
     fun enqueueImmediateUpdateCheck() {
         val request = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
             .setConstraints(networkConstraints())

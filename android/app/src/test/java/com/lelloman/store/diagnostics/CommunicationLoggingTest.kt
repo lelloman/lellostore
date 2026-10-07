@@ -57,6 +57,22 @@ class CommunicationLoggingTest {
         assertTrue(audit.snapshot().contains("http.failed"))
     }
 
+    @Test fun serviceStartCanBeRetriedUntilTheServiceActuallyRuns() {
+        val context = mockk<Context>()
+        every { context.packageName } returns "com.lelloman.store"
+        every { context.startForegroundService(any()) } returns android.content.ComponentName("com.lelloman.store", "UpdateConnectionService")
+        val controller = com.lelloman.store.worker.UpdateConnectionServiceController(context)
+        controller.start()
+        controller.start() // The first request never reached onCreate.
+        io.mockk.verify(exactly = 2) { context.startForegroundService(any()) }
+        controller.onStarted()
+        controller.start()
+        io.mockk.verify(exactly = 2) { context.startForegroundService(any()) }
+        controller.onStopped()
+        controller.start()
+        io.mockk.verify(exactly = 3) { context.startForegroundService(any()) }
+    }
+
     @Test fun clearFlushesEarlierWritesAndAllowsNewHistory() {
         val audit = audit()
         repeat(100) { audit.record("old.event") }

@@ -84,6 +84,30 @@ class UpdateConnectionLifecycleTest {
     }
 
     @Test
+    fun `failed foreground startup preserves opt in and queues recovery`() = runTest {
+        val preferences = mockk<UserPreferencesStore> {
+            every { keepUpdateConnection } returns MutableStateFlow(true)
+            coEvery { readKeepUpdateConnection() } returns true
+        }
+        val service = mockk<UpdateConnectionServiceController>(relaxed = true) {
+            every { running } returns MutableStateFlow(false)
+            every { start() } throws IllegalStateException("temporarily blocked")
+        }
+        val work = mockk<WorkManagerInitializer>(relaxed = true)
+        val observer = ForegroundUpdateLifecycleObserver(
+            mockk { every { authState } returns MutableStateFlow(AuthState.Authenticated("test@example.test")) },
+            mockk { every { serverUrl } returns MutableStateFlow("https://store.example") },
+            preferences, service, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true), work, backgroundScope,
+        )
+        observer.onStart(mockk())
+        observer.observeConnection()
+        runCurrent()
+        verify { work.enqueuePushConnectionRecovery() }
+        io.mockk.coVerify(exactly = 0) { preferences.setKeepUpdateConnection(any()) }
+    }
+
+    @Test
     fun `sticky service waits for restored authentication before making lifecycle decisions`() = runTest {
         val auth = MutableStateFlow<AuthState>(AuthState.Loading)
         val keep = MutableStateFlow(true)
