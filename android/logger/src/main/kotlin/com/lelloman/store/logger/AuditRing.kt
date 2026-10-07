@@ -54,5 +54,13 @@ class AuditRing(
         }
     }
 
+    @Synchronized
+    fun clear() {
+        for (index in 0 until segmentCount) {
+            val file = segment(index)
+            check(!file.exists() || file.delete())
+        }
+    }
+
     private fun segment(index: Int) = File(directory, "audit-$index.jsonl")
 }

@@ -39,7 +39,9 @@ object RemoteApiModule {
     fun provideOkHttpClient(
         authStore: AuthStore,
         sessionExpiredHandler: SessionExpiredHandler,
+        auditLog: com.lelloman.store.logger.AuditLog,
     ): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(com.lelloman.store.remoteapi.AuditHttpInterceptor(auditLog))
         .addInterceptor { chain ->
             val token = runBlocking { authStore.getAccessToken() }
             val request = if (token != null) {

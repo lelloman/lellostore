@@ -270,6 +270,7 @@ class DownloadManagerImpl @Inject constructor(
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            logger.audit("ipc.install_permission_settings", mapOf("action" to intent.action))
             context.startActivity(intent)
         }
     }

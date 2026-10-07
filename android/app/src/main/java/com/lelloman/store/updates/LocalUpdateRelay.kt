@@ -63,13 +63,17 @@ class LocalUpdateRelay @Inject constructor(
         services.map { component -> async {
             slots.withPermit {
                 try {
+                    logger.audit("ipc.update_hint_started", mapOf("package" to component.packageName))
                     val result = notify(component)
+                    logger.audit("ipc.update_hint_result", mapOf("package" to component.packageName, "result" to result))
                     logger.i(TAG, "${component.packageName}: hint result=$result")
                 } catch (timeout: TimeoutCancellationException) {
+                    logger.audit("ipc.update_hint_failed", mapOf("package" to component.packageName, "error_type" to "Timeout"))
                     logger.i(TAG, "${component.packageName}: hint timeout")
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
+                    logger.audit("ipc.update_hint_failed", mapOf("package" to component.packageName, "error_type" to error.javaClass.simpleName))
                     logger.w(TAG, "${component.packageName}: hint unavailable", error)
                 }
             }

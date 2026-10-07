@@ -116,8 +116,12 @@ class AuthStoreImpl(
     override suspend fun getAccessToken(): String? = tokenRefreshMutex.withLock {
         val state = appAuthState ?: return@withLock null
 
+        val refresh = state.needsTokenRefresh
+        val requestId = java.util.UUID.randomUUID().toString()
+        if (refresh) logger.audit("auth.refresh_started", mapOf("request_id" to requestId))
         suspendCancellableCoroutine { cont ->
             state.performActionWithFreshTokens(authService) { accessToken, _, ex ->
+                if (refresh || ex != null) logger.audit("auth.refresh_finished", mapOf("request_id" to requestId, "success" to (ex == null), "error_code" to ex?.code))
                 if (ex != null) {
                     logger.e(TAG, "Token refresh failed", ex)
                     cont.resume(null)
@@ -147,14 +151,17 @@ class AuthStoreImpl(
             .setScopes(oidcConfig.scopes)
             .build()
 
+        logger.audit("ipc.authorization_requested")
         return authService.getAuthorizationRequestIntent(authRequest)
     }
 
     private suspend fun discoverServiceConfiguration(): AuthorizationServiceConfiguration =
         suspendCancellableCoroutine { continuation ->
+            logger.audit("auth.discovery_started")
             AuthorizationServiceConfiguration.fetchFromIssuer(
                 oidcConfig.issuerUrl.toUri(),
             ) { configuration, exception ->
+                logger.audit("auth.discovery_finished", mapOf("success" to (configuration != null), "error_code" to exception?.code))
                 if (!continuation.isActive) return@fetchFromIssuer
                 if (configuration != null) {
                     continuation.resume(configuration)
@@ -171,6 +178,7 @@ class AuthStoreImpl(
         exception: AuthorizationException?,
         onResult: (AuthResult) -> Unit,
     ) {
+        logger.audit("ipc.authorization_response", mapOf("success" to (response != null && exception == null), "error_code" to exception?.code))
         if (exception != null) {
             logger.e(TAG, "Authorization failed", exception)
             onResult(AuthResult.Error(exception.message ?: "Authorization failed"))
@@ -186,6 +194,7 @@ class AuthStoreImpl(
         val newAuthState = net.openid.appauth.AuthState(response, exception)
 
         val tokenRequest = response.createTokenExchangeRequest()
+        logger.audit("auth.exchange_started")
         authService.performTokenRequest(tokenRequest) { tokenResponse, tokenException ->
             handleTokenResponse(newAuthState, tokenResponse, tokenException, onResult)
         }
@@ -197,6 +206,7 @@ class AuthStoreImpl(
         exception: AuthorizationException?,
         onResult: (AuthResult) -> Unit,
     ) {
+        logger.audit("auth.exchange_finished", mapOf("success" to (response != null && exception == null), "error_code" to exception?.code))
         // Update the auth state with the token response
         authState.update(response, exception)
 

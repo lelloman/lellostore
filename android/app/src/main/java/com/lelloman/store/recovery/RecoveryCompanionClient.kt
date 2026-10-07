@@ -21,6 +21,12 @@ import java.security.MessageDigest
 import java.util.UUID
 
 class RecoveryCompanionClient(private val context: Context) {
+    @dagger.hilt.EntryPoint
+    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+    interface LoggingEntryPoint { fun auditLog(): com.lelloman.store.logger.AuditLog }
+    private val audit by lazy {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(context.applicationContext, LoggingEntryPoint::class.java).auditLog()
+    }
     private val preferences get() = context.getSharedPreferences("self-update-provisioning", Context.MODE_PRIVATE)
 
     fun selfUpdatesEnabled(): Boolean = preferences.getBoolean("enabled", false) && trustedCompanionInstalled()
@@ -37,11 +43,11 @@ class RecoveryCompanionClient(private val context: Context) {
     }.getOrDefault(false)
 
     suspend fun pairRecovery(code: String): Result<Unit> = runCatching {
-        val error = call { it.pairRecoveryWireless(code) } ?: error("Install or update the recovery companion first")
+        val error = call("pairRecoveryWireless") { it.pairRecoveryWireless(code) } ?: error("Install or update the recovery companion first")
         check(error.isEmpty()) { error }
     }
 
-    suspend fun startAfterReplacement() { call { it.startUpdatedStore() } }
+    suspend fun startAfterReplacement() { call("startUpdatedStore") { it.startUpdatedStore() } }
 
     suspend fun provision(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -61,10 +67,10 @@ class RecoveryCompanionClient(private val context: Context) {
             }
             val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
             val saved = ParcelFileDescriptor.open(apk, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                call { it.backupStoreApk(fd, sha256, installedVersion()) } == true
+                call("backupStoreApk") { it.backupStoreApk(fd, sha256, installedVersion()) } == true
             }
             check(saved) { "Recovery snapshot could not be saved. Resolve any pending recovery attempt first." }
-            val reason = call { it.testRecoveryConnection() } ?: error("Recovery companion is unavailable")
+            val reason = call("testRecoveryConnection") { it.testRecoveryConnection() } ?: error("Recovery companion is unavailable")
             check(reason.isEmpty()) { reason }
         }
     }
@@ -80,7 +86,7 @@ class RecoveryCompanionClient(private val context: Context) {
         }
         val started = System.currentTimeMillis()
         val attemptId = UUID.randomUUID().toString()
-        val accepted = call { service ->
+        val accepted = call("recordUpdateAttempt") { service ->
             service.recordUpdateAttempt(
                 attemptId,
                 currentVersion,
@@ -95,14 +101,14 @@ class RecoveryCompanionClient(private val context: Context) {
     }
 
     suspend fun cancelUnreplacedAttempt(attemptId: String, reason: String): Boolean =
-        call { it.cancelUnreplacedAttempt(attemptId, reason, installedVersion()) } == true
+        call("cancelUnreplacedAttempt") { it.cancelUnreplacedAttempt(attemptId, reason, installedVersion()) } == true
 
     suspend fun backupIdentity(adb: SelfAdbConnectionManager): Boolean =
-        call { it.backupStoreIdentity(adb.privateKeyBytes, adb.certificateBytes) } == true
+        call("backupStoreIdentity") { it.backupStoreIdentity(adb.privateKeyBytes, adb.certificateBytes) } == true
 
     suspend fun restoreIdentityIfNeeded(): Boolean {
         if (SelfAdbConnectionManager.hasStoredIdentity(context)) return true
-        val identity = call { service ->
+        val identity = call("restoreIdentity") { service ->
             service.restoreStorePrivateKey() to service.restoreStoreCertificate()
         } ?: return false
         if (identity.first.isEmpty() || identity.second.isEmpty()) return false
@@ -111,15 +117,20 @@ class RecoveryCompanionClient(private val context: Context) {
         }.isSuccess
     }
 
-    suspend fun acknowledgePendingHealth(): Boolean = call { service ->
+    suspend fun acknowledgePendingHealth(): Boolean = call("acknowledgePendingHealth") { service ->
         val attemptId = service.pendingAttemptId()
         val targetVersion = service.pendingTargetVersion()
         if (attemptId.isBlank() || installedVersion() != targetVersion) false
         else service.acknowledgeHealth(attemptId, installedVersion())
     } == true
 
-    private suspend fun <T> call(block: (IRecoveryService) -> T): T? = withContext(Dispatchers.IO) {
-        if (!trustedCompanionInstalled()) return@withContext null
+    private suspend fun <T> call(operation: String, block: (IRecoveryService) -> T): T? = withContext(Dispatchers.IO) {
+        val fields = mapOf("operation" to operation, "call_id" to UUID.randomUUID().toString(), "package" to RecoveryContract.RECOVERY_PACKAGE)
+        audit.record("ipc.recovery_started", fields)
+        if (!trustedCompanionInstalled()) {
+            audit.record("ipc.recovery_unavailable", fields)
+            return@withContext null
+        }
         val connected = CompletableDeferred<IRecoveryService?>()
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -140,14 +151,18 @@ class RecoveryCompanionClient(private val context: Context) {
         val bound = runCatching {
             context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
         }.getOrDefault(false)
+        audit.record("ipc.recovery_bound", fields + mapOf("bound" to bound))
         if (!bound) return@withContext null
         try {
-            withTimeoutOrNull(SERVICE_TIMEOUT_MILLIS) {
+            val result = withTimeoutOrNull(SERVICE_TIMEOUT_MILLIS) {
                 connected.await()?.takeIf {
                     runCatching { it.protocolVersion() }.getOrNull() == RecoveryContract.PROTOCOL_VERSION
-                }?.let { runCatching { block(it) }.getOrNull() }
+                }?.let { runCatching { block(it) }.onFailure { error -> audit.record("ipc.recovery_failed", fields + mapOf("error_type" to error.javaClass.simpleName)) }.getOrNull() }
             }
+            audit.record("ipc.recovery_finished", fields + mapOf("reply_received" to (result != null)))
+            result
         } finally {
+            audit.record("ipc.recovery_unbind", fields)
             runCatching { context.unbindService(connection) }
         }
     }

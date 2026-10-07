@@ -95,11 +95,13 @@ class ForegroundCatalogEventConnection @Inject constructor(
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 openedAt = SystemClock.elapsedRealtime()
+                logger.audit("catalog.connected")
                 logger.i(TAG, "Connected to catalog event stream")
                 catalogChanges.trySend(Unit) // Repair publications missed while disconnected.
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                logger.audit("catalog.frame_received", mapOf("bytes" to text.toByteArray().size, "catalog_changed" to isCatalogChangedEvent(text)))
                 if (isCatalogChangedEvent(text)) {
                     catalogChanges.trySend(Unit)
                 }
@@ -110,10 +112,12 @@ class ForegroundCatalogEventConnection @Inject constructor(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                logger.audit("catalog.closed", mapOf("code" to code))
                 finish()
             }
 
             override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
+                logger.audit("catalog.disconnected", mapOf("error_type" to error.javaClass.simpleName))
                 logger.w(TAG, "Catalog event stream disconnected: ${error.message}", error)
                 finish()
             }

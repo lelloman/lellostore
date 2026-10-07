@@ -53,7 +53,7 @@ class AppDetailViewModelTest {
         val savedStateHandle = androidx.lifecycle.SavedStateHandle().apply {
             set("packageName", packageName)
         }
-        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor)
+        viewModel = AppDetailViewModel(savedStateHandle, fakeInteractor, io.mockk.mockk(relaxed = true))
     }
 
     @Test

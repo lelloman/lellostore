@@ -51,7 +51,7 @@ class ParavoidTriggerDeviceTest {
                 override fun isInstalled(packageName: String) = flowOf(true)
                 override fun getInstalledVersion(packageName: String): Flow<InstalledApp?> = flowOf(null)
             }
-            assertTrue(UpdateCheckerImpl(apps,installed,prefs,SelfUpdateGate(context),relay).checkForUpdates().getOrThrow().isEmpty())
+            assertTrue(UpdateCheckerImpl(apps,installed,prefs,SelfUpdateGate(context),relay,logger).checkForUpdates().getOrThrow().isEmpty())
         } else {
             require(mode == "event")
             // Exercise the production WebSocket listener and relay independently of APK checking.

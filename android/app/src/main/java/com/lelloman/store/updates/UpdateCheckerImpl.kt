@@ -26,12 +26,15 @@ class UpdateCheckerImpl @Inject constructor(
     private val userPreferencesStore: UserPreferencesStore,
     private val selfUpdateGate: SelfUpdateGate,
     private val localUpdateRelay: LocalUpdateRelay,
+    private val logger: com.lelloman.store.logger.Logger,
 ) : UpdateChecker {
 
     private val mutableUpdates = MutableStateFlow<List<AvailableUpdate>>(emptyList())
     override val availableUpdates: StateFlow<List<AvailableUpdate>> = mutableUpdates.asStateFlow()
 
     override suspend fun checkForUpdates(): Result<List<AvailableUpdate>> {
+        val fields = mapOf("check_id" to java.util.UUID.randomUUID().toString())
+        logger.audit("updates.check_started", fields)
         return runCatching {
             appsRepository.refreshApps().getOrThrow()
             installedAppsRepository.refreshInstalledApps()
@@ -43,7 +46,8 @@ class UpdateCheckerImpl @Inject constructor(
             )
             mutableUpdates.value = policyAwareUpdates
             policyAwareUpdates
-        }
+        }.onSuccess { logger.audit("updates.check_finished", fields + mapOf("available" to it.size)) }
+            .onFailure { logger.audit("updates.check_failed", fields + mapOf("error_type" to it.javaClass.simpleName)) }
     }
 
     private suspend fun findPolicyAwareUpdates(

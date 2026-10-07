@@ -15,9 +15,11 @@ import javax.inject.Inject
 /** AND_3.1.0 entrypoint. Capture authenticated identity before leaving onReceive. */
 @AndroidEntryPoint
 class UnifiedPushReceiver : BroadcastReceiver() {
+    @Inject lateinit var audit: com.lelloman.store.logger.AuditLog
     @Inject lateinit var runtime: NotificationBrokerRuntime
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
     override fun onReceive(context: Context, intent: Intent) {
+        audit.record("ipc.push_received", mapOf("action" to intent.action?.substringAfterLast('.'), "valid_request" to validRequest(intent)))
         val packageName = if (intent.action == "org.unifiedpush.android.distributor.MESSAGE_ACK" && validRequest(intent)) "" else runCatching {
             require(validRequest(intent))
             val uid: Int
@@ -38,8 +40,10 @@ class UnifiedPushReceiver : BroadcastReceiver() {
         val pending = goAsync()
         scope.launch {
             try { withTimeout(9000) { runtime.process(packageName, intent) } }
-            catch (_: Exception) {
+            catch (error: Exception) {
+                audit.record("ipc.push_request_failed", mapOf("package" to packageName, "error_type" to error.javaClass.simpleName))
                 if (intent.action?.endsWith(".REGISTER") == true && packageName.isNotEmpty()) {
+                    audit.record("ipc.broadcast_attempt", mapOf("package" to packageName, "action" to "REGISTRATION_FAILED"))
                     context.sendBroadcast(Intent("org.unifiedpush.android.connector.REGISTRATION_FAILED").setPackage(packageName)
                         .putExtra("token", intent.getStringExtra("token")).putExtra("reason", "NETWORK"))
                 }

@@ -19,7 +19,7 @@
         <item quantity="many">Aggiornamento di %1$d app</item>
         <item quantity="other">Aggiornamento di %1$d app</item>
     </plurals>
-    <string name="audit_title">Diagnostica aggiornamenti</string>
+    <string name="audit_title">Registri locali</string>
     <string name="audit_refresh">Aggiorna</string>
     <string name="audit_export">Esporta registro</string>
     <string name="audit_exported">Registro esportato</string>
@@ -37,4 +37,8 @@
     <string name="push_registration_details">%1$s\n%2$s</string>
     <string name="push_registration_empty">Nessuna app registrata. Le app si registrano usando una chiave del server approvata da un amministratore.</string>
     <string name="push_registration_remove">Rimuovi registrazione</string>
+    <string name="audit_filter">Filtra per evento, pacchetto o ID</string>
+    <string name="audit_clear">Cancella registri</string>
+    <string name="audit_clear_confirm">Eliminare i registri locali conservati? I nuovi eventi continueranno a essere registrati.</string>
+    <string name="audit_cancel">Annulla</string>
 </resources>

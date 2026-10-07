@@ -19,7 +19,7 @@
         <item quantity="one">Updating %1$d app</item>
         <item quantity="other">Updating %1$d apps</item>
     </plurals>
-    <string name="audit_title">Update diagnostics</string>
+    <string name="audit_title">Local logs</string>
     <string name="audit_refresh">Refresh</string>
     <string name="audit_export">Export audit log</string>
     <string name="audit_exported">Audit log exported</string>
@@ -37,4 +37,8 @@
     <string name="push_registration_details">%1$s\n%2$s</string>
     <string name="push_registration_empty">No registered apps. Apps register using an administrator-approved server key.</string>
     <string name="push_registration_remove">Remove registration</string>
+    <string name="audit_filter">Filter by event, package or ID</string>
+    <string name="audit_clear">Clear logs</string>
+    <string name="audit_clear_confirm">Delete the retained local logs? New events will continue to be recorded.</string>
+    <string name="audit_cancel">Cancel</string>
 </resources>

@@ -60,6 +60,7 @@ class UpdateConnectionServiceController @Inject constructor(
 
 @AndroidEntryPoint
 class UpdateConnectionService : Service() {
+    @Inject lateinit var audit: com.lelloman.store.logger.AuditLog
     @Inject lateinit var controller: UpdateConnectionServiceController
     @Inject lateinit var broker: com.lelloman.store.notification.NotificationBrokerRuntime
     private var statusJob: kotlinx.coroutines.Job? = null
@@ -69,6 +70,7 @@ class UpdateConnectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        audit.record("push.service_created")
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
@@ -99,6 +101,7 @@ class UpdateConnectionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        audit.record("push.service_command", mapOf("action" to intent?.action, "restart" to (intent == null)))
         if (intent?.action == ACTION_STOP) {
             scope.launch { preferences.setKeepUpdateConnection(false) }
         } else if (intent?.action == ACTION_RESTORE_NOTIFICATION) {
@@ -114,6 +117,7 @@ class UpdateConnectionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        audit.record("push.service_destroyed")
         statusJob?.cancel()
         controller.onStopped()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

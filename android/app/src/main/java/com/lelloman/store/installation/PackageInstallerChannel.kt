@@ -42,6 +42,7 @@ class PackageInstallerChannel @Inject constructor(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        request.audit("ipc.installer_launch", mapOf("action" to intent.action))
         context.startActivity(intent)
         return ChannelInstallationResult.UserActionStarted
     }

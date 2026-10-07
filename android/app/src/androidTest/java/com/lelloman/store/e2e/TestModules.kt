@@ -277,8 +277,9 @@ object TestRemoteApiModuleImpl {
     fun provideOkHttpClient(
         authStore: AuthStore,
         sessionExpiredHandler: SessionExpiredHandler,
+        auditLog: com.lelloman.store.logger.AuditLog,
     ): OkHttpClient = if (StoreDeviceArguments.enabled) {
-        RemoteApiModule.provideOkHttpClient(authStore, sessionExpiredHandler)
+        RemoteApiModule.provideOkHttpClient(authStore, sessionExpiredHandler, auditLog)
     } else OkHttpClient()
 
     @Provides

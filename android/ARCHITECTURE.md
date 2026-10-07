@@ -82,10 +82,12 @@ remove broadcasts refresh that snapshot; its Room flows push the resulting
 version change to every observing screen. Detail resume remains a reconciliation
 fallback for an interrupted or missed broadcast.
 
-## Local update diagnostics
+## Local logs
 
-Settings → Update diagnostics shows retained event counts, completed operation counts,
-mean operation duration, and the latest 100 structured events. Export writes a JSONL
+Settings → Local logs shows retained event counts, completed operation counts,
+mean operation duration, and the latest 100 matching events with readable local timestamps.
+Search matches event names, packages, IDs and fields. Clear removes retained segments
+after confirmation; new events continue to be recorded. Export writes a JSONL
 snapshot through Android's document picker. Statistics describe the retained window,
 not lifetime totals; an interactive installer handoff is not proof of installation.
 
@@ -204,3 +206,28 @@ preferences still apply. Disabling the service in the background resumes warm po
 The service is not sticky and does not start at boot: reopen LelloStore to resume
 after Android stops it. A foreground service does not bypass Doze, network availability,
 or package-installer confirmation requirements.
+
+The same local log records the persistent push connection state, connection IDs,
+WebSocket frame types and sizes, retry delays, heartbeat RTT and alarm lateness.
+A process-lifetime observer records Android default-network availability, validation,
+captive portal, metering, transport and blocking changes, plus screen, Doze and
+power-saving state. These are Android observations, not proof that the server is
+reachable. HTTP request/response metadata includes request IDs, method, host,
+sanitized route, response status, time to headers and declared content length;
+request failures record the exception type. Authentication discovery, refresh and
+exchange have separate lifecycle events. Existing download events cover body transfer.
+
+Inter-app events cover UnifiedPush requests, registration responses, delivery service
+binding, message dispatch and acknowledgments, local update hints, recovery companion
+calls, browser authorization and installer handoffs. Push delivery deferrals include
+a reason. A queued WebSocket send or broadcast dispatch is not confirmation of receipt;
+app acknowledgments are separate events. Logs exclude credentials, headers, query
+strings, arbitrary URL path segments, request/response bodies, push payloads and
+exception messages. Package names, server hosts and message IDs are retained for
+correlation. Export explicitly shares the full retained log, regardless of the UI filter.
+
+Logging is automatic and local: no upload, network probing or additional wake locks.
+It can only observe events while the process runs; process death is visible as a new
+session on the next startup, not as a guaranteed shutdown event. The byte limit means
+retention duration varies with traffic. This instrumentation does not itself change
+connection retries, background policy or delivery behavior.

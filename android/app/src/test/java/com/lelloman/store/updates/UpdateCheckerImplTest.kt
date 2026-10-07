@@ -47,6 +47,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = mockk { every { watchInstalledApps() } returns installedAppsFlow },
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            logger = mockk(relaxed = true),
             localUpdateRelay = mockk(relaxed = true),
         )
 
@@ -136,6 +137,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            logger = mockk(relaxed = true),
             localUpdateRelay = mockk(relaxed = true),
         )
 
@@ -172,6 +174,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            logger = mockk(relaxed = true),
             localUpdateRelay = mockk(relaxed = true),
         )
 
@@ -202,6 +205,7 @@ class UpdateCheckerImplTest {
             installedAppsRepository = installedAppsRepository,
             userPreferencesStore = createPreferences(),
             selfUpdateGate = recoveryGate(),
+            logger = mockk(relaxed = true),
             localUpdateRelay = mockk(relaxed = true),
         )
 
@@ -314,7 +318,7 @@ class UpdateCheckerImplTest {
             every { watchInstalledApps() } returns installed
             coEvery { refreshInstalledApps() } returns Unit
         }
-        return UpdateCheckerImpl(appsRepository, installedRepository, preferences, recoveryGate(selfEnabled), relay)
+        return UpdateCheckerImpl(appsRepository, installedRepository, preferences, recoveryGate(selfEnabled), relay, mockk(relaxed = true))
     }
 
     @Test fun `forwards hints even without an APK upgrade and store auto update disabled`() = runTest {

@@ -29,7 +29,8 @@ class UnifiedPushRuntimeTest {
     }
     @Test fun ackIsBoundToBothRegistrationAndOfferedMessageAndPersistsOffline() = runTest {
         val context = RuntimeEnvironment.getApplication()
-        val runtime = NotificationBrokerRuntime(context, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
+        val audit = mockk<com.lelloman.store.logger.AuditLog>(relaxed = true)
+        val runtime = NotificationBrokerRuntime(context, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), audit, backgroundScope)
         val db = runtime.db
         db.clear()
         db.put("registration:token", JSONObject().put("token", "token").put("package", "app.test"), "registration")
@@ -39,13 +40,14 @@ class UnifiedPushRuntimeTest {
         assertEquals("offered", db.entry("message:id")!!.second)
         runtime.process("", ack.putExtra("token", "token"))
         assertEquals("ack", db.entry("message:id")!!.second)
+        verify(exactly = 1) { audit.record("push.app_ack", mapOf("package" to "app.test", "message_id" to "id")) }
         val reopened = PrivateStore(context, "unifiedpush-broker")
         assertEquals("receipt", reopened.entry("message:id")!!.first.getString("kind"))
         assertEquals("token", reopened.entry("message:id")!!.first.getString("token"))
         reopened.close()
     }
     @Test fun unofferedMessageCannotBeAcknowledged() = runTest {
-        val runtime = NotificationBrokerRuntime(RuntimeEnvironment.getApplication(), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
+        val runtime = NotificationBrokerRuntime(RuntimeEnvironment.getApplication(), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
         runtime.db.clear()
         runtime.db.put("registration:token", JSONObject().put("token", "token").put("package", "app.test"), "registration")
         runtime.process("", Intent("org.unifiedpush.android.distributor.MESSAGE_ACK").putExtra("token", "token").putExtra("id", "invented-id"))
@@ -54,7 +56,7 @@ class UnifiedPushRuntimeTest {
     @Test fun signedOutStoreDoesNotCreateRegistration() = runTest {
         val auth = mockk<AuthStore> { coEvery { getAccessToken() } returns null }
         val context = RuntimeEnvironment.getApplication()
-        val runtime = NotificationBrokerRuntime(context, auth, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
+        val runtime = NotificationBrokerRuntime(context, auth, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
         runtime.db.clear()
         runtime.process("app.test", Intent("org.unifiedpush.android.distributor.REGISTER").putExtra("token", "token").putExtra("vapid", "B".repeat(87)))
         assertTrue(runtime.registeredApps().isEmpty())

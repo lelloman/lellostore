@@ -24,6 +24,16 @@ class AuditRingTest {
         assertThat(numbers).isInOrder()
     }
 
+    @Test fun clearRemovesRotatedHistoryAndSurvivesRestart() {
+        val directory = temporary.newFolder()
+        val ring = AuditRing(directory, 20, 3)
+        repeat(100) { ring.append("{\"n\":$it}") }
+        ring.clear()
+        assertThat(AuditRing(directory, 20, 3).snapshot()).isEmpty()
+        ring.append("{}")
+        assertThat(ring.snapshot()).isEqualTo("{}\n")
+    }
+
     @Test fun interruptedAppendIsDiscardedBeforeNextRecord() {
         val directory = temporary.newFolder()
         File(directory, "audit-0.jsonl").writeText("{}\n{broken")

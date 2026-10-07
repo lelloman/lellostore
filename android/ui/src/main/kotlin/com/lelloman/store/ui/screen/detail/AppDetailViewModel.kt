@@ -36,9 +36,14 @@ import javax.inject.Inject
 class AppDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val interactor: Interactor,
+    private val logger: com.lelloman.store.logger.Logger,
 ) : ViewModel() {
 
     private val packageName: String = savedStateHandle.toRoute<Screen.AppDetail>().packageName
+
+    fun recordExternalLaunch(action: String, launched: Boolean) {
+        logger.audit("ipc.activity_launch", mapOf("package" to packageName, "action" to action, "launched" to launched))
+    }
 
     private val mutableState = MutableStateFlow(AppDetailScreenState())
     val state: StateFlow<AppDetailScreenState> = mutableState.asStateFlow()

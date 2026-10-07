@@ -90,7 +90,10 @@ fun AppDetailScreen(
             when (event) {
                 is AppDetailScreenEvent.OpenApp -> {
                     val launchIntent = context.packageManager.getLaunchIntentForPackage(event.packageName)
-                    launchIntent?.let { context.startActivity(it) }
+                    var launched = false
+                    try {
+                        launchIntent?.let { context.startActivity(it); launched = true }
+                    } finally { viewModel.recordExternalLaunch("open_app", launched) }
                 }
             }
         }
@@ -143,6 +146,7 @@ fun AppDetailScreen(
                         onInstallClick = viewModel::onInstallClick,
                         onUpdateClick = viewModel::onUpdateClick,
                         onOpenClick = viewModel::onOpenClick,
+                        onExternalLaunch = viewModel::recordExternalLaunch,
                         onRepairAccess = viewModel::onRepairAccess,
                         onCancelDownload = viewModel::onCancelDownload,
                         onGrantPermissionClick = viewModel::onGrantPermissionClick,
@@ -164,6 +168,7 @@ private fun AppDetailContent(
     onInstallClick: () -> Unit,
     onUpdateClick: () -> Unit,
     onOpenClick: () -> Unit,
+    onExternalLaunch: (String, Boolean) -> Unit,
     onRepairAccess: () -> Unit,
     onCancelDownload: () -> Unit,
     onGrantPermissionClick: () -> Unit,
@@ -263,7 +268,9 @@ private fun AppDetailContent(
 
             if (hasUpdateControls && !isDownloading) {
                 TextButton(onClick = {
-                    if (!ParavoidControls.open(context, app.packageName)) {
+                    val launched = ParavoidControls.open(context, app.packageName)
+                    onExternalLaunch("update_controls", launched)
+                    if (!launched) {
                         hasUpdateControls = false
                         Toast.makeText(context, R.string.paravoid_controls_unavailable, Toast.LENGTH_LONG).show()
                     }

@@ -66,6 +66,9 @@ class AuditLog @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    /** Serialized after pending writes; events submitted after this call may remain. */
+    fun clear() { executor.submit { ring.clear() }.get(15, TimeUnit.SECONDS) }
+
     /** Call off the UI thread. Queued records are flushed before taking the snapshot. */
     fun snapshot(): String = executor.submit<String> { ring.snapshot() }.get(15, TimeUnit.SECONDS)
 }

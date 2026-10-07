@@ -46,9 +46,10 @@ class NotificationBrokerRuntime @Inject constructor(
     private val config: ConfigStore,
     private val updates: WorkManagerInitializer,
     private val relay: LocalUpdateRelay,
+    private val audit: com.lelloman.store.logger.AuditLog,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
+    private val http = OkHttpClient.Builder().addInterceptor(com.lelloman.store.remoteapi.AuditHttpInterceptor(audit)).connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).pingInterval(0, TimeUnit.SECONDS).build()
     internal val db = PrivateStore(context, "unifiedpush-broker")
     private val credentials = CredentialFile(context, "unifiedpush-device")
@@ -104,8 +105,24 @@ class NotificationBrokerRuntime @Inject constructor(
         }
     }
 
+    private fun setStatus(value: String) {
+        if (mutableStatus.value != value) audit.record("push.state", mapOf(
+            "previous" to mutableStatus.value, "state" to value, "connection_id" to connectionEpoch,
+            "interactive" to power.isInteractive, "idle" to power.isDeviceIdleMode,
+            "battery_exempt" to hasBatteryExemption(),
+        ))
+        mutableStatus.value = value
+    }
+
+    private fun sendFrame(frame: JSONObject, target: WebSocket? = socket) {
+        val text = frame.toString()
+        val accepted = target?.send(text) ?: false
+        audit.record("push.frame_sent", mapOf("connection_id" to connectionEpoch,
+            "kind" to frame.optString("kind"), "bytes" to text.toByteArray().size, "queued" to accepted))
+    }
+
     fun start(url: String) {
-        if (!url.startsWith("https://")) { mutableStatus.value = "HTTPS is required"; return }
+        if (!url.startsWith("https://")) { setStatus("HTTPS is required"); return }
         val lifecycle = lifecycleEpoch.incrementAndGet()
         scope.launch {
             mutex.withLock {
@@ -129,7 +146,7 @@ class NotificationBrokerRuntime @Inject constructor(
             if (lifecycle != lifecycleEpoch.get()) return@withLock
             closeSocket(); alarm.cancel(alarmIntent)
             if (callbackRegistered) { networkManager.unregisterNetworkCallback(networkCallback); callbackRegistered = false }
-            mutableStatus.value = "Disabled"
+            setStatus("Disabled")
         } }
     }
     suspend fun signedOut() {
@@ -146,7 +163,7 @@ class NotificationBrokerRuntime @Inject constructor(
             (registrations() + db.entries("pending-registration")).distinctBy { it.second.getString("token") }.forEach { (_, r) -> broadcast(r, "UNREGISTERED") }
             db.clear(); credentials.clear(); device = null
             setAvailable(false)
-            mutableStatus.value = "Signed out"
+            setStatus("Signed out")
         }
         scope.launch { revokeRetiredDevices() }
     }
@@ -171,11 +188,12 @@ class NotificationBrokerRuntime @Inject constructor(
 
     suspend fun pulse() = mutex.withLock {
         if (!enabled) return@withLock
-        if (!hasBatteryExemption()) { closeSocket(); mutableStatus.value = "Allow unrestricted battery use to receive notifications"; return@withLock }
+        audit.record("push.pulse", mapOf("scheduled_elapsed_ms" to scheduledAt, "late_ms" to scheduledAt.takeIf { it > 0 }?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }, "ready" to ready, "interactive" to power.isInteractive, "idle" to power.isDeviceIdleMode))
+        if (!hasBatteryExemption()) { closeSocket(); setStatus("Allow unrestricted battery use to receive notifications"); return@withLock }
         val current = networkManager.activeNetwork
         val capabilities = current?.let { networkManager.getNetworkCapabilities(it) }
         if (current == null || capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
-            closeSocket(); network = null; candidateIdleFailure = null; mutableStatus.value = "Waiting for network"; alarm.cancel(alarmIntent); return@withLock
+            closeSocket(); network = null; candidateIdleFailure = null; setStatus("Waiting for network"); alarm.cancel(alarmIntent); return@withLock
         }
         if (current != network) {
             network = current; closeSocket(); candidateIdleFailure = null; retryAt = 0; retryDelay = 1000
@@ -206,20 +224,20 @@ class NotificationBrokerRuntime @Inject constructor(
             val token = auth.getAccessToken()
             if (token == null) { disconnect("Sign-in renewal unavailable"); schedule(); return@withLock }
             if (!sameIdentity(token)) { resetIdentity(); disconnect("Account changed"); schedule(); return@withLock }
-            socket?.send(JSONObject().put("kind", "authenticate").put("access_token", token).toString())
+            sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token))
             lastTraffic = elapsed
         }
         if (pingNonce == null && elapsed - lastTraffic >= heartbeat.interval) {
             pingNonce = UUID.randomUUID().toString(); pingAt = elapsed; pingIdle = elapsed - lastIncoming
             pingLate = (elapsed - scheduledAt).coerceAtLeast(0)
-            socket?.send(JSONObject().put("kind", "ping").put("nonce", pingNonce).toString())
+            sendFrame(JSONObject().put("kind", "ping").put("nonce", pingNonce))
         }
         recoverReceipts()
         schedule()
     }
 
     private suspend fun connect() {
-        mutableStatus.value = "Connecting"
+        setStatus("Connecting")
         try {
             val token = auth.getAccessToken() ?: error("Sign-in required")
             val claims = tokenClaims(token)
@@ -241,18 +259,27 @@ class NotificationBrokerRuntime @Inject constructor(
                 .header("Authorization", "Bearer ${device!!.getString("credential")}")
                 .header("Sec-WebSocket-Protocol", "lellostore.push.v1").build()
             socket = http.newWebSocket(wsRequest, object : WebSocketListener() {
-                override fun onOpen(ws: WebSocket, response: Response) { ws.send(JSONObject().put("kind", "authenticate").put("access_token", token).toString()) }
+                override fun onOpen(ws: WebSocket, response: Response) { sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token), ws) }
                 override fun onMessage(ws: WebSocket, text: String) { scope.launch { mutex.withLock {
                     if (epoch != connectionEpoch || !enabled) return@withLock
-                    try { handle(JSONObject(text)); schedule() } catch (_: Exception) { disconnect("Invalid broker response"); schedule() }
+                    try {
+                        audit.record("push.frame_received", mapOf("connection_id" to epoch, "bytes" to text.toByteArray().size))
+                        handle(JSONObject(text)); schedule()
+                    } catch (_: Exception) { disconnect("Invalid broker response"); schedule() }
                 } } }
-                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) = failed()
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) = failed()
+                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    audit.record("push.socket_failed", mapOf("connection_id" to epoch, "error_type" to t.javaClass.simpleName, "http_status" to response?.code))
+                    failed()
+                }
+                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    audit.record("push.socket_closed", mapOf("connection_id" to epoch, "code" to code))
+                    failed()
+                }
                 override fun onClosing(ws: WebSocket, code: Int, reason: String) { ws.close(code, null) }
                 private fun failed() { scope.launch { mutex.withLock { if (epoch == connectionEpoch && enabled) { disconnect("Disconnected; reconnecting"); schedule() } } } }
             })
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { disconnect("Server or sign-in unavailable") }
+        catch (error: Exception) { audit.record("push.connect_failed", mapOf("error_type" to error.javaClass.simpleName)); disconnect("Server or sign-in unavailable") }
     }
     private fun resetIdentity() {
         (registrations() + db.entries("pending-registration")).distinctBy { it.second.getString("token") }.forEach { (_, r) -> broadcast(r, "UNREGISTERED") }
@@ -269,12 +296,16 @@ class NotificationBrokerRuntime @Inject constructor(
     }
     private fun tokenClaims(token: String): JSONObject = JSONObject(String(android.util.Base64.decode(token.split('.')[1], android.util.Base64.URL_SAFE), Charsets.UTF_8))
     private fun closeSocket() {
+        if (socket != null) audit.record("push.socket_cancelled", mapOf("connection_id" to connectionEpoch))
         connectionEpoch = ""; socket?.cancel(); socket = null; ready = false; activeRoutes = emptySet(); pingNonce = null
     }
     private fun disconnect(reason: String) {
         if (SystemClock.elapsedRealtime() - connectedAt >= 300_000 && ready) retryDelay = 1000
-        closeSocket(); mutableStatus.value = reason
+        audit.record("push.disconnected", mapOf("connection_id" to connectionEpoch, "reason" to reason,
+            "ready" to ready, "since_incoming_ms" to SystemClock.elapsedRealtime() - lastIncoming))
+        closeSocket(); setStatus(reason)
         retryAt = SystemClock.elapsedRealtime() + Random.nextLong(retryDelay / 2, retryDelay + 1)
+        audit.record("push.retry_scheduled", mapOf("delay_ms" to retryAt - SystemClock.elapsedRealtime()))
         retryDelay = (retryDelay * 2).coerceAtMost(300_000)
     }
     @android.annotation.SuppressLint("ScheduleExactAlarm")
@@ -290,19 +321,21 @@ class NotificationBrokerRuntime @Inject constructor(
         scheduledAt = maxOf(now + 1000, next)
         if (Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()) {
             alarm.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, scheduledAt, alarmIntent)
-        } else { mutableStatus.value = "Battery exemption or alarm access required"; closeSocket() }
+        } else { setStatus("Battery exemption or alarm access required"); closeSocket() }
     }
     private fun saveHeartbeat() { db.setting("heartbeat:$networkKind", JSONObject().put("at", System.currentTimeMillis()).put("interval", heartbeat.interval).toString()) }
     private suspend fun handle(frame: JSONObject) {
         val elapsed = SystemClock.elapsedRealtime()
+        audit.record("push.frame", mapOf("connection_id" to connectionEpoch, "kind" to frame.getString("kind")))
         when (frame.getString("kind")) {
             "ready" -> {
-                ready = true; authExpires = frame.getLong("expires_at"); mutableStatus.value = "Connected"
+                ready = true; authExpires = frame.getLong("expires_at"); setStatus("Connected")
                 if (candidateIdleFailure != null) { heartbeat.failed(candidateIdleFailure == network, true, true); saveHeartbeat(); candidateIdleFailure = null }
                 recoverReceipts()
             }
             "authenticated" -> authExpires = frame.getLong("expires_at")
             "pong" -> if (frame.optString("nonce") == pingNonce) {
+                audit.record("push.heartbeat", mapOf("connection_id" to connectionEpoch, "rtt_ms" to elapsed - pingAt, "alarm_late_ms" to pingLate, "interval_ms" to heartbeat.interval))
                 heartbeat.acknowledged(pingIdle, pingLate); saveHeartbeat(); pingNonce = null
                 db.setting("diagnostics", JSONObject().put("heartbeat_ms", heartbeat.interval).put("rtt_ms", elapsed - pingAt).put("alarm_late_ms", pingLate).toString())
             }
@@ -335,6 +368,8 @@ class NotificationBrokerRuntime @Inject constructor(
             .putExtra("token", registration.getString("token")).addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         extras?.invoke(intent)
         context.sendBroadcast(intent)
+        audit.record("ipc.broadcast_sent", mapOf("package" to registration.getString("package"), "action" to action,
+            "message_id" to intent.getStringExtra("id"), "bytes" to intent.getByteArrayExtra("bytesMessage")?.size))
     }
     private fun setAvailable(available: Boolean) {
         val pm = context.packageManager
@@ -346,7 +381,7 @@ class NotificationBrokerRuntime @Inject constructor(
     private fun recoverReceipts() {
         if (!ready) return
         db.prune()
-        db.entries("ack").forEach { (_, ack) -> socket?.send(ack.toString()) }
+        db.entries("ack").forEach { (_, ack) -> sendFrame(ack) }
         scope.launch { cleanupRemovedRegistrations() }
     }
     private suspend fun cleanupRemovedRegistrations() = mutex.withLock {
@@ -371,6 +406,7 @@ class NotificationBrokerRuntime @Inject constructor(
         broadcast(r, "UNREGISTERED")
     }
     suspend fun process(packageName: String, intent: Intent) = mutex.withLock {
+        audit.record("ipc.push_request", mapOf("package" to packageName, "action" to intent.action?.substringAfterLast('.')))
         val token = intent.getStringExtra("token") ?: return@withLock
         val active = registration(token)
         val pending = db.entry("pending-registration:$token")?.first
@@ -386,9 +422,10 @@ class NotificationBrokerRuntime @Inject constructor(
             val entry = db.entry("message:$id") ?: return@withLock
             if (entry.first.optString("token") != token || old == null) return@withLock
             if (entry.second == "endpoint") { db.remove("message:$id"); return@withLock }
+            audit.record("push.app_ack", mapOf("package" to old.getString("package"), "message_id" to id))
             val ack = JSONObject().put("kind", "receipt").put("id", id).put("token", token)
             db.put("message:$id", ack, "ack")
-            if (ready) socket?.send(ack.toString())
+            if (ready) sendFrame(ack)
             return@withLock
         }
         if (action == "UNREGISTER") {
@@ -424,7 +461,7 @@ class NotificationBrokerRuntime @Inject constructor(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             val reason = if (e is PushRequestException && e.code in listOf(401,403,429)) "ACTION_REQUIRED" else "NETWORK"
-            mutableStatus.value = if (reason == "ACTION_REQUIRED") "Push registration needs an approved server key or available quota" else "Push server unavailable"
+            setStatus(if (reason == "ACTION_REQUIRED") "Push registration needs an approved server key or available quota" else "Push server unavailable")
             broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", reason) }
         }
     }
@@ -435,22 +472,25 @@ class NotificationBrokerRuntime @Inject constructor(
         scope.launch { cleanupRemovedRegistrations() }
     }
     private fun deliver(message: JSONObject) {
-        if (!ready || System.currentTimeMillis()/1000 >= authExpires || message.getString("subscription_id") !in activeRoutes) return
+        audit.record("push.delivery_received", mapOf("message_id" to message.optString("id"), "urgency" to message.optString("urgency")))
+        fun skipped(reason: String) { audit.record("push.delivery_skipped", mapOf("message_id" to message.optString("id"), "reason" to reason)) }
+        if (!ready || System.currentTimeMillis()/1000 >= authExpires || message.getString("subscription_id") !in activeRoutes) { skipped("inactive_route_or_session"); return }
         val id = message.getString("id")
         val token = message.getString("token")
-        val r = registration(token) ?: return
-        if (!validIdentity(r)) { removeRegistration("registration:$token", r); return }
+        val r = registration(token) ?: run { skipped("unknown_registration"); return }
+        if (!validIdentity(r)) { skipped("identity_changed"); removeRegistration("registration:$token", r); return }
         val previous = db.entry("message:$id")
-        if (previous?.second == "ack") { socket?.send(previous.first.toString()); return }
-        if (!message.optBoolean("immediate") && message.getLong("expires_at") <= System.currentTimeMillis()/1000) return
+        if (previous?.second == "ack") { skipped("already_acknowledged"); sendFrame(previous.first); return }
+        if (!message.optBoolean("immediate") && message.getLong("expires_at") <= System.currentTimeMillis()/1000) { skipped("expired"); return }
         val charging = context.getSystemService(android.os.BatteryManager::class.java).isCharging
         val wifi = networkManager.getNetworkCapabilities(networkManager.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         val battery = context.getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val minimum = if (!charging && battery in 0..15) 3 else if (charging && wifi) 0 else if (charging || wifi) 1 else 2
         val urgency = listOf("very-low", "low", "normal", "high").indexOf(message.optString("urgency", "normal"))
-        if (urgency < minimum || !delivering.add(id)) return
+        if (urgency < minimum) { skipped("battery_policy"); return }
+        if (!delivering.add(id)) { skipped("delivery_in_progress"); return }
         val bytes = android.util.Base64.decode(message.getString("payload"), android.util.Base64.DEFAULT)
-        if (bytes.isEmpty() || bytes.size > 4096) { delivering.remove(id); return }
+        if (bytes.isEmpty() || bytes.size > 4096) { skipped("invalid_payload_size"); delivering.remove(id); return }
         db.put("message:$id", JSONObject().put("token", token), "offered")
         val epoch = connectionEpoch
         scope.launch {
@@ -458,7 +498,7 @@ class NotificationBrokerRuntime @Inject constructor(
                 withContext(Dispatchers.Main.immediate) {
                     val pm = context.packageManager
                     val serviceIntent = Intent("org.unifiedpush.android.connector.RAISE_TO_FOREGROUND").setPackage(r.getString("package"))
-                    val info = pm.queryIntentServices(serviceIntent, 0).firstOrNull { it.serviceInfo.exported && it.serviceInfo.enabled }?.serviceInfo ?: return@withContext
+                    val info = pm.queryIntentServices(serviceIntent, 0).firstOrNull { it.serviceInfo.exported && it.serviceInfo.enabled }?.serviceInfo ?: run { skipped("missing_foreground_service"); return@withContext }
                     serviceIntent.component = ComponentName(info.packageName, info.name)
                     val connected = CompletableDeferred<Unit>()
                     val conn = object : ServiceConnection {
@@ -467,6 +507,7 @@ class NotificationBrokerRuntime @Inject constructor(
                         override fun onNullBinding(name: ComponentName) { connected.completeExceptionally(IllegalStateException("No foreground service")) }
                     }
                     val bound = context.bindService(serviceIntent, conn, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)
+                    audit.record("ipc.push_bind", mapOf("package" to r.getString("package"), "message_id" to id, "bound" to bound))
                     if (bound) try {
                         withTimeout(5000) { connected.await() }
                         mutex.withLock {
@@ -475,9 +516,9 @@ class NotificationBrokerRuntime @Inject constructor(
                             }
                         }
                         delay(5000)
-                    } finally { context.unbindService(conn) }
+                    } finally { context.unbindService(conn); audit.record("ipc.push_unbind", mapOf("package" to r.getString("package"), "message_id" to id)) }
                 }
-            } } catch (_: Exception) { /* The server retries until acknowledgment or expiry. */ }
+            } } catch (error: Exception) { audit.record("push.delivery_failed", mapOf("message_id" to id, "error_type" to error.javaClass.simpleName)) }
             finally { mutex.withLock { delivering.remove(id) } }
         }
     }
