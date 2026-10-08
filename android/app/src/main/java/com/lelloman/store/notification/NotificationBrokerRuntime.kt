@@ -194,7 +194,11 @@ class NotificationBrokerRuntime @Inject constructor(
         val current = networkManager.activeNetwork
         val capabilities = current?.let { networkManager.getNetworkCapabilities(it) }
         if (current == null || capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
-            closeSocket(); network = null; candidateIdleFailure = null; setStatus("Waiting for network"); alarm.cancel(alarmIntent); return@withLock
+            closeSocket(); network = null; candidateIdleFailure = null; setStatus("Waiting for network")
+            // Keep a bounded fallback when sleep suppresses network callbacks. The alarm
+            // receiver holds a short wake lock while rechecking; no socket is opened offline.
+            schedule()
+            return@withLock
         }
         if (current != network) {
             network = current; closeSocket(); candidateIdleFailure = null; retryAt = 0; retryDelay = 1000
@@ -325,6 +329,7 @@ class NotificationBrokerRuntime @Inject constructor(
         if (!enabled) return
         val now = SystemClock.elapsedRealtime()
         val next = when {
+            network == null -> now + TimeUnit.MINUTES.toMillis(15)
             socket == null -> retryAt
             !ready -> connectedAt + 30_000
             pingNonce != null -> pingAt + AdaptiveHeartbeat.ACK_TIMEOUT

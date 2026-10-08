@@ -16,6 +16,40 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class UnifiedPushRuntimeTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun offlineRecoveryKeepsAnAlarmUntilStopped() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        org.robolectric.Shadows.shadowOf(power).setIgnoringBatteryOptimizations(context.packageName, true)
+        val alarms = org.robolectric.Shadows.shadowOf(context.getSystemService(android.app.AlarmManager::class.java))
+        val config = mockk<com.lelloman.store.domain.config.ConfigStore> {
+            coEvery { readServerUrl() } returns "https://store.example"
+        }
+        val runtime = NotificationBrokerRuntime(context, mockk(relaxed = true), config,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
+        runtime.start("https://store.example")
+        runCurrent()
+        runtime.pulse()
+        assertEquals("Waiting for network", runtime.status.value)
+        val first = alarms.scheduledAlarms.single()
+        assertNotNull(first)
+        assertEquals(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, first.type)
+        assertEquals(android.os.SystemClock.elapsedRealtime() + 900_000, first.triggerAtTime)
+
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMinutes(15))
+        runtime.pulse()
+        assertEquals("Waiting for network", runtime.status.value)
+        assertEquals(android.os.SystemClock.elapsedRealtime() + 900_000, alarms.scheduledAlarms.single().triggerAtTime)
+        assertEquals(1, alarms.scheduledAlarms.size)
+
+        runtime.stop()
+        runCurrent()
+        assertEquals("Disabled", runtime.status.value)
+        assertTrue(alarms.scheduledAlarms.isEmpty())
+        runtime.pulse()
+        assertTrue(alarms.scheduledAlarms.isEmpty())
+    }
+
     @Test fun receiptPruningPreservesLongLivedRegistrationsAndPendingCleanup() {
         val db = PrivateStore(RuntimeEnvironment.getApplication(), "prune-test")
         try {
