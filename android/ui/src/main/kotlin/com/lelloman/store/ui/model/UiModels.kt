@@ -31,6 +31,7 @@ sealed interface AuthResult {
 sealed interface SetServerUrlResult {
     data object Success : SetServerUrlResult
     data object InvalidUrl : SetServerUrlResult
+    data class Error(val message: String) : SetServerUrlResult
 }
 
 // Apps

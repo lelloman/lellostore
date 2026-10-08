@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppVersionsDao {
+    @Query("DELETE FROM cached_app_versions")
+    suspend fun deleteAll()
     @Query("SELECT * FROM cached_app_versions WHERE package_name = :packageName ORDER BY version_code DESC")
     fun watchVersions(packageName: String): Flow<List<CachedAppVersionEntity>>
 

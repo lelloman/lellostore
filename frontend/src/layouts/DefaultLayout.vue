@@ -4,7 +4,7 @@
       <v-container class="shell-container d-flex align-center h-100">
         <button class="brand" type="button" @click="router.push({ name: 'apps' })">
           <BrandMark class="brand-mark" />
-          <span class="brand-name">LelloStore</span>
+          <span class="brand-name">{{ storeName }}</span>
         </button>
 
         <v-btn
@@ -30,6 +30,7 @@
         <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'distribution-admin' }" variant="text">Distribution</v-btn>
         <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'notifications-admin' }" variant="text">Notifications</v-btn>
         <v-spacer />
+        <ConnectPhone class="d-none d-md-flex" />
 
         <v-chip
           v-if="authStore.isAdmin"
@@ -98,7 +99,9 @@
 </template>
 
 <script setup lang="ts">
+import ConnectPhone from '@/components/ConnectPhone.vue'
 import { computed } from 'vue'
+import { storeName } from '@/services/serverConfig'
 import { useTheme } from 'vuetify'
 import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'

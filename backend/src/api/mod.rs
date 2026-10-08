@@ -5,6 +5,7 @@ pub mod handlers;
 pub mod paravoid;
 pub mod publications;
 pub mod routes;
+pub mod server_config;
 pub mod static_files;
 pub mod uploads;
 

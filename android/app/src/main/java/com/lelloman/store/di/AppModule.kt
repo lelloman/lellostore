@@ -1,7 +1,6 @@
 package com.lelloman.store.di
 
 import com.lelloman.store.BuildConfig
-import com.lelloman.store.domain.auth.OidcConfig
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.updates.UpdateChecker
 import com.lelloman.store.download.DownloadManagerImpl
@@ -12,7 +11,6 @@ import com.lelloman.store.interactor.SettingsInteractorImpl
 import com.lelloman.store.interactor.UpdatesInteractorImpl
 import com.lelloman.store.localdata.auth.AuthStoreImpl
 import com.lelloman.store.localdata.di.DefaultServerUrl
-import com.lelloman.store.localdata.di.OidcConfigQualifier
 import com.lelloman.store.ui.screen.catalog.CatalogViewModel
 import com.lelloman.store.ui.screen.detail.AppDetailViewModel
 import com.lelloman.store.ui.screen.login.AuthIntentProvider
@@ -39,23 +37,18 @@ annotation class ApplicationScope
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    // OIDC Configuration
-    private const val OIDC_ISSUER_URL = "https://auth.lelloman.com"
-    private const val OIDC_CLIENT_ID = "22cd4a2d-a771-41e3-b76e-3f83ff8e9bbf"
-    private const val OIDC_REDIRECT_URI = "com.lelloman.store:/oauth2redirect"
-
     @Provides
     @DefaultServerUrl
-    fun provideDefaultServerUrl(): String = BuildConfig.DEFAULT_SERVER_URL
+    fun provideDefaultServerUrl(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context): String =
+        com.lelloman.store.setup.LegacyDeploymentMigration.initialServer(context, BuildConfig.DEFAULT_SERVER_URL)
 
     @Provides
     @Singleton
-    @OidcConfigQualifier
-    fun provideOidcConfig(): OidcConfig = OidcConfig(
-        issuerUrl = OIDC_ISSUER_URL,
-        clientId = OIDC_CLIENT_ID,
-        redirectUri = OIDC_REDIRECT_URI,
-    )
+    fun provideServerDiscovery(discovery: com.lelloman.store.setup.HttpServerDiscovery): com.lelloman.store.domain.config.ServerDiscovery = discovery
+
+    @Provides
+    @Singleton
+    fun provideStoreSession() = com.lelloman.store.domain.config.StoreSession()
 
     @Provides
     @Singleton

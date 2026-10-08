@@ -72,14 +72,31 @@ class LoginViewModel @Inject constructor(
             serverUrl = url,
             serverUrlError = null,
             error = null,
+            serverName = null,
         )
     }
 
     fun onLoginClick() {
         viewModelScope.launch {
+            if (mutableState.value.isLoading) return@launch
+            val input = mutableState.value.serverUrl
             mutableState.value = mutableState.value.copy(isLoading = true, error = null)
 
-            when (interactor.setServerUrl(mutableState.value.serverUrl)) {
+            if (mutableState.value.serverName == null) {
+                runCatching {
+                    val url = com.lelloman.store.domain.config.ServerAddress.normalize(input)
+                    url to interactor.discoverServer(url)
+                }.onSuccess { (url, server) ->
+                    if (mutableState.value.serverUrl == input) {
+                        mutableState.value = mutableState.value.copy(serverUrl = url, serverName = server.name, isLoading = false)
+                    }
+                }.onFailure { error ->
+                    mutableState.value = mutableState.value.copy(isLoading = false, error = error.message ?: "Unable to reach this store")
+                }
+                return@launch
+            }
+
+            when (val result = interactor.setServerUrl(mutableState.value.serverUrl)) {
                 SetServerUrlResult.InvalidUrl -> {
                     mutableState.value = mutableState.value.copy(
                         isLoading = false,
@@ -88,6 +105,10 @@ class LoginViewModel @Inject constructor(
                     return@launch
                 }
                 SetServerUrlResult.Success -> {}
+                is SetServerUrlResult.Error -> {
+                    mutableState.value = mutableState.value.copy(isLoading = false, error = result.message)
+                    return@launch
+                }
             }
 
             runCatching { interactor.createAuthIntent() }
@@ -102,6 +123,17 @@ class LoginViewModel @Inject constructor(
                     )
                 }
         }
+    }
+
+    fun onQrScanned(payload: String) {
+        if (mutableState.value.isLoading) return
+        runCatching {
+            require(payload.length <= 4096) { "Setup QR code is too large" }
+            val json = org.json.JSONObject(payload)
+            require(json.getString("type") == "store-setup" && json.getInt("version") == 1) { "Unsupported store setup QR code" }
+            com.lelloman.store.domain.config.ServerAddress.normalize(json.getString("server_url"))
+        }.onSuccess { url -> onServerUrlChanged(url) }
+            .onFailure { mutableState.value = mutableState.value.copy(error = it.message ?: "Invalid store setup QR code") }
     }
 
     fun onAuthResult(result: AuthResult) {
@@ -131,5 +163,6 @@ class LoginViewModel @Inject constructor(
         fun getInitialServerUrl(): String
         suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun createAuthIntent(): Intent
+        suspend fun discoverServer(url: String): com.lelloman.store.domain.config.ServerMetadata
     }
 }

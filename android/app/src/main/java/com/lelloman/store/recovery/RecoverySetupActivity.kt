@@ -72,7 +72,10 @@ class RecoverySetupActivity : ComponentActivity() {
                         TextButton(onClick = { finish() }, enabled = !busy) { Text(stringResource(R.string.recovery_setup_back)) }
                         Text(stringResource(if (installed) R.string.recovery_setup_installed else R.string.recovery_setup_install_step), style = MaterialTheme.typography.titleMedium)
                         if (!installed) {
-                        Button(enabled = !busy, onClick = {
+                        if (!com.lelloman.store.BuildConfig.RECOVERY_COMPANION_INCLUDED) {
+                            Text(stringResource(R.string.recovery_setup_not_bundled))
+                        }
+                        Button(enabled = !busy && com.lelloman.store.BuildConfig.RECOVERY_COMPANION_INCLUDED, onClick = {
                             runAction {
                                 val apk = withContext(Dispatchers.IO) { verifiedCompanionApk() }
                                 if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {

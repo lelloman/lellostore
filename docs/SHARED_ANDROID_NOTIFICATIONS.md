@@ -7,12 +7,12 @@ This is an Android distributor, not a browser Push API service or a D-Bus distri
 
 ## Accounts and sender approval
 
-LelloStore itself must be signed in to LelloAuth with shared notifications enabled.
+The store app itself must be signed in to its configured identity provider with shared notifications enabled.
 Both the device credential and a valid OIDC session are required for its connection.
 The server closes the connection when the token expires unless it is renewed.
 Identity-provider revocation remains bounded by the access token's lifetime.
 
-Recipient apps do not need LelloAuth accounts. They can use unrelated accounts or
+Recipient apps do not need accounts with the store's identity provider. They can use unrelated accounts or
 no account. Administrators approve the sending backend's VAPID public key in
 **Administration → Notifications**. Private signing keys stay on the sender.
 Approved keys are required both during subscription creation and publication.
@@ -102,7 +102,7 @@ redact `/api/push/v1/send/*` access logs as well.
 
 ## Backend contract and configuration
 
-Set `NOTIFICATIONS_ENABLED=true` and `PUSH_PUBLIC_BASE_URL=https://store.lelloman.com`.
+Set `NOTIFICATIONS_ENABLED=true` and `PUSH_PUBLIC_BASE_URL=https://store.example.org`.
 The latter must be an HTTPS origin without credentials, path, query, or fragment;
 it determines returned endpoints and VAPID audience validation. Preserve WSS
 upgrades and idle timeouts longer than heartbeat plus acknowledgment deadline.

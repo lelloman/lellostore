@@ -11,7 +11,7 @@
               <div class="brand-content">
                 <BrandMark class="brand-mark mb-10" />
 
-                <h1 class="brand-title mb-5">LelloStore</h1>
+                <h1 class="brand-title mb-5">{{ storeName }}</h1>
                 <p class="brand-copy mb-0">
                   Your organization’s private Android app catalog.
                 </p>
@@ -43,6 +43,7 @@
                 >
                   {{ authStore.user ? 'Retry connection' : 'Sign in with SSO' }}
                 </v-btn>
+                <ConnectPhone class="mt-4" />
               </div>
             </v-col>
           </v-row>
@@ -53,6 +54,8 @@
 </template>
 
 <script setup lang="ts">
+import ConnectPhone from '@/components/ConnectPhone.vue'
+import { storeName } from '@/services/serverConfig'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '@/components/BrandMark.vue'
@@ -77,8 +80,11 @@ async function handleLogin() {
     }
     return
   }
-  await authStore.login()
-  // The redirect to the OIDC provider keeps the loading state active.
+  try {
+    await authStore.login()
+  } finally {
+    isLoggingIn.value = false
+  }
 }
 
 function reconnect() {

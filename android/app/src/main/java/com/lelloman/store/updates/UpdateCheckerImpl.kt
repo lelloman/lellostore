@@ -27,15 +27,18 @@ class UpdateCheckerImpl @Inject constructor(
     private val selfUpdateGate: SelfUpdateGate,
     private val localUpdateRelay: LocalUpdateRelay,
     private val logger: com.lelloman.store.logger.Logger,
+    private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : UpdateChecker {
 
     private val mutableUpdates = MutableStateFlow<List<AvailableUpdate>>(emptyList())
     override val availableUpdates: StateFlow<List<AvailableUpdate>> = mutableUpdates.asStateFlow()
 
-    override suspend fun checkForUpdates(): Result<List<AvailableUpdate>> {
+    override fun clear() { mutableUpdates.value = emptyList() }
+
+    override suspend fun checkForUpdates(): Result<List<AvailableUpdate>> = session.use {
         val fields = mapOf("check_id" to java.util.UUID.randomUUID().toString())
         logger.audit("updates.check_started", fields)
-        return runCatching {
+        runCatching {
             appsRepository.refreshApps().getOrThrow()
             installedAppsRepository.refreshInstalledApps()
             // VPK hints must also reach shells when APK version codes have not changed.

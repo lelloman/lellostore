@@ -28,19 +28,26 @@ pub async fn create_test_app() -> (TempDir, Router) {
 }
 
 pub async fn create_test_context() -> TestContext {
-    create_test_context_inner(true, None, Default::default()).await
+    create_test_context_inner(true, None, Default::default(), None).await
 }
 
 pub async fn create_fail_closed_test_app() -> (TempDir, Router) {
-    let ctx = create_test_context_inner(false, None, Default::default()).await;
+    let ctx = create_test_context_inner(false, None, Default::default(), None).await;
     (ctx.temp_dir, ctx.router)
+}
+
+#[allow(dead_code)]
+pub async fn create_discovery_test_context(
+    clients: lellostore_backend::config::ClientConfig,
+) -> TestContext {
+    create_test_context_inner(false, None, Default::default(), Some(clients)).await
 }
 
 #[allow(dead_code)]
 pub async fn create_paravoid_test_context(
     signing: Arc<lellostore_backend::paravoid::signing::OnlineSigning>,
 ) -> TestContext {
-    create_test_context_inner(true, Some(signing), Default::default()).await
+    create_test_context_inner(true, Some(signing), Default::default(), None).await
 }
 
 #[allow(dead_code)]
@@ -48,12 +55,13 @@ pub async fn create_dvpk_test_context(
     signing: Arc<lellostore_backend::paravoid::signing::OnlineSigning>,
     dvpk: lellostore_backend::config::DvpkConfig,
 ) -> TestContext {
-    create_test_context_inner(true, Some(signing), dvpk).await
+    create_test_context_inner(true, Some(signing), dvpk, None).await
 }
 async fn create_test_context_inner(
     allow_unauthenticated_for_tests: bool,
     signing: Option<Arc<lellostore_backend::paravoid::signing::OnlineSigning>>,
     dvpk: lellostore_backend::config::DvpkConfig,
+    clients: Option<lellostore_backend::config::ClientConfig>,
 ) -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
@@ -79,6 +87,7 @@ async fn create_test_context_inner(
         .expect("Failed to run migrations");
 
     let config = Config {
+        clients: clients.clone().unwrap_or_default(),
         push_public_base_url: "https://push.example".into(),
         notifications_enabled: false,
         listen_addr: "127.0.0.1:0".parse().unwrap(),
@@ -88,7 +97,12 @@ async fn create_test_context_inner(
         database_path: db_path,
         storage_path: storage_path.clone(),
         oidc: OidcConfig {
-            issuer_url: "https://example.com".to_string(),
+            issuer_url: if clients.is_some() {
+                "https://identity.example.test/realm"
+            } else {
+                "https://example.com"
+            }
+            .to_string(),
             audience: "test".to_string(),
             admin_role: "admin".to_string(),
             role_claim_path: "roles".to_string(),

@@ -213,4 +213,10 @@
     <string name="push_battery_warning_title">L’ottimizzazione della batteria blocca le notifiche push</string>
     <string name="push_battery_warning_text">LelloStore non è escluso dall’ottimizzazione della batteria (Doze). Consenti un utilizzo senza restrizioni per ricevere le notifiche push di LelloStore e delle app che lo usano.</string>
     <string name="push_battery_open_settings">Apri impostazioni batteria</string>
+    <string name="login_scan_qr_prompt">Scansiona il codice di configurazione dello store</string>
+    <string name="login_scan_qr">Scansiona codice QR</string>
+    <string name="login_confirm_store">Conferma questo store per accedere.</string>
+    <string name="login_choose_store">Scegli uno store prima di accedere.</string>
+    <string name="login_check_server">Verifica server</string>
+    <string name="login_confirm_sign_in">Conferma e accedi</string>
 </resources>

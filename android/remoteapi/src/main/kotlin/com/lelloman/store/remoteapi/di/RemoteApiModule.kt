@@ -6,7 +6,6 @@ import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.SessionExpiredHandler
 import com.lelloman.store.domain.config.ConfigStore
 import com.lelloman.store.remoteapi.RemoteApiClientImpl
-import com.lelloman.store.remoteapi.SessionExpiredInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,7 +17,6 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import javax.inject.Singleton
@@ -40,20 +38,13 @@ object RemoteApiModule {
         authStore: AuthStore,
         sessionExpiredHandler: SessionExpiredHandler,
         auditLog: com.lelloman.store.logger.AuditLog,
+        configStore: ConfigStore,
+        storeSession: com.lelloman.store.domain.config.StoreSession,
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(com.lelloman.store.remoteapi.AuditHttpInterceptor(auditLog))
-        .addInterceptor { chain ->
-            val token = runBlocking { authStore.getAccessToken() }
-            val request = if (token != null) {
-                chain.request().newBuilder()
-                    .addHeader("Authorization", "Bearer $token")
-                    .build()
-            } else {
-                chain.request()
-            }
-            chain.proceed(request)
-        }
-        .addInterceptor(SessionExpiredInterceptor(sessionExpiredHandler))
+        .addInterceptor(com.lelloman.store.remoteapi.StoreAuthInterceptor(
+            authStore, configStore, storeSession, sessionExpiredHandler,
+        ))
         .build()
 
     @Provides

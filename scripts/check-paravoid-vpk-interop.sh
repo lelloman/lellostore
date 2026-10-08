@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 store_root=$(cd "$(dirname "$0")/.." && pwd)
-paravoid_repo=${1:-"$store_root/../paravoid-android"}
+paravoid_repo=${1:-${PARAVOID_SOURCE_DIR:-}}
+if [[ -z "$paravoid_repo" ]]; then
+  echo "Pass a Paravoid source checkout as the first argument or set PARAVOID_SOURCE_DIR." >&2
+  exit 2
+fi
+paravoid_revision=${PARAVOID_REVISION:-32461c8336325c3381e089193ed77246c5fb90a0}
 interop_temp=$(mktemp -d /tmp/lellostore-vpk-interop.XXXXXX)
 trap 'rm -rf "$interop_temp"' EXIT
 if [[ ${2:-} == --working-tree ]]; then
@@ -11,7 +16,7 @@ if [[ ${2:-} == --working-tree ]]; then
   source_root="$interop_temp/src"
   echo 'Testing an uncommitted upstream source snapshot; not a frozen protocol gate.'
 else
-  git -C "$paravoid_repo" archive HEAD paravoid-contract/src/main/java | tar -x -C "$interop_temp"
+  git -C "$paravoid_repo" archive "$paravoid_revision" paravoid-contract/src/main/java | tar -x -C "$interop_temp"
   source_root="$interop_temp/paravoid-contract/src/main/java"
 fi
 find "$source_root" -name '*.java' > "$interop_temp/sources"

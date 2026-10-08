@@ -26,9 +26,15 @@ class UpdateCheckWorker @AssistedInject constructor(
     private val downloadManager: DownloadManager,
     private val notificationHelper: NotificationHelper,
     private val workerForegroundController: WorkerForegroundController,
+    private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): Result = coroutineScope {
+    override suspend fun doWork(): Result = try {
+        session.use { performWork() }
+    } catch (error: CancellationException) { throw error }
+    catch (_: IllegalStateException) { Result.retry() }
+
+    private suspend fun performWork(): Result = coroutineScope {
         try {
             val result = updateChecker.checkForUpdates()
             result.fold(

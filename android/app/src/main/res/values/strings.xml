@@ -41,4 +41,5 @@
     <string name="audit_clear">Clear logs</string>
     <string name="audit_clear_confirm">Delete the retained local logs? New events will continue to be recorded.</string>
     <string name="audit_cancel">Cancel</string>
+    <string name="recovery_setup_not_bundled">This build does not include the recovery companion. Install a compatible companion signed by the same publisher to use recovery.</string>
 </resources>

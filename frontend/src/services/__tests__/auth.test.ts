@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { signinSilent } = vi.hoisted(() => ({ signinSilent: vi.fn() }))
+vi.mock('../serverConfig', () => ({
+  loadServerConfig: vi.fn().mockResolvedValue({
+    auth: { issuer_url: 'https://id.example', clients: { web: 'web-client' }, scopes: ['openid', 'profile'] },
+  }),
+}))
 vi.mock('oidc-client-ts', () => ({
   UserManager: class {
     signinSilent = signinSilent

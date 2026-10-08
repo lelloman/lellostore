@@ -101,6 +101,17 @@ annotation class TestApplicationScope
 object TestAppModule {
 
     @Provides
+    @Singleton
+    fun provideStoreSession() = com.lelloman.store.domain.config.StoreSession()
+
+    @Provides
+    @Singleton
+    fun provideServerDiscovery(): com.lelloman.store.domain.config.ServerDiscovery = object : com.lelloman.store.domain.config.ServerDiscovery {
+        override suspend fun discover(serverUrl: String) = com.lelloman.store.domain.config.ServerMetadata(
+            "Test Store", OidcConfig("https://auth.example.com", "test-client-id", "com.lelloman.store:/oauth2redirect"), false, false)
+    }
+
+    @Provides
     @DefaultServerUrl
     fun provideDefaultServerUrl(): String = StoreDeviceArguments.serverUrl ?: "http://localhost:8080"
 
@@ -251,7 +262,8 @@ object TestLocalDataModule {
         appsDao: AppsDao,
         appVersionsDao: AppVersionsDao,
         remoteApiClient: RemoteApiClient,
-    ): AppsRepository = AppsRepositoryImpl(appsDao, appVersionsDao, remoteApiClient)
+        storeSession: com.lelloman.store.domain.config.StoreSession,
+    ): AppsRepository = AppsRepositoryImpl(appsDao, appVersionsDao, remoteApiClient, storeSession)
 
     @Provides
     @Singleton
@@ -278,8 +290,10 @@ object TestRemoteApiModuleImpl {
         authStore: AuthStore,
         sessionExpiredHandler: SessionExpiredHandler,
         auditLog: com.lelloman.store.logger.AuditLog,
+        configStore: ConfigStore,
+        storeSession: com.lelloman.store.domain.config.StoreSession,
     ): OkHttpClient = if (StoreDeviceArguments.enabled) {
-        RemoteApiModule.provideOkHttpClient(authStore, sessionExpiredHandler, auditLog)
+        RemoteApiModule.provideOkHttpClient(authStore, sessionExpiredHandler, auditLog, configStore, storeSession)
     } else OkHttpClient()
 
     @Provides

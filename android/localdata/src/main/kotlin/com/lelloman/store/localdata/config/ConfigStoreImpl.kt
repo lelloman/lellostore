@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import java.net.URI
 
@@ -28,8 +29,12 @@ class ConfigStoreImpl(
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.SERVER_URL] = url
         }
+        serverUrl.first { it == url }
         return SetServerUrlResult.Success
     }
+
+    override suspend fun readServerUrl(): String =
+        dataStore.data.first()[PreferencesKeys.SERVER_URL] ?: defaultServerUrl
 
     private fun isValidHttpsUrl(url: String): Boolean {
         if (url.isBlank()) return false

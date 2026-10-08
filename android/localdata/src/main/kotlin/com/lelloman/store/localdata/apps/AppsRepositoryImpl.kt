@@ -19,6 +19,7 @@ class AppsRepositoryImpl(
     private val appsDao: AppsDao,
     private val appVersionsDao: AppVersionsDao,
     private val remoteApiClient: RemoteApiClient,
+    private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : AppsRepository {
 
     override fun watchApps(): Flow<List<App>> {
@@ -45,15 +46,15 @@ class AppsRepositoryImpl(
         }
     }
 
-    override suspend fun refreshApps(): Result<Unit> {
-        return remoteApiClient.getApps().map { apps ->
+    override suspend fun refreshApps(): Result<Unit> = session.use {
+        remoteApiClient.getApps().map { apps ->
             val entities = apps.map { it.toEntity() }
             appsDao.replaceApps(entities)
         }
     }
 
-    override suspend fun refreshApp(packageName: String): Result<AppDetail> {
-        return remoteApiClient.getApp(packageName).mapCatching { appDetail ->
+    override suspend fun refreshApp(packageName: String): Result<AppDetail> = session.use {
+        remoteApiClient.getApp(packageName).mapCatching { appDetail ->
             val latestVersion = appDetail.versions.firstOrNull()
             if (latestVersion == null) {
                 appVersionsDao.deleteVersions(packageName)

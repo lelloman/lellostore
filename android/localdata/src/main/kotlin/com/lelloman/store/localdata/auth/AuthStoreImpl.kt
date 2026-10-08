@@ -33,9 +33,11 @@ import kotlin.coroutines.resumeWithException
 
 class AuthStoreImpl(
     context: Context,
-    private val oidcConfig: OidcConfig,
+    private val oidcConfig: OidcConfig?,
     scope: CoroutineScope,
     private val logger: Logger,
+    private val configStore: com.lelloman.store.domain.config.ConfigStore? = null,
+    private val serverDiscovery: com.lelloman.store.domain.config.ServerDiscovery? = null,
 ) : AuthStore {
 
     private val encryptedPrefs: SharedPreferences = createEncryptedPrefs(context)
@@ -44,7 +46,13 @@ class AuthStoreImpl(
     private val mutableAuthState = MutableStateFlow<AuthState>(AuthState.Loading)
     override val authState: StateFlow<AuthState> = mutableAuthState.asStateFlow()
 
-    private var appAuthState: net.openid.appauth.AuthState? = null
+    private val stateLock = Any()
+    private var generation = 0L
+    private var boundServer: String? = null
+    private var pendingLogin: PendingLogin? = null
+    private data class PendingLogin(val state: String?, val server: String, val generation: Long)
+
+    @Volatile private var appAuthState: net.openid.appauth.AuthState? = null
     private val tokenRefreshMutex = Mutex()
 
     init {
@@ -80,19 +88,39 @@ class AuthStoreImpl(
         }
     }
 
-    private fun loadAuthState() {
+    private suspend fun loadAuthState() {
+        val epoch = synchronized(stateLock) { generation }
+        val server = configStore?.readServerUrl().orEmpty()
+        val savedServer = encryptedPrefs.getString(KEY_SERVER, null)
         val stateJson = encryptedPrefs.getString(KEY_AUTH_STATE, null)
-        if (stateJson != null) {
-            try {
-                appAuthState = net.openid.appauth.AuthState.jsonDeserialize(stateJson)
-                val email = extractEmail(appAuthState)
-                mutableAuthState.value = AuthState.Authenticated(email ?: "Unknown")
-            } catch (e: Exception) {
-                logger.e(TAG, "Failed to load auth state", e)
-                mutableAuthState.value = AuthState.NotAuthenticated
+        val restored = try {
+            if (stateJson == null || (configStore != null && (server.isBlank() || savedServer != server))) {
+                null
+            } else {
+                val state = net.openid.appauth.AuthState.jsonDeserialize(stateJson)
+                if (serverDiscovery != null) {
+                    val current = serverDiscovery.discover(server).oidc
+                    val request = state.lastAuthorizationResponse?.request
+                    check(request?.clientId == current.clientId &&
+                        request.configuration.discoveryDoc?.issuer?.toString() == current.issuerUrl) {
+                        "The store's sign-in configuration changed. Sign in again."
+                    }
+                }
+                state.takeIf { it.isAuthorized }
             }
-        } else {
-            mutableAuthState.value = AuthState.NotAuthenticated
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e(TAG, "Could not restore the store session", e)
+            null
+        }
+        synchronized(stateLock) {
+            if (generation != epoch) return
+            boundServer = if (restored != null) server else null
+            appAuthState = restored
+            mutableAuthState.value = if (restored != null) {
+                AuthState.Authenticated(extractEmail(restored) ?: "Unknown")
+            } else AuthState.NotAuthenticated
         }
     }
 
@@ -115,6 +143,8 @@ class AuthStoreImpl(
 
     override suspend fun getAccessToken(): String? = tokenRefreshMutex.withLock {
         val state = appAuthState ?: return@withLock null
+        if (configStore != null && boundServer != configStore.readServerUrl()) return@withLock null
+        val epoch = synchronized(stateLock) { generation }
 
         val refresh = state.needsTokenRefresh
         val requestId = java.util.UUID.randomUUID().toString()
@@ -122,25 +152,38 @@ class AuthStoreImpl(
         suspendCancellableCoroutine { cont ->
             state.performActionWithFreshTokens(authService) { accessToken, _, ex ->
                 if (refresh || ex != null) logger.audit("auth.refresh_finished", mapOf("request_id" to requestId, "success" to (ex == null), "error_code" to ex?.code))
-                if (ex != null) {
-                    logger.e(TAG, "Token refresh failed", ex)
-                    cont.resume(null)
-                } else {
-                    saveAuthState(state)
-                    cont.resume(accessToken)
+                synchronized(stateLock) {
+                    if (epoch != generation || appAuthState !== state) {
+                        cont.resume(null)
+                    } else if (ex != null) {
+                        logger.e(TAG, "Token refresh failed", ex)
+                        cont.resume(null)
+                    } else {
+                        saveAuthState(state)
+                        cont.resume(accessToken)
+                    }
                 }
             }
         }
     }
 
     override suspend fun logout() {
-        appAuthState = null
-        encryptedPrefs.edit { remove(KEY_AUTH_STATE) }
-        mutableAuthState.value = AuthState.NotAuthenticated
+        synchronized(stateLock) {
+            generation++
+            pendingLogin = null
+            boundServer = null
+            appAuthState = null
+            encryptedPrefs.edit { remove(KEY_AUTH_STATE); remove(KEY_SERVER) }
+            mutableAuthState.value = AuthState.NotAuthenticated
+        }
     }
 
     suspend fun createAuthIntent(): Intent {
-        val serviceConfig = discoverServiceConfiguration()
+        val epoch = synchronized(stateLock) { generation }
+        val server = configStore?.readServerUrl().orEmpty()
+        val oidcConfig = if (serverDiscovery != null) serverDiscovery.discover(server).oidc
+            else requireNotNull(oidcConfig)
+        val serviceConfig = discoverServiceConfiguration(oidcConfig)
 
         val authRequest = AuthorizationRequest.Builder(
             serviceConfig,
@@ -151,11 +194,15 @@ class AuthStoreImpl(
             .setScopes(oidcConfig.scopes)
             .build()
 
+        synchronized(stateLock) {
+            check(generation == epoch) { "Server changed during sign-in. Try again." }
+            pendingLogin = PendingLogin(authRequest.state, server, epoch)
+        }
         logger.audit("ipc.authorization_requested")
         return authService.getAuthorizationRequestIntent(authRequest)
     }
 
-    private suspend fun discoverServiceConfiguration(): AuthorizationServiceConfiguration =
+    private suspend fun discoverServiceConfiguration(oidcConfig: OidcConfig): AuthorizationServiceConfiguration =
         suspendCancellableCoroutine { continuation ->
             logger.audit("auth.discovery_started")
             AuthorizationServiceConfiguration.fetchFromIssuer(
@@ -190,13 +237,27 @@ class AuthStoreImpl(
             return
         }
 
+        val pending = synchronized(stateLock) { pendingLogin }
+        if (pending == null || pending.state != response.request.state ||
+            (configStore != null && pending.server != configStore.serverUrl.value)) {
+            onResult(AuthResult.Error("Sign-in belongs to an old server selection. Try again."))
+            return
+        }
         // Create AuthState from the authorization response
         val newAuthState = net.openid.appauth.AuthState(response, exception)
 
         val tokenRequest = response.createTokenExchangeRequest()
         logger.audit("auth.exchange_started")
         authService.performTokenRequest(tokenRequest) { tokenResponse, tokenException ->
-            handleTokenResponse(newAuthState, tokenResponse, tokenException, onResult)
+            synchronized(stateLock) {
+                if (pending.generation != generation || pendingLogin != pending) {
+                    onResult(AuthResult.Error("Server changed during sign-in. Try again."))
+                } else {
+                    boundServer = pending.server
+                    pendingLogin = null
+                    handleTokenResponse(newAuthState, tokenResponse, tokenException, onResult)
+                }
+            }
         }
     }
 
@@ -230,12 +291,16 @@ class AuthStoreImpl(
     }
 
     private fun saveAuthState(state: net.openid.appauth.AuthState) {
-        encryptedPrefs.edit { putString(KEY_AUTH_STATE, state.jsonSerializeString()) }
+        encryptedPrefs.edit {
+            putString(KEY_AUTH_STATE, state.jsonSerializeString())
+            putString(KEY_SERVER, boundServer)
+        }
     }
 
     companion object {
         private const val TAG = "AuthStoreImpl"
         private const val PREFS_NAME = "auth_prefs"
         private const val KEY_AUTH_STATE = "auth_state"
+        private const val KEY_SERVER = "server_origin"
     }
 }

@@ -213,6 +213,10 @@ class SettingsViewModel @Inject constructor(
             when (result) {
                 is SetServerUrlResult.Success -> {
                     mutableState.value = mutableState.value.copy(serverUrlError = null)
+                    mutableEvents.emit(SettingsScreenEvent.NavigateToLogin)
+                }
+                is SetServerUrlResult.Error -> {
+                    mutableState.value = mutableState.value.copy(serverUrlError = result.message)
                 }
                 is SetServerUrlResult.InvalidUrl -> {
                     mutableState.value = mutableState.value.copy(serverUrlError = "Invalid URL")
@@ -249,6 +253,7 @@ class SettingsViewModel @Inject constructor(
     sealed interface SetServerUrlResult {
         data object Success : SetServerUrlResult
         data object InvalidUrl : SetServerUrlResult
+        data class Error(val message: String) : SetServerUrlResult
     }
 }
 

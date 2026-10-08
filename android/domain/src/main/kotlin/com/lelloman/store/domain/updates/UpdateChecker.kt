@@ -6,4 +6,5 @@ import kotlinx.coroutines.flow.StateFlow
 interface UpdateChecker {
     val availableUpdates: StateFlow<List<AvailableUpdate>>
     suspend fun checkForUpdates(): Result<List<AvailableUpdate>>
+    fun clear() {}
 }

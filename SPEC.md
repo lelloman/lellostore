@@ -8,8 +8,8 @@ publisher, and lets Android users browse, install, and update applications.
 
 All catalog and download operations require a valid OIDC bearer token. Upload,
 edit, icon, and delete operations also require the configured administrator
-role. Authentication failures fail closed; only health and embedded web assets
-remain public.
+role. Authentication failures fail closed; health, embedded web assets, and
+public client discovery remain available without a login.
 
 ## Components
 
@@ -17,7 +17,7 @@ remain public.
   validation, APK metadata extraction, optional AAB conversion, and Prometheus
   metrics.
 - The Vue 3 frontend provides authenticated catalog browsing and administrator
-  management. Its OIDC settings are compiled into the Vite bundle.
+  management. Its instance name and OIDC settings are loaded from runtime discovery.
 - The Kotlin/Compose Android client stores a catalog cache and preferences,
   discovers OIDC endpoints, downloads with authorization, verifies SHA-256, and
   hands verified APKs to Android's installer.
@@ -35,6 +35,12 @@ The frontend and Android app use Authorization Code with PKCE. The publisher
 uses Device Authorization Grant. Clients send access tokens as
 `Authorization: Bearer <token>`.
 
+`GET /api/server-config` advertises a versioned authentication method, issuer,
+public client IDs/scopes, instance name, and optional capabilities. Missing
+operator configuration returns an uncached 503 with `server_not_configured`.
+See [the product specification](docs/PRODUCT_SPEC.md) for its JSON contract,
+Android server/QR setup, session isolation, and migration requirements.
+
 ## HTTP API
 
 The API uses JSON with snake_case field names. Successful delete operations
@@ -46,6 +52,7 @@ return `204 No Content`. APK downloads support one byte range and return either
 | Method | Path | Authentication | Result |
 | --- | --- | --- | --- |
 | `GET` | `/health` | None | `{"status":"healthy"}` |
+| `GET` | `/api/server-config` | None | Public client setup; schema version 1 |
 | `GET` | `/metrics` | Network policy | Prometheus text on the separate metrics listener |
 
 ### User routes

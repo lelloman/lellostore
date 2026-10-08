@@ -65,7 +65,7 @@ class LoginViewModelTest {
             advanceUntilIdle()
         }
 
-        assertThat(viewModel.state.value.serverUrlError).isNotNull()
+        assertThat(viewModel.state.value.error).isNotNull()
 
         // Now change URL, error should clear
         viewModel.onServerUrlChanged("https://valid.example.com")
@@ -81,7 +81,7 @@ class LoginViewModelTest {
         viewModel.onLoginClick()
         advanceUntilIdle()
 
-        assertThat(viewModel.state.value.serverUrlError).isEqualTo("Invalid URL")
+        assertThat(viewModel.state.value.error).contains("HTTPS server address")
         assertThat(viewModel.state.value.isLoading).isFalse()
     }
 
@@ -91,6 +91,10 @@ class LoginViewModelTest {
         viewModel.onServerUrlChanged("https://valid.example.com")
 
         viewModel.events.test {
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+            expectNoEvents()
+            assertThat(viewModel.state.value.serverName).isEqualTo("Test Store")
             viewModel.onLoginClick()
             advanceUntilIdle()
 
@@ -107,6 +111,8 @@ class LoginViewModelTest {
         viewModel.onLoginClick()
         advanceUntilIdle()
 
+        viewModel.onLoginClick()
+        advanceUntilIdle()
         // Loading stays true until auth flow completes
         assertThat(viewModel.state.value.isLoading).isTrue()
 
@@ -125,6 +131,8 @@ class LoginViewModelTest {
         viewModel.onLoginClick()
         advanceUntilIdle()
 
+        viewModel.onLoginClick()
+        advanceUntilIdle()
         assertThat(viewModel.state.value.isLoading).isFalse()
         assertThat(viewModel.state.value.error).isEqualTo("OIDC discovery failed")
     }
@@ -139,6 +147,8 @@ class LoginViewModelTest {
             viewModel.onLoginClick()
             advanceUntilIdle()
 
+            viewModel.onLoginClick()
+            advanceUntilIdle()
             // Consume the LaunchAuth event
             val launchEvent = awaitItem()
             assertThat(launchEvent).isInstanceOf(LoginScreenEvent.LaunchAuth::class.java)
@@ -187,6 +197,8 @@ class FakeLoginInteractor : LoginViewModel.Interactor {
     override fun getInitialServerUrl() = _initialServerUrl
 
     override suspend fun setServerUrl(url: String) = setServerUrlResult
+    override suspend fun discoverServer(url: String) = com.lelloman.store.domain.config.ServerMetadata(
+        "Test Store", com.lelloman.store.domain.auth.OidcConfig("https://id.example", "client", "com.lelloman.store:/oauth2redirect"), false, false)
 
     override suspend fun createAuthIntent(): Intent {
         authIntentError?.let { throw it }

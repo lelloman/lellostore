@@ -53,6 +53,21 @@ class UnifiedPushRuntimeTest {
         runtime.process("", Intent("org.unifiedpush.android.distributor.MESSAGE_ACK").putExtra("token", "token").putExtra("id", "invented-id"))
         assertNull(runtime.db.entry("message:invented-id"))
     }
+    @Test fun brokerCannotUseANewStoresTokenAtAnOldDestination() = runTest {
+        val auth = mockk<AuthStore>()
+        val config = mockk<com.lelloman.store.domain.config.ConfigStore>()
+        var selected = "https://new.example"
+        coEvery { config.readServerUrl() } answers { selected }
+        coEvery { auth.getAccessToken() } returns "new-token"
+        val runtime = NotificationBrokerRuntime(RuntimeEnvironment.getApplication(), auth, config,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
+        assertNull(runtime.storeAccessToken("https://old.example"))
+        io.mockk.coVerify(exactly = 0) { auth.getAccessToken() }
+        assertEquals("new-token", runtime.storeAccessToken("https://new.example"))
+        coEvery { auth.getAccessToken() } answers { selected = "https://third.example"; "stale-token" }
+        assertNull(runtime.storeAccessToken("https://new.example"))
+    }
+
     @Test fun signedOutStoreDoesNotCreateRegistration() = runTest {
         val auth = mockk<AuthStore> { coEvery { getAccessToken() } returns null }
         val context = RuntimeEnvironment.getApplication()

@@ -6,6 +6,10 @@ repository. Every catalog API request requires an OIDC access token; publishing
 and catalog mutations additionally require the configured administrator role.
 
 The wire contract and supported endpoints are documented in [SPEC.md](SPEC.md).
+The [product roadmap](docs/PRODUCT_ROADMAP.md) describes the planned separation
+of the generic product from the LelloStore deployment.
+The [product specification](docs/PRODUCT_SPEC.md) defines discovery and client setup;
+the [deployment guide](docs/DEPLOYMENT.md) covers independent instances.
 
 ## Repository layout
 
@@ -36,7 +40,7 @@ Cargo downloads `lelloman-simple-server = "=0.1.0"` from crates.io, aliased as
 [the logging migration notes](docs/STEP_03A_LOGGING.md).
 See [shared routing and multipart](docs/STEP_11_ROUTING.md) for the HTTP integration.
 Shared push uses UnifiedPush with administrator-approved VAPID keys. LelloStore's
-connection requires login; recipient apps do not need LelloAuth integration.
+connection requires login; recipient apps do not need integration with the store's identity provider.
 See [UnifiedPush setup and migration](docs/SHARED_ANDROID_NOTIFICATIONS.md).
 
 See [owned WebSocket transport](docs/STEP_11_WEBSOCKETS.md) for catalog and Paravoid events.
@@ -55,7 +59,8 @@ cargo run
 
 The API listens on `127.0.0.1:8080` and Prometheus metrics on
 `127.0.0.1:9091` by default. `GET /health` remains available if OIDC discovery
-fails, but all `/api` routes fail closed with `503 Service Unavailable`.
+fails, but protected `/api` routes fail closed with `503 Service Unavailable`.
+Public `/api/server-config` remains available when client configuration is complete.
 
 Important settings are:
 
@@ -67,6 +72,11 @@ Important settings are:
 | `DATABASE_URL` | `sqlite:data/lellostore.db?mode=rwc` | SQLite connection |
 | `STORAGE_PATH` | `data/storage` | APK and icon storage |
 | `OIDC_ISSUER_URL` | placeholder | Exact token issuer and discovery base URL |
+| `STORE_NAME` | `Android App Store` | Public instance name |
+| `OIDC_ANDROID_CLIENT_ID` | unset | Public Android OAuth client |
+| `OIDC_WEB_CLIENT_ID` | unset | Public web OAuth client |
+| `OIDC_PUBLISHER_CLIENT_ID` | unset | Public device-flow OAuth client |
+| `OIDC_SCOPES` | `openid profile email` | Requested client scopes |
 | `OIDC_AUDIENCE` | `lellostore` | Required access-token audience |
 | `OIDC_ADMIN_ROLE` | `admin` | Role required by admin routes |
 | `OIDC_ROLE_CLAIM_PATH` | `realm_access.roles` | Dot-separated token role claim |
@@ -90,9 +100,7 @@ rename or delete the group or replace its dynamic policy with per-app rules.
 
 ## Frontend
 
-Copy `frontend/.env.example` to `frontend/.env.local` and set the OIDC issuer,
-client ID, administrator role, and role claim path to the same values used by
-the backend. Then run:
+Configure the backend's public client settings, then run:
 
 ```sh
 cd frontend
@@ -103,16 +111,16 @@ npm run dev
 Vite serves the SPA on `http://localhost:3000` and proxies `/api` to
 `http://localhost:8080` unless `VITE_API_BASE_URL` overrides the target. The UI
 is usable by every authenticated user, while management controls are only shown
-to administrators and remain protected independently by the backend.
+to administrators and remain protected independently by the backend. The UI loads
+OIDC settings and the instance name from `/api/server-config` at runtime; no
+deployment-specific frontend build is needed.
 
 ## Android
 
-Create `android/local.properties` with your SDK path. You may also override the
-HTTPS store URL compiled as the initial value:
+Create `android/local.properties` with your SDK path:
 
 ```properties
 sdk.dir=/path/to/Android/Sdk
-default.server.url=https://store.example.com
 ```
 
 Build the debug client with:
@@ -122,8 +130,11 @@ cd android
 ./gradlew assembleDebug
 ```
 
-The server URL can be changed in the app and must use HTTPS. The Android client
-discovers OIDC endpoints from its configured issuer, stores tokens locally,
+Fresh installs ask for an HTTPS server address before login, entered manually
+or scanned from the website's setup QR code. Confirm the discovered store name
+to sign in. The server can later be changed in Settings once active operations
+finish. Switching clears the old session and catalog cache. The Android client
+discovers OIDC settings from the selected server, stores tokens locally,
 downloads APKs with bearer authentication, verifies SHA-256, and delegates
 installation to Android's package installer. See
 [android/ARCHITECTURE.md](android/ARCHITECTURE.md) for module boundaries.
@@ -138,20 +149,12 @@ The production image builds the frontend, embeds it in the backend, and includes
 Java, bundletool, and `aapt` for APK/AAB processing:
 
 ```sh
-docker build \
-  --build-arg VITE_OIDC_ISSUER_URL=https://auth.example.com/realms/store \
-  --build-arg VITE_OIDC_CLIENT_ID=lellostore-frontend \
-  -t lellostore .
-
-docker run --rm --stop-timeout 35 -p 8080:8080 -p 9091:9091 \
-  -e OIDC_ISSUER_URL=https://auth.example.com/realms/store \
-  -e OIDC_AUDIENCE=lellostore \
-  -v lellostore-data:/app/data \
-  lellostore
+python3 scripts/setup-store.py --verify-provider
+docker compose --env-file deployment/store.env -f deployment/compose.yaml up --build -d
 ```
 
-Terminate TLS at a reverse proxy and expose the store over HTTPS. Keep the
-metrics port private unless it is intentionally scraped.
+The example includes HTTPS through Caddy and persistent volumes. Follow the
+[deployment guide](docs/DEPLOYMENT.md) for provider registration, backups, and upgrades.
 
 ## Publisher
 
@@ -178,7 +181,15 @@ The Store APK uses `major.minor.commit-count` as its version name and
 derived automatically for every build. Debug builds append `-debug` to the name.
 Build from a checkout with full Git history (`git fetch --unshallow` for a shallow
 clone). Publish from a branch whose commit count exceeds the last published code;
-rebuilding the same commit does not create a new version.
+rebuilding the same commit does not create a new version. External builders and
+source archives can supply `-PstoreVersionCode=<integer>` and optionally
+`-PstoreVersionName=<version>`. Release operators must choose a code greater than
+the last distributed build. Keep the app and recovery companion signed with the
+same release key; server operators do not need that key.
+Without `signing.properties`, source builds omit the optional recovery companion
+and its install button is unavailable. Signed builds bundle it by default;
+`-PincludeRecoveryCompanion=false` omits it explicitly. Recovery still requires
+matching app/companion signatures and a single-APK app installation.
 
 ### Common publisher
 
@@ -188,18 +199,18 @@ configuration through options or environment variables:
 
 ```sh
 export LELLOSTORE_URL=https://store.example.com
-export LELLOSTORE_OIDC_ISSUER=https://auth.example.com/realms/store
-export LELLOSTORE_CLIENT_ID=lellostore-publisher
 
 python scripts/publish-to-lellostore.py upload path/to/app.apk --dry-run --json
 python scripts/publish-to-lellostore.py upload path/to/app.apk
 python scripts/publish-to-lellostore.py upload path/to/app-beta.apk --beta
 ```
 
-The equivalent options are `--store-url`, `--issuer`, and `--client-id`. Use
+The publisher discovers its public OAuth registration from the store URL.
+For older servers, supply both `--issuer` and `--client-id` (or
+`LELLOSTORE_OIDC_ISSUER` and `LELLOSTORE_CLIENT_ID`). Use
 `--name` or `--description` to override extracted metadata, `--beta` to mark a
 release as beta, `--json` for machine-readable results, and `logout` to clear
-the token cached for one issuer and client. Stable and beta artifacts for a
+the token cached for one store, issuer, client, and scope set. Stable and beta artifacts for a
 package must share one monotonically increasing Android `versionCode` sequence.
 HTTPS is required unless `--allow-insecure-http` is explicitly used for local
 development.
@@ -297,3 +308,8 @@ python -m unittest discover -s scripts/tests
 
 The backend all-features checks require `frontend/dist`; the frontend build in
 the sequence above creates it. CI runs each component from a clean checkout.
+
+## License
+
+Original project code is licensed under the [Apache License 2.0](LICENSE).
+Third-party dependencies and vendored code retain their own licenses and notices.

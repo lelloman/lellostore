@@ -22,6 +22,7 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub clients: ClientConfig,
     pub notifications_enabled: bool,
     pub push_public_base_url: String,
     pub listen_addr: SocketAddr,
@@ -37,6 +38,92 @@ pub struct Config {
     pub java_path: Option<PathBuf>,
     pub max_upload_size: u64,
     pub dvpk: DvpkConfig,
+}
+
+/// Public client registrations belong to the deployment, never to a client build.
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub store_name: String,
+    pub android_client_id: String,
+    pub web_client_id: String,
+    pub publisher_client_id: String,
+    pub scopes: Vec<String>,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            store_name: "Android App Store".into(),
+            android_client_id: String::new(),
+            web_client_id: String::new(),
+            publisher_client_id: String::new(),
+            scopes: vec!["openid".into(), "profile".into(), "email".into()],
+        }
+    }
+}
+
+impl ClientConfig {
+    fn from_env() -> Result<Self, ConfigError> {
+        let defaults = Self::default();
+        let config = Self {
+            store_name: std::env::var("STORE_NAME").unwrap_or(defaults.store_name),
+            android_client_id: std::env::var("OIDC_ANDROID_CLIENT_ID").unwrap_or_default(),
+            web_client_id: std::env::var("OIDC_WEB_CLIENT_ID").unwrap_or_default(),
+            publisher_client_id: std::env::var("OIDC_PUBLISHER_CLIENT_ID").unwrap_or_default(),
+            scopes: std::env::var("OIDC_SCOPES")
+                .map(|value| value.split_whitespace().map(str::to_owned).collect())
+                .unwrap_or(defaults.scopes),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.store_name.trim().is_empty()
+            || self.store_name.len() > 120
+            || self.store_name.chars().any(char::is_control)
+        {
+            return Err(ConfigError::InvalidValue("STORE_NAME".into()));
+        }
+        for (name, value) in [
+            ("OIDC_ANDROID_CLIENT_ID", &self.android_client_id),
+            ("OIDC_WEB_CLIENT_ID", &self.web_client_id),
+            ("OIDC_PUBLISHER_CLIENT_ID", &self.publisher_client_id),
+        ] {
+            if value.len() > 256 || value.chars().any(char::is_whitespace) {
+                return Err(ConfigError::InvalidValue(name.into()));
+            }
+        }
+        if !self.scopes.iter().any(|scope| scope == "openid")
+            || self.scopes.len() > 32
+            || self.scopes.iter().any(|scope| {
+                scope.is_empty()
+                    || scope.len() > 128
+                    || !scope.bytes().all(|c| {
+                        c == 0x21 || (0x23..=0x5b).contains(&c) || (0x5d..=0x7e).contains(&c)
+                    })
+            })
+        {
+            return Err(ConfigError::InvalidValue("OIDC_SCOPES".into()));
+        }
+        Ok(())
+    }
+
+    pub fn is_configured(&self, issuer: &str) -> bool {
+        self.validate().is_ok()
+            && !self.android_client_id.is_empty()
+            && !self.web_client_id.is_empty()
+            && !self.publisher_client_id.is_empty()
+            && issuer != "https://example.com"
+            && reqwest::Url::parse(issuer).is_ok_and(|url| {
+                url.scheme() == "https"
+                    && url.host_str().is_some()
+                    && url.username().is_empty()
+                    && url.password().is_none()
+                    && url.query().is_none()
+                    && url.fragment().is_none()
+            })
+    }
 }
 
 /// Optional DVPK delta delivery. Generation and advertising are separate so
@@ -185,6 +272,7 @@ impl Config {
             push_public_base_url = url.origin().ascii_serialization();
         }
         Ok(Config {
+            clients: ClientConfig::from_env()?,
             notifications_enabled,
             push_public_base_url,
             listen_addr,

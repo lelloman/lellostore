@@ -4,7 +4,11 @@
 # readback by both the DVPK-capable and the previous (full-only) verifier.
 set -euo pipefail
 store_root=$(cd "$(dirname "$0")/.." && pwd)
-paravoid_repo=${1:-"$store_root/../paravoid-android"}
+paravoid_repo=${1:-${PARAVOID_SOURCE_DIR:-}}
+if [[ -z "$paravoid_repo" ]]; then
+  echo "Pass a Paravoid source checkout as the first argument or set PARAVOID_SOURCE_DIR." >&2
+  exit 2
+fi
 # Paravoid commit "Add DVPK shell delivery and APK-only distributor specification".
 dvpk_commit=33340c6
 interop_temp=$(mktemp -d /tmp/lellostore-dvpk-interop.XXXXXX)

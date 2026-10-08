@@ -21,6 +21,8 @@ class LoginInteractorImpl @Inject constructor(
     private val configStore: ConfigStore,
     private val domainAuthStore: AuthStore,
     private val authIntentProvider: AuthIntentProvider,
+    private val selection: com.lelloman.store.setup.ServerSelection,
+    private val discovery: com.lelloman.store.domain.config.ServerDiscovery,
 ) : LoginViewModel.Interactor {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -43,11 +45,13 @@ class LoginInteractorImpl @Inject constructor(
     }
 
     override suspend fun setServerUrl(url: String): SetServerUrlResult {
-        return when (configStore.setServerUrl(url)) {
-            ConfigStore.SetServerUrlResult.Success -> SetServerUrlResult.Success
-            ConfigStore.SetServerUrlResult.InvalidUrl -> SetServerUrlResult.InvalidUrl
-        }
+        return runCatching { selection.select(url) }.fold(
+            { SetServerUrlResult.Success },
+            { SetServerUrlResult.Error(it.message ?: "Unable to connect to this store") },
+        )
     }
+
+    override suspend fun discoverServer(url: String) = discovery.discover(url)
 
     override suspend fun createAuthIntent(): Intent {
         return authIntentProvider.createAuthIntent()

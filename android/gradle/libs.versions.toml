@@ -2,7 +2,6 @@
 agp = "8.13.2"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.27"
-paravoid = "0.1.0-dev"
 
 # AndroidX
 coreKtx = "1.17.0"
@@ -57,7 +56,7 @@ mockWebServer = "4.12.0"
 robolectric = "4.14.1"
 
 [libraries]
-paravoid-update-ipc = { group = "com.lelloman.paravoid", name = "paravoid-update-ipc", version.ref = "paravoid" }
+zxing-embedded = { module = "com.journeyapps:zxing-android-embedded", version = "4.3.0" }
 # AndroidX Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }

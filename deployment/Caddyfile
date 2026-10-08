@@ -1,0 +1,3 @@
+{$STORE_HOST} {
+    reverse_proxy store:8080
+}

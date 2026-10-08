@@ -53,6 +53,15 @@ class FakeConnection:
 
 
 class PublisherConfigTest(unittest.TestCase):
+    def test_oidc_discovery_requires_exact_issuer_including_trailing_slash(self):
+        config = publisher.PublisherConfig("https://store.example", "https://id.example/", "publisher")
+        with mock.patch.object(publisher, "http_request", return_value={"issuer": "https://id.example/"}) as request:
+            self.assertEqual(publisher.discover_oidc(config)["issuer"], config.issuer)
+            request.assert_called_once_with("https://id.example/.well-known/openid-configuration")
+        with mock.patch.object(publisher, "http_request", return_value={"issuer": "https://id.example"}):
+            with self.assertRaisesRegex(publisher.PublisherError, "does not match"):
+                publisher.discover_oidc(config)
+
     def test_resolves_required_configuration_from_environment(self):
         config = publisher.PublisherConfig.resolve(
             store_url=None,
@@ -66,7 +75,7 @@ class PublisherConfigTest(unittest.TestCase):
         )
 
         self.assertEqual(config.store_url, "https://store.example.com")
-        self.assertEqual(config.issuer, "https://auth.example.com")
+        self.assertEqual(config.issuer, "https://auth.example.com/")
         self.assertEqual(config.client_id, "publisher-client")
 
     def test_command_line_configuration_overrides_environment(self):
@@ -125,6 +134,31 @@ class PublisherConfigTest(unittest.TestCase):
                 publisher.token_file_for(first, cache_dir),
                 publisher.token_file_for(second, cache_dir),
             )
+
+    def test_token_cache_is_scoped_to_store_even_with_shared_identity_provider(self):
+        first = publisher.PublisherConfig("https://one.example", "https://id.example", "shared")
+        second = publisher.PublisherConfig("https://two.example", "https://id.example", "shared")
+        self.assertNotEqual(publisher.token_file_for(first), publisher.token_file_for(second))
+
+    def test_store_only_configuration_discovers_publisher_registration(self):
+        metadata = {"schema_version": 1, "auth": {"method": "oidc", "issuer_url": "https://id.example",
+            "clients": {"publisher": "publisher"}, "scopes": ["openid", "email"]}}
+        with mock.patch.object(publisher, "discover_store", return_value=metadata) as discovery:
+            config = publisher.PublisherConfig.resolve("https://store.example/", None, None, {})
+        discovery.assert_called_once_with("https://store.example")
+        self.assertEqual(config.issuer, "https://id.example")
+        self.assertEqual(config.client_id, "publisher")
+        self.assertEqual(config.scopes, ["openid", "email"])
+
+    def test_discovery_rejects_unsupported_auth_and_conflicting_overrides(self):
+        metadata = {"schema_version": 1, "auth": {"method": "oidc", "issuer_url": "https://id.example",
+            "clients": {"publisher": "publisher"}, "scopes": ["openid"]}}
+        with mock.patch.object(publisher, "discover_store", return_value=metadata):
+            with self.assertRaisesRegex(publisher.PublisherError, "conflicts"):
+                publisher.PublisherConfig.resolve("https://store.example", "https://other.example", None, {})
+            metadata["auth"]["method"] = "password"
+            with self.assertRaisesRegex(publisher.PublisherError, "unsupported"):
+                publisher.PublisherConfig.resolve("https://store.example", None, None, {})
 
 
 class UploadTest(unittest.TestCase):

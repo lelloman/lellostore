@@ -35,6 +35,7 @@ class SettingsInteractorImpl @Inject constructor(
     private val legacyAdbInstallationChannel: LegacyAdbInstallationChannel,
     installationCoordinator: InstallationCoordinator,
     @ApplicationScope private val scope: CoroutineScope,
+    private val selection: com.lelloman.store.setup.ServerSelection,
 ) : SettingsViewModel.Interactor {
 
     private val channelMetadata = installationCoordinator.channelMetadata
@@ -145,10 +146,10 @@ class SettingsInteractorImpl @Inject constructor(
         }
 
     override suspend fun setServerUrl(url: String): SettingsViewModel.SetServerUrlResult {
-        return when (configStore.setServerUrl(url)) {
-            is ConfigStore.SetServerUrlResult.Success -> SettingsViewModel.SetServerUrlResult.Success
-            is ConfigStore.SetServerUrlResult.InvalidUrl -> SettingsViewModel.SetServerUrlResult.InvalidUrl
-        }
+        return runCatching { selection.select(url) }.fold(
+            { SettingsViewModel.SetServerUrlResult.Success },
+            { SettingsViewModel.SetServerUrlResult.Error(it.message ?: "Unable to connect to this store") },
+        )
     }
 
     override suspend fun logout() {

@@ -23,6 +23,37 @@ async fn create_auth_test_context() -> (TestContext, MockOidc) {
     create_auth_test_context_with_events(Default::default()).await
 }
 
+#[tokio::test]
+async fn independent_stores_reject_each_others_tokens_even_for_identical_subjects() {
+    let (first, first_provider) = create_auth_test_context().await;
+    let (second, second_provider) = create_auth_test_context().await;
+    let first_server = TestServer::new(first.router);
+    let second_server = TestServer::new(second.router);
+    let first_token = first_provider.get_admin_token();
+    let second_token = second_provider.get_admin_token();
+    // Both providers intentionally issue test-admin with the same audience and
+    // fixture signing key. Issuer isolation must still reject cross-store use.
+    for (server, own, foreign) in [
+        (&first_server, &first_token, &second_token),
+        (&second_server, &second_token, &first_token),
+    ] {
+        let accepted = server
+            .get("/api/me")
+            .header("Authorization", &format!("Bearer {own}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(accepted.status_code(), StatusCode::OK);
+        let rejected = server
+            .get("/api/me")
+            .header("Authorization", &format!("Bearer {foreign}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(rejected.status_code(), StatusCode::UNAUTHORIZED);
+    }
+}
+
 async fn create_auth_test_context_with_events(
     catalog_events: lellostore_backend::api::events::CatalogEventHub,
 ) -> (TestContext, MockOidc) {
@@ -66,6 +97,7 @@ async fn create_auth_test_context_options(
         .expect("Failed to run migrations");
 
     let config = Config {
+        clients: Default::default(),
         push_public_base_url: "https://push.example".into(),
         notifications_enabled: true,
         listen_addr: "127.0.0.1:0".parse().unwrap(),

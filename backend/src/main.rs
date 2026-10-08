@@ -39,6 +39,7 @@ async fn run() -> Result<(), BoxError> {
     // Initialize database
     let db = db::init_pool(&config.database_url).await?;
     db::run_migrations(&db).await?;
+    db::deployment::bind_issuer(&db, &config.oidc.issuer_url).await?;
     tracing::info!("Database initialized");
 
     // Create storage directories

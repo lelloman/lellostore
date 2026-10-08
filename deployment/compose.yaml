@@ -1,0 +1,34 @@
+services:
+  store:
+    image: ${STORE_IMAGE:-local/store-backend:dev}
+    build:
+      context: ..
+    env_file: ${STORE_ENV_FILE:-store.env}
+    restart: unless-stopped
+    stop_grace_period: 40s
+    volumes:
+      - store-data:/app/data
+    # Only the reverse proxy exposes the API. Metrics stay on container loopback.
+    expose:
+      - "8080"
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      STORE_HOST: ${STORE_HOST:?Run setup-store.py and use --env-file deployment/store.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      store:
+        condition: service_healthy
+
+volumes:
+  store-data:
+  proxy-data:
+  proxy-config:

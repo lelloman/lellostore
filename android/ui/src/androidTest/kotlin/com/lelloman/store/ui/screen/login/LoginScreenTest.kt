@@ -38,7 +38,7 @@ class LoginScreenTest {
             LellostoreTheme(themeMode = ThemeMode.Light) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     LoginScreenContent(
-                        state = LoginScreenState(serverUrl = "https://store.lelloman.com"),
+                        state = LoginScreenState(serverUrl = "https://store.example.org", serverName = "Example Store"),
                         onServerUrlChanged = {},
                         onLoginClick = { clicked = true },
                     )
@@ -46,7 +46,7 @@ class LoginScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Sign in with OIDC")
+        composeRule.onNodeWithText("Confirm and sign in")
             .assertIsEnabled()
             .performClick()
 

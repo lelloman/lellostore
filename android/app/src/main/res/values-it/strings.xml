@@ -41,4 +41,5 @@
     <string name="audit_clear">Cancella registri</string>
     <string name="audit_clear_confirm">Eliminare i registri locali conservati? I nuovi eventi continueranno a essere registrati.</string>
     <string name="audit_cancel">Annulla</string>
+    <string name="recovery_setup_not_bundled">Questa versione non include l’app di recupero. Per usare il recupero, installa una versione compatibile firmata dallo stesso sviluppatore.</string>
 </resources>

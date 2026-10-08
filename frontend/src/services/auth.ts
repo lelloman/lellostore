@@ -1,4 +1,5 @@
 import { UserManager, User, WebStorageStateStore } from 'oidc-client-ts'
+import { loadServerConfig } from './serverConfig'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -8,67 +9,66 @@ export interface CurrentIdentity {
   is_admin: boolean
 }
 
-const settings = {
-  authority: import.meta.env.VITE_OIDC_ISSUER_URL || 'https://example.com',
-  client_id: import.meta.env.VITE_OIDC_CLIENT_ID || 'lellostore',
-  redirect_uri: `${window.location.origin}/callback`,
-  post_logout_redirect_uri: `${window.location.origin}/callback`,
-  response_type: 'code',
-  scope: 'openid profile email offline_access',
-  automaticSilentRenew: true,
-  userStore: new WebStorageStateStore({ store: window.localStorage }),
-}
-
 class AuthService {
-  private userManager: UserManager
+  private manager: Promise<UserManager> | null = null
   private renewal: Promise<User | null> | null = null
+  private loadedListeners = new Set<(user: User) => void>()
+  private unloadedListeners = new Set<() => void>()
 
-  constructor() {
-    this.userManager = new UserManager(settings)
-
-    this.userManager.events.addSilentRenewError((error) => {
-      console.error('Silent renew error:', error)
-    })
-
-    this.userManager.events.addUserLoaded((user) => {
-      console.debug('User loaded:', user.profile.sub)
-    })
-
-    this.userManager.events.addUserUnloaded(() => {
-      console.debug('User unloaded')
-    })
+  private getManager(): Promise<UserManager> {
+    if (!this.manager) {
+      this.manager = loadServerConfig().then(config => {
+        const manager = new UserManager({
+          authority: config.auth.issuer_url,
+          client_id: config.auth.clients.web,
+          redirect_uri: `${window.location.origin}/callback`,
+          post_logout_redirect_uri: `${window.location.origin}/callback`,
+          response_type: 'code',
+          scope: config.auth.scopes.join(' '),
+          automaticSilentRenew: true,
+          userStore: new WebStorageStateStore({ store: window.localStorage }),
+        })
+        manager.events.addSilentRenewError(error => console.error('Silent renew error:', error))
+        manager.events.addUserLoaded(user => this.loadedListeners.forEach(callback => callback(user)))
+        manager.events.addUserUnloaded(() => this.unloadedListeners.forEach(callback => callback()))
+        return manager
+      }).catch(error => { this.manager = null; throw error })
+    }
+    return this.manager
   }
 
   async login(): Promise<void> {
-    await this.userManager.signinRedirect()
+    await (await this.getManager()).signinRedirect()
   }
 
   async handleCallback(): Promise<User> {
-    return await this.userManager.signinRedirectCallback()
+    return await (await this.getManager()).signinRedirectCallback()
   }
 
   async handleLogoutCallback(): Promise<void> {
-    await this.userManager.signoutRedirectCallback()
+    await (await this.getManager()).signoutRedirectCallback()
   }
 
   async logout(): Promise<void> {
-    await this.userManager.signoutRedirect()
+    await (await this.getManager()).signoutRedirect()
   }
 
   async clearLocalSession(): Promise<void> {
-    await this.userManager.removeUser()
+    await (await this.getManager()).removeUser()
   }
 
   onUserLoaded(callback: (user: User) => void): () => void {
-    return this.userManager.events.addUserLoaded(callback)
+    this.loadedListeners.add(callback)
+    return () => { this.loadedListeners.delete(callback) }
   }
 
   onUserUnloaded(callback: () => void): () => void {
-    return this.userManager.events.addUserUnloaded(callback)
+    this.unloadedListeners.add(callback)
+    return () => { this.unloadedListeners.delete(callback) }
   }
 
   async getUser(): Promise<User | null> {
-    return await this.userManager.getUser()
+    return await (await this.getManager()).getUser()
   }
 
   async getAccessToken(): Promise<string | null> {
@@ -101,9 +101,10 @@ class AuthService {
   }
 
   private async renewWithRetry(): Promise<User | null> {
+    const manager = await this.getManager()
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.userManager.signinSilent()
+        return await manager.signinSilent()
       } catch (error) {
         const code = error && typeof error === 'object' && 'error' in error
           ? error.error : undefined

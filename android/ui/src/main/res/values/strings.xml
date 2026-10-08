@@ -212,4 +212,10 @@
     <string name="push_battery_warning_title">Battery optimization blocks push notifications</string>
     <string name="push_battery_warning_text">LelloStore is not excluded from battery optimization (Doze). Allow unrestricted battery use so LelloStore and apps using it can receive push notifications.</string>
     <string name="push_battery_open_settings">Open battery settings</string>
+    <string name="login_scan_qr_prompt">Scan the store setup code</string>
+    <string name="login_scan_qr">Scan QR code</string>
+    <string name="login_confirm_store">Confirm this store to continue to sign-in.</string>
+    <string name="login_choose_store">Choose a store before signing in.</string>
+    <string name="login_check_server">Check server</string>
+    <string name="login_confirm_sign_in">Confirm and sign in</string>
 </resources>

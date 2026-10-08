@@ -5,4 +5,5 @@ data class LoginScreenState(
     val serverUrlError: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
+    val serverName: String? = null,
 )

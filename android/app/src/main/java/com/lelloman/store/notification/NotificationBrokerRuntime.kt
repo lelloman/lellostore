@@ -127,6 +127,7 @@ class NotificationBrokerRuntime @Inject constructor(
         scope.launch {
             mutex.withLock {
                 if (lifecycle != lifecycleEpoch.get()) return@launch
+                if (config.readServerUrl().trimEnd('/') != url.trimEnd('/')) return@launch
                 if (enabled && serverUrl == url.trimEnd('/')) return@withLock
                 closeSocket()
                 serverUrl = url.trimEnd('/')
@@ -221,7 +222,7 @@ class NotificationBrokerRuntime @Inject constructor(
             disconnect("Heartbeat unanswered"); schedule(); return@withLock
         }
         if (System.currentTimeMillis() / 1000 >= authExpires - 60) {
-            val token = auth.getAccessToken()
+            val token = storeAccessToken()
             if (token == null) { disconnect("Sign-in renewal unavailable"); schedule(); return@withLock }
             if (!sameIdentity(token)) { resetIdentity(); disconnect("Account changed"); schedule(); return@withLock }
             sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token))
@@ -236,10 +237,21 @@ class NotificationBrokerRuntime @Inject constructor(
         schedule()
     }
 
+    // Called while holding the broker mutex. A delayed lifecycle callback must
+    // never send the new store's access token to an old broker destination.
+    internal suspend fun storeAccessToken(destination: String = serverUrl): String? {
+        val epoch = lifecycleEpoch.get()
+        val selected = config.readServerUrl().trimEnd('/')
+        if (destination.isBlank() || selected != destination) return null
+        return auth.getAccessToken().takeIf {
+            epoch == lifecycleEpoch.get() && config.readServerUrl().trimEnd('/') == selected
+        }
+    }
+
     private suspend fun connect() {
         setStatus("Connecting")
         try {
-            val token = auth.getAccessToken() ?: error("Sign-in required")
+            val token = storeAccessToken() ?: error("Sign-in required")
             val claims = tokenClaims(token)
             val identity = "$serverUrl\n${claims.getString("iss")}\n${claims.getString("sub")}"
             device = credentials.read()
@@ -385,7 +397,7 @@ class NotificationBrokerRuntime @Inject constructor(
         scope.launch { cleanupRemovedRegistrations() }
     }
     private suspend fun cleanupRemovedRegistrations() = mutex.withLock {
-        val token = auth.getAccessToken() ?: return@withLock
+        val token = storeAccessToken() ?: return@withLock
         db.entries("unregister").forEach { (key, value) ->
             if (runCatching { request("DELETE", "/subscriptions", JSONObject().put("token", value.getString("token")), token) }.isSuccess) db.remove(key)
         }
@@ -436,7 +448,7 @@ class NotificationBrokerRuntime @Inject constructor(
         if (action != "REGISTER") return@withLock
         val vapid = intent.getStringExtra("vapid")
         if (vapid.isNullOrEmpty()) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "VAPID_REQUIRED") }; return@withLock }
-        val accessToken = auth.getAccessToken()
+        val accessToken = storeAccessToken()
         if (!enabled || accessToken == null) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "ACTION_REQUIRED") }; return@withLock }
         if (!ready) { broadcast(response, "REGISTRATION_FAILED") { putExtra("reason", "NETWORK") }; return@withLock }
         val r = pending?.takeIf { it.optString("vapid") == vapid } ?: active ?: response.put("certificate", SigningIdentity.certificates(context, packageName).single())

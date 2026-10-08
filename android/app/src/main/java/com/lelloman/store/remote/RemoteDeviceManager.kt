@@ -43,6 +43,7 @@ class RemoteDeviceManager @Inject constructor(
     private val preferences: UserPreferencesStore,
     private val apks: VerifiedApkProvider,
     private val logger: Logger,
+    private val storeSession: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : RemoteDeviceSession, RemoteDeviceOperations {
     private val usb = context.getSystemService(UsbManager::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -225,11 +226,12 @@ class RemoteDeviceManager @Inject constructor(
             if (state.value.busy || state.value.phase != RemoteConnectionPhase.READY) return
             val currentGeneration = generation
             val operationId = UUID.randomUUID().toString()
+            val storeEpoch = storeSession.epoch
             mutableState.update { it.copy(operation = phase, message = null, bytes = 0, totalBytes = 0) }
             job = scope.launch {
                 logger.audit("remote.operation_started", mapOf("operation_id" to operationId))
                 try {
-                    block(adb, info)
+                    storeSession.use(storeEpoch) { block(adb, info) }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: IOException) {
@@ -249,6 +251,7 @@ class RemoteDeviceManager @Inject constructor(
 
     override suspend fun loadCatalog(): Result<List<RemoteAppChoice>> = withContext(Dispatchers.IO) {
         try {
+            storeSession.use {
             requireLogin()
             apps.refreshApps().getOrThrow()
             val choices = apps.watchApps().first().mapNotNull { app ->
@@ -260,6 +263,7 @@ class RemoteDeviceManager @Inject constructor(
                     .maxByOrNull { it.versionCode }?.let { RemoteAppChoice(app.packageName, app.name, it) }
             }.sortedBy { it.name.lowercase() }
             Result.success(choices)
+            }
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) { Result.failure(error) }
     }

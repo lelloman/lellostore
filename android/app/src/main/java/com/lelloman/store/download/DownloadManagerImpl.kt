@@ -46,6 +46,7 @@ class DownloadManagerImpl @Inject constructor(
     private val installationCoordinator: InstallationCoordinator,
     private val foregroundServiceStarter: DownloadForegroundServiceStarter,
     @ApplicationScope private val scope: CoroutineScope,
+    private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : DownloadManager {
 
     private val apkProvider = VerifiedApkProvider(remoteApiClient)
@@ -64,12 +65,17 @@ class DownloadManagerImpl @Inject constructor(
         installationMode: InstallationMode,
         purpose: com.lelloman.store.domain.model.AcquisitionPurpose,
     ): DownloadResult {
+        val epoch = session.epoch
         val task = synchronized(downloadJobs) {
             if (downloadJobs.containsKey(packageName)) {
                 return DownloadResult.Failed("Download already in progress")
             }
             scope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                performDownloadAndInstall(packageName, versionCode, installationMode, purpose)
+                try {
+                    session.use(epoch) { performDownloadAndInstall(packageName, versionCode, installationMode, purpose) }
+                } finally {
+                    synchronized(downloadJobs) { downloadJobs.remove(packageName) }
+                }
             }.also { downloadJobs[packageName] = it }
         }
         task.start()
@@ -80,6 +86,8 @@ class DownloadManagerImpl @Inject constructor(
             // Scheduled work remains owned by WorkManager and must stop when its worker is stopped.
             if (installationMode == InstallationMode.BACKGROUND) task.cancel()
             throw error
+        } catch (error: IllegalStateException) {
+            DownloadResult.Failed(error.message ?: "Server changed. Start this operation again.")
         }
     }
 
@@ -225,9 +233,6 @@ class DownloadManagerImpl @Inject constructor(
             destination?.delete()
         } finally {
             audit("operation.finished", mapOf("state" to finalState.name))
-            synchronized(downloadJobs) {
-                downloadJobs.remove(packageName)
-            }
             // Clear progress after delay to allow UI to show final state
             scope.launch {
                 delay(3000)

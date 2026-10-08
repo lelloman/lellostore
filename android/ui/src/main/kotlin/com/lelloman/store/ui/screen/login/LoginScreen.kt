@@ -61,6 +61,9 @@ fun LoginScreen(
     onPesceClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+    val qrLauncher = rememberLauncherForActivityResult(com.journeyapps.barcodescanner.ScanContract()) { result ->
+        result.contents?.let(viewModel::onQrScanned)
+    }
 
     val authLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -96,10 +99,14 @@ fun LoginScreen(
         }
     }
 
+    val qrPrompt = stringResource(R.string.login_scan_qr_prompt)
     LoginScreenContent(
         state = state,
         onServerUrlChanged = viewModel::onServerUrlChanged,
         onLoginClick = viewModel::onLoginClick,
+        onScanQr = { qrLauncher.launch(com.journeyapps.barcodescanner.ScanOptions()
+            .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE)
+            .setPrompt(qrPrompt).setBeepEnabled(false)) },
         onPesceClick = onPesceClick,
         modifier = modifier,
     )
@@ -110,6 +117,7 @@ internal fun LoginScreenContent(
     state: LoginScreenState,
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
+    onScanQr: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPesceClick: () -> Unit = {},
 ) {
@@ -137,6 +145,7 @@ internal fun LoginScreenContent(
                     state = state,
                     onServerUrlChanged = onServerUrlChanged,
                     onLoginClick = onLoginClick,
+                    onScanQr = onScanQr,
                     onPesceClick = onPesceClick,
                     modifier = Modifier.weight(1f).widthIn(max = 480.dp),
                 )
@@ -159,6 +168,7 @@ internal fun LoginScreenContent(
                     state = state,
                     onServerUrlChanged = onServerUrlChanged,
                     onLoginClick = onLoginClick,
+                    onScanQr = onScanQr,
                     onPesceClick = onPesceClick,
                     modifier = Modifier.widthIn(max = 480.dp),
                 )
@@ -196,6 +206,7 @@ private fun LoginForm(
     state: LoginScreenState,
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
+    onScanQr: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPesceClick: () -> Unit = {},
 ) {
@@ -209,6 +220,7 @@ private fun LoginForm(
         Column(modifier = Modifier.padding(LelloStoreSpacing.xLarge)) {
             OutlinedTextField(
                 value = state.serverUrl,
+                enabled = !state.isLoading,
                 onValueChange = onServerUrlChanged,
                 label = { Text(stringResource(R.string.login_server_url)) },
                 placeholder = { Text(stringResource(R.string.login_server_url_placeholder)) },
@@ -218,6 +230,13 @@ private fun LoginForm(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            TextButton(onClick = onScanQr, enabled = !state.isLoading) { Text(stringResource(R.string.login_scan_qr)) }
+            if (state.serverName != null) {
+                Text(state.serverName, style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.login_confirm_store), style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(stringResource(R.string.login_choose_store), style = MaterialTheme.typography.bodyMedium)
+            }
             Spacer(Modifier.height(LelloStoreSpacing.large))
 
             if (state.error != null) {
@@ -242,7 +261,7 @@ private fun LoginForm(
                         strokeWidth = 3.dp,
                     )
                 } else {
-                    Text(stringResource(R.string.login_sign_in_oidc))
+                    Text(stringResource(if (state.serverName == null) R.string.login_check_server else R.string.login_confirm_sign_in))
                 }
             }
             TextButton(onClick = onPesceClick, modifier = Modifier.fillMaxWidth()) {
@@ -267,7 +286,7 @@ private fun LoginScreenPreview() {
     LellostoreTheme(themeMode = if (isDark) ThemeMode.Dark else ThemeMode.Light) {
         Surface(color = MaterialTheme.colorScheme.background) {
             LoginScreenContent(
-                state = LoginScreenState(serverUrl = "https://store.lelloman.com"),
+                state = LoginScreenState(serverUrl = "https://store.example.com"),
                 onServerUrlChanged = {},
                 onLoginClick = {},
             )

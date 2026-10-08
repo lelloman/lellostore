@@ -9,7 +9,7 @@
     <p v-if="overview">{{ overview.connections }} connected devices · {{ registrations }} registrations</p>
     <v-card class="pa-5 mb-6">
       <h2 class="text-h6 mb-3">Approve a server</h2>
-      <p class="mb-4">Enter the server's public VAPID key. The private key stays on that server. Recipient apps do not need a LelloAuth account.</p>
+      <p class="mb-4">Enter the server's public VAPID key. The private key stays on that server. Recipient apps do not need an account with this store's identity provider.</p>
       <v-form @submit.prevent="approve">
         <v-text-field v-model="name" label="Server name" :disabled="busy" />
         <v-text-field v-model="key" label="VAPID public key" :disabled="busy" hint="87 characters, base64url-encoded P-256 public key" persistent-hint />

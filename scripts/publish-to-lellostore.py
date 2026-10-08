@@ -2,7 +2,8 @@
 """Publish APK or AAB artifacts to a LelloStore instance.
 
 Configuration is supplied with command-line options or these environment
-variables: LELLOSTORE_URL, LELLOSTORE_OIDC_ISSUER, and LELLOSTORE_CLIENT_ID.
+variables: LELLOSTORE_URL, and optional legacy overrides LELLOSTORE_OIDC_ISSUER
+and LELLOSTORE_CLIENT_ID. With only a store URL, public OAuth settings are discovered.
 Authentication uses the OIDC Device Authorization Grant.
 """
 
@@ -46,11 +47,13 @@ class PublisherConfig:
         issuer: str,
         client_id: str,
         allow_insecure_http: bool = False,
+        scopes: list[str] | None = None,
     ):
         self.store_url = store_url.rstrip("/")
-        self.issuer = issuer.rstrip("/")
+        self.issuer = issuer
         self.client_id = client_id
         self.allow_insecure_http = allow_insecure_http
+        self.scopes = scopes or ["openid"]
 
     @classmethod
     def resolve(
@@ -66,41 +69,71 @@ class PublisherConfig:
             "issuer": (issuer or environ.get("LELLOSTORE_OIDC_ISSUER", "")).strip(),
             "client_id": (client_id or environ.get("LELLOSTORE_CLIENT_ID", "")).strip(),
         }
-        missing = [
-            variable
-            for key, variable in (
-                ("store_url", "LELLOSTORE_URL"),
-                ("issuer", "LELLOSTORE_OIDC_ISSUER"),
-                ("client_id", "LELLOSTORE_CLIENT_ID"),
-            )
-            if not values[key]
-        ]
-        if missing:
-            raise PublisherError(
-                "Missing configuration: " + ", ".join(missing) + ". "
-                "Set environment variables or pass the corresponding options."
-            )
-
-        normalized_store = _normalize_url(
-            values["store_url"],
-            "store URL",
-            allow_insecure_http,
-        )
+        if not values["store_url"]:
+            raise PublisherError("Missing configuration: LELLOSTORE_URL. Set it or pass --store-url.")
+        normalized_store = _normalize_url(values["store_url"], "store URL", allow_insecure_http)
+        scopes = ["openid"]
+        if not values["issuer"] or not values["client_id"]:
+            metadata = discover_store(normalized_store)
+            try:
+                if metadata["schema_version"] != 1 or metadata["auth"]["method"] != "oidc":
+                    raise ValueError("unsupported setup version or authentication method")
+                discovered_issuer = metadata["auth"]["issuer_url"]
+                discovered_client = metadata["auth"]["clients"]["publisher"]
+                scopes = metadata["auth"]["scopes"]
+                if not isinstance(discovered_issuer, str) or not isinstance(discovered_client, str) or not discovered_client.strip():
+                    raise ValueError("missing publisher registration")
+                if not isinstance(scopes, list) or "openid" not in scopes or any(not isinstance(v, str) or not v or any(c.isspace() for c in v) for v in scopes):
+                    raise ValueError("invalid scopes")
+                if values["issuer"] and values["issuer"] != discovered_issuer:
+                    raise ValueError("explicit issuer conflicts with store discovery; supply both issuer and client ID to override")
+                if values["client_id"] and values["client_id"] != discovered_client:
+                    raise ValueError("explicit client ID conflicts with store discovery; supply both issuer and client ID to override")
+                values["issuer"] = discovered_issuer
+                values["client_id"] = discovered_client
+            except (KeyError, TypeError, ValueError) as error:
+                raise PublisherError(f"Invalid store configuration: {error}") from error
         normalized_issuer = _normalize_url(
             values["issuer"],
             "OIDC issuer",
             allow_insecure_http,
+            preserve_trailing_slash=True,
         )
         return cls(
             normalized_store,
             normalized_issuer,
             values["client_id"],
             allow_insecure_http,
+            scopes,
         )
 
 
-def _normalize_url(url: str, label: str, allow_insecure_http: bool) -> str:
-    parsed = urllib.parse.urlsplit(url.rstrip("/"))
+class NoDiscoveryRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise PublisherError("Store discovery redirected. Use the store's canonical address.")
+
+
+def discover_store(store_url: str) -> dict:
+    request = urllib.request.Request(store_url + "/api/server-config", headers={"Accept": "application/json"})
+    try:
+        with urllib.request.build_opener(NoDiscoveryRedirect()).open(request, timeout=15) as response:
+            data = response.read(65537)
+        if len(data) > 65536:
+            raise PublisherError("Store configuration is too large")
+        payload = json.loads(data)
+        if not isinstance(payload, dict):
+            raise PublisherError("Invalid store configuration")
+        return payload
+    except urllib.error.HTTPError as error:
+        if error.code == 503:
+            raise PublisherError("The store operator has not completed client setup") from error
+        raise PublisherError(f"Store discovery failed: HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        raise PublisherError(f"Store discovery failed: {error}") from error
+
+
+def _normalize_url(url: str, label: str, allow_insecure_http: bool, preserve_trailing_slash: bool = False) -> str:
+    parsed = urllib.parse.urlsplit(url if preserve_trailing_slash else url.rstrip("/"))
     if not parsed.hostname or parsed.username or parsed.password:
         raise PublisherError(f"Invalid {label}: {url}")
     if parsed.query or parsed.fragment:
@@ -112,14 +145,14 @@ def _normalize_url(url: str, label: str, allow_insecure_http: bool) -> str:
             f"{label.capitalize()} must use HTTPS "
             "(use --allow-insecure-http only for local development)"
         )
-    return urllib.parse.urlunsplit(parsed).rstrip("/")
+    return urllib.parse.urlunsplit(parsed)
 
 
 def token_file_for(
     config: PublisherConfig,
     cache_dir: Path = DEFAULT_CACHE_DIR,
 ) -> Path:
-    identity = f"{config.issuer}\0{config.client_id}".encode()
+    identity = f"{config.store_url}\0{config.issuer}\0{config.client_id}\0{' '.join(config.scopes)}".encode()
     cache_key = hashlib.sha256(identity).hexdigest()
     return cache_dir / f"{cache_key}.json"
 
@@ -185,7 +218,10 @@ def _log(message: str, json_output: bool = False, end: str = "\n") -> None:
 
 
 def discover_oidc(config: PublisherConfig) -> dict:
-    return http_request(f"{config.issuer}/.well-known/openid-configuration")
+    metadata = http_request(f"{config.issuer.rstrip('/')}/.well-known/openid-configuration")
+    if metadata.get("issuer") != config.issuer:
+        raise PublisherError("Identity provider metadata does not match the configured issuer")
+    return metadata
 
 
 def _validate_discovered_endpoint(url: str, config: PublisherConfig, label: str) -> str:
@@ -256,7 +292,7 @@ def device_flow_auth(
     _log("Starting device authorization...", json_output)
     device_response = http_request(
         device_endpoint,
-        data={"client_id": config.client_id, "scope": "openid"},
+        data={"client_id": config.client_id, "scope": " ".join(config.scopes)},
     )
     try:
         device_code = device_response["device_code"]
@@ -608,7 +644,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--json", action="store_true")
         _add_configuration_arguments(command)
 
-    logout = commands.add_parser("logout", help="Delete the cached token for this issuer and client")
+    logout = commands.add_parser("logout", help="Delete the cached token for this store and OAuth configuration")
     logout.add_argument("--json", action="store_true", help="Print the result as JSON")
     _add_configuration_arguments(logout)
     return parser

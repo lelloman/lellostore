@@ -97,10 +97,11 @@ object LocalDataModule {
     @Singleton
     fun provideAuthStoreImpl(
         @ApplicationContext context: Context,
-        @OidcConfigQualifier oidcConfig: OidcConfig,
+        configStore: ConfigStore,
+        serverDiscovery: com.lelloman.store.domain.config.ServerDiscovery,
         @ApplicationScope scope: CoroutineScope,
         logger: Logger,
-    ): AuthStoreImpl = AuthStoreImpl(context, oidcConfig, scope, logger)
+    ): AuthStoreImpl = AuthStoreImpl(context, null, scope, logger, configStore, serverDiscovery)
 
     @Provides
     @Singleton
@@ -119,7 +120,8 @@ object LocalDataModule {
         appsDao: AppsDao,
         appVersionsDao: AppVersionsDao,
         remoteApiClient: RemoteApiClient,
-    ): AppsRepository = AppsRepositoryImpl(appsDao, appVersionsDao, remoteApiClient)
+        session: com.lelloman.store.domain.config.StoreSession,
+    ): AppsRepository = AppsRepositoryImpl(appsDao, appVersionsDao, remoteApiClient, session)
 
     @Provides
     @Singleton

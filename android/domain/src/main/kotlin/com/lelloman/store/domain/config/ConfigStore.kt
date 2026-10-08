@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface ConfigStore {
     val serverUrl: StateFlow<String>
+    suspend fun readServerUrl(): String = serverUrl.value
     suspend fun setServerUrl(url: String): SetServerUrlResult
 
     sealed interface SetServerUrlResult {

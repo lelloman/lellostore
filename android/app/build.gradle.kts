@@ -16,17 +16,20 @@ val localProperties = Properties().apply {
     }
 }
 
-val defaultServerUrl: String = localProperties.getProperty("default.server.url", "https://store.lelloman.com")
+val defaultServerUrl: String = localProperties.getProperty("default.server.url", "")
 
 fun gitOutput(vararg arguments: String): String = providers.exec {
     workingDir(rootProject.projectDir)
     commandLine("git", *arguments)
 }.standardOutput.asText.get().trim()
 
-check(gitOutput("rev-parse", "--is-shallow-repository") == "false") {
-    "Android versioning requires full Git history. Run git fetch --unshallow."
+val explicitVersionCode = providers.gradleProperty("storeVersionCode").orNull
+val storeCommitCount = explicitVersionCode?.toInt() ?: run {
+    check(gitOutput("rev-parse", "--is-shallow-repository") == "false") {
+        "Provide -PstoreVersionCode=<release-code> or fetch full Git history."
+    }
+    gitOutput("rev-list", "--count", "HEAD").toInt()
 }
-val storeCommitCount = gitOutput("rev-list", "--count", "HEAD").toInt()
 val storeVersionMajor = providers.gradleProperty("storeVersionMajor").get().toInt()
 val storeVersionMinor = providers.gradleProperty("storeVersionMinor").get().toInt()
 require(storeVersionMajor >= 0 && storeVersionMinor >= 0 && storeCommitCount > 0)
@@ -39,7 +42,12 @@ val signingProperties = Properties().apply {
 }
 
 val companionAssets = layout.buildDirectory.dir("generated/companion-assets")
-val bundleRecoveryCompanion by tasks.registering(Copy::class) {
+val includeRecoveryCompanion = providers.gradleProperty("includeRecoveryCompanion")
+    .map(String::toBooleanStrict).getOrElse(signingProperties.containsKey("storeFile"))
+check(!includeRecoveryCompanion || signingProperties.containsKey("storeFile")) {
+    "Bundled recovery requires signing.properties so the app and companion share a release key."
+}
+val bundleRecoveryCompanion by tasks.registering(Sync::class) {
     dependsOn(":recovery:assembleRelease")
     from(project(":recovery").layout.buildDirectory.file("outputs/apk/release/recovery-release.apk"))
     into(companionAssets)
@@ -61,13 +69,15 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = storeCommitCount
-        versionName = "$storeVersionMajor.$storeVersionMinor.$storeCommitCount"
+        versionName = providers.gradleProperty("storeVersionName")
+            .orElse("$storeVersionMajor.$storeVersionMinor.$storeCommitCount").get()
 
         testInstrumentationRunner = "com.lelloman.store.HiltTestRunner"
 
         manifestPlaceholders["appAuthRedirectScheme"] = "com.lelloman.store"
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServerUrl\"")
+        buildConfigField("boolean", "RECOVERY_COMPANION_INCLUDED", includeRecoveryCompanion.toString())
     }
     signingConfigs {
         getByName("debug") {
@@ -116,17 +126,15 @@ android {
         compose = true
         buildConfig = true
     }
-    sourceSets["main"].assets.srcDir(companionAssets)
+    if (includeRecoveryCompanion) sourceSets["main"].assets.srcDir(companionAssets)
 }
 
-tasks.named("preBuild").configure { dependsOn(bundleRecoveryCompanion) }
+if (includeRecoveryCompanion) tasks.named("preBuild").configure { dependsOn(bundleRecoveryCompanion) }
 
 dependencies {
-    implementation(libs.paravoid.update.ipc) {
-        providers.gradleProperty("paravoidVersion").orNull?.let { requestedVersion ->
-            version { require(requestedVersion) }
-        }
-    }
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.ktx)
+    implementation(project(":paravoid-update-ipc"))
     // Modules
     implementation(project(":ui"))
     implementation(project(":domain"))

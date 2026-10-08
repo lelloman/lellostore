@@ -40,7 +40,7 @@ describe('Auth Store authorization', () => {
     vi.unstubAllEnvs()
   })
 
-  it('uses the configured admin role', () => {
+  it('does not trust provider profile roles before backend identity is loaded', () => {
     const store = useAuthStore()
     store.setUser({
       expired: false,
@@ -50,7 +50,7 @@ describe('Auth Store authorization', () => {
       },
     } as unknown as Parameters<typeof store.setUser>[0])
 
-    expect(store.isAdmin).toBe(true)
+    expect(store.isAdmin).toBe(false)
   })
 
   it('does not grant admin access to the default role when another role is configured', () => {

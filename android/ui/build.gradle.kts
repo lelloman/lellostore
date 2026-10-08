@@ -48,6 +48,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.zxing.embedded)
     implementation(project(":domain"))
     implementation(project(":logger"))
 

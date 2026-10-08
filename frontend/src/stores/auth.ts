@@ -14,27 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const accessToken = computed(() => user.value?.access_token ?? null)
   const userProfile = computed(() => user.value?.profile ?? null)
 
-  const userRoles = computed(() => {
-    const profile = user.value?.profile as Record<string, unknown> | undefined
-    if (!profile) return []
-
-    const claimPath = import.meta.env.VITE_OIDC_ROLE_CLAIM_PATH || 'realm_access.roles'
-    let claim: unknown = profile
-    for (const segment of claimPath.split('.')) {
-      if (!claim || typeof claim !== 'object') return []
-      claim = (claim as Record<string, unknown>)[segment]
-    }
-
-    if (typeof claim === 'string') return [claim]
-    if (!Array.isArray(claim)) return []
-    return claim.filter((role): role is string => typeof role === 'string')
-  })
-
-  const isAdmin = computed(() => {
-    if (backendIdentity.value) return backendIdentity.value.is_admin
-    const adminRole = import.meta.env.VITE_OIDC_ADMIN_ROLE || 'admin'
-    return userRoles.value.includes(adminRole)
-  })
+  const isAdmin = computed(() => backendIdentity.value?.is_admin ?? false)
 
   async function syncBackendIdentity() {
     backendIdentity.value = null
@@ -81,7 +61,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       await syncBackendIdentity()
     } catch (e) {
-      error.value = 'Unable to restore your session. Check your connection and retry.'
+      error.value = e instanceof Error ? `${e.message} You can retry.` : 'Unable to restore your session. Check your connection and retry.'
       console.error('Auth initialization error:', e)
     } finally {
       isLoading.value = false
@@ -93,7 +73,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await authService.login()
     } catch (e) {
-      error.value = 'Login failed'
+      error.value = e instanceof Error ? e.message : 'Login failed'
       console.error('Login error:', e)
     }
   }
@@ -170,7 +150,6 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     accessToken,
     userProfile,
-    userRoles,
     isAdmin,
     // Actions
     initialize,
