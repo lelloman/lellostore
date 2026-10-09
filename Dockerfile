@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 
 # Cache dependencies by building with empty source first
+ENV RUST_MIN_STACK=33554432
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # Create dummy source files for dependency caching
