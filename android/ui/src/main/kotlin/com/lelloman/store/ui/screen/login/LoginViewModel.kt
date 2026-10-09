@@ -30,6 +30,7 @@ class LoginViewModel @Inject constructor(
     val events: SharedFlow<LoginScreenEvent> = mutableEvents.asSharedFlow()
 
     private var authFlowInProgress = false
+    private var loginNavigationSent = false
     private var userHasEditedServerUrl = false
 
     init {
@@ -47,9 +48,7 @@ class LoginViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .collect { isAuthenticated ->
                     if (isAuthenticated && authFlowInProgress) {
-                        authFlowInProgress = false
-                        mutableState.value = mutableState.value.copy(isLoading = false)
-                        mutableEvents.emit(LoginScreenEvent.NavigateToMain)
+                        completeLogin()
                     }
                 }
         }
@@ -140,7 +139,9 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             when (result) {
                 is AuthResult.Success -> {
-                    // Success is handled by observeAuthState()
+                    // A restored session can already be authenticated before the
+                    // browser flow starts, so StateFlow may not emit again.
+                    completeLogin()
                 }
                 is AuthResult.Cancelled -> {
                     authFlowInProgress = false
@@ -154,6 +155,15 @@ class LoginViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun completeLogin() {
+        authFlowInProgress = false
+        mutableState.value = mutableState.value.copy(isLoading = false)
+        if (!loginNavigationSent) {
+            loginNavigationSent = true
+            mutableEvents.emit(LoginScreenEvent.NavigateToMain)
         }
     }
 

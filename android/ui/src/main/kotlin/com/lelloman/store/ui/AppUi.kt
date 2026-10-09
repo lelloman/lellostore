@@ -49,6 +49,7 @@ import net.openid.appauth.AuthorizationResponse
 fun AppUi(
     themeMode: ThemeMode = ThemeMode.System,
     isLoggedIn: Boolean = false,
+    isAuthLoading: Boolean = false,
     userEmail: String = "",
     onAuthResponse: (AuthorizationResponse?, AuthorizationException?, onResult: (AuthResult) -> Unit) -> Unit = { _, _, _ -> },
     onLogout: () -> Unit = {},
@@ -99,6 +100,7 @@ fun AppUi(
                         onNavigateToLogin = { navController.fromSplashToLogin() },
                         onNavigateToMain = { navController.fromSplashToMain() },
                         isLoggedIn = isLoggedIn,
+                        isAuthLoading = isAuthLoading,
                     )
                 }
 

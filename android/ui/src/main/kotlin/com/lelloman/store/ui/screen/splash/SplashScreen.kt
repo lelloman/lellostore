@@ -30,8 +30,10 @@ fun SplashScreen(
     onNavigateToMain: () -> Unit,
     isLoggedIn: Boolean,
     modifier: Modifier = Modifier,
+    isAuthLoading: Boolean = false,
 ) {
-    LaunchedEffect(isLoggedIn) {
+    LaunchedEffect(isLoggedIn, isAuthLoading) {
+        if (isAuthLoading) return@LaunchedEffect
         delay(500) // Brief splash delay
         if (isLoggedIn) {
             onNavigateToMain()

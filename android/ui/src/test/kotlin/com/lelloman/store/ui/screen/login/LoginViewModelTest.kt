@@ -160,6 +160,48 @@ class LoginViewModelTest {
             // Should emit NavigateToMain
             val navigateEvent = awaitItem()
             assertThat(navigateEvent).isEqualTo(LoginScreenEvent.NavigateToMain)
+            viewModel.onAuthResult(AuthResult.Success)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `successful login navigates when session was already restored`() = runTest {
+        fakeInteractor.mutableAuthState.value = AuthState.Loading
+        advanceUntilIdle()
+        fakeInteractor.mutableAuthState.value = AuthState.Authenticated("test@example.com")
+        advanceUntilIdle()
+
+        viewModel.events.test {
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+            assertThat(awaitItem()).isInstanceOf(LoginScreenEvent.LaunchAuth::class.java)
+
+            viewModel.onAuthResult(AuthResult.Success)
+            advanceUntilIdle()
+            assertThat(awaitItem()).isEqualTo(LoginScreenEvent.NavigateToMain)
+            assertThat(viewModel.state.value.isLoading).isFalse()
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `success callback before auth observation navigates only once`() = runTest {
+        viewModel.events.test {
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+            viewModel.onLoginClick()
+            advanceUntilIdle()
+            assertThat(awaitItem()).isInstanceOf(LoginScreenEvent.LaunchAuth::class.java)
+            viewModel.onAuthResult(AuthResult.Success)
+            advanceUntilIdle()
+            assertThat(awaitItem()).isEqualTo(LoginScreenEvent.NavigateToMain)
+            fakeInteractor.mutableAuthState.value = AuthState.Authenticated("test@example.com")
+            advanceUntilIdle()
+            expectNoEvents()
         }
     }
 

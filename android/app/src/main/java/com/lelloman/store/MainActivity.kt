@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
                 AppUi(
                     themeMode = themeMode,
                     isLoggedIn = isLoggedIn,
+                    isAuthLoading = domainAuthState is DomainAuthState.Loading,
                     userEmail = userEmail,
                     onAuthResponse = { response, exception, onResult ->
                         authStoreImpl.handleAuthResponse(response, exception) { domainResult ->
