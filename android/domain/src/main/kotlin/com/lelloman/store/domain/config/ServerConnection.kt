@@ -12,6 +12,8 @@ data class ServerMetadata(
 
 interface ServerDiscovery {
     suspend fun discover(serverUrl: String): ServerMetadata
+    /** Only an explicit deployment migration may bind a pre-discovery session. */
+    fun canMigrateLegacySession(serverUrl: String, oidc: OidcConfig): Boolean = false
 }
 
 object ServerAddress {

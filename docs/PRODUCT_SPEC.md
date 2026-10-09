@@ -89,8 +89,14 @@ The LelloStore deployment eventually pins a public product release and contains 
 - A source-only export builds a debug APK using explicit version inputs, without Git history, signing files, or a sibling checkout. The optional recovery companion is excluded from unsigned builds; its signature checks remain intact.
 - The pinned Paravoid Java interoperability test passes with an explicit upstream source path and Android SDK.
 
+### October 9 upgrade regression and repair
+
+The deployed Android 1.18.256 client required discovery before the live backend supplied it. The live `/api/server-config` returned HTTP 200 with website HTML, and the client rejected old saved sessions without a server-origin binding. On the connected device this forced the login screen and exposed a JSON parsing error.
+
+The repair adds a migration-only bridge for existing LelloStore installations, checks the original OAuth issuer/client/callback before binding old sessions, and reports unsupported server responses clearly. It does not add a personal default or fallback for fresh installations or arbitrary servers. App, local-data, and domain suites passed (200 tests). Repair build 1.18.257 was installed over the existing app without clearing data; the saved session restored, the catalog displayed all 13 apps, and authenticated API requests returned HTTP 200. The live backend was not changed. This verifies the specific upgrade regression, not the remaining independent-provider and fresh-install acceptance.
+
 ### Remaining acceptance and release work
 
-Exercise full browser/device login against two real OIDC configurations, QR camera scanning, upload/install/update, disabled integrations, and interrupted switching. No Android device is currently connected. Discovery advertises optional capabilities; capability-aware client behavior needs final acceptance. Test the existing production client upgrade and restore a backup before switching the live deployment.
+Exercise full browser/device login against two real OIDC configurations, QR camera scanning, upload/install/update, disabled integrations, and interrupted switching. One connected Android device was used for the upgrade repair above; the broader acceptance remains open. Discovery advertises optional capabilities; capability-aware client behavior needs final acceptance. Restore a backup before switching the live deployment.
 
 Select the product name and public repository owner/name; the repository destination is explicitly undecided. The project license is Apache 2.0 and the release Android application ID remains `com.lelloman.store`. Third-party and vendored-source redistribution still needs review before publishing. Publish a reviewed source snapshot or reviewed history, create a pinned release, then prepare the existing repository as a deployment consuming that release. Live infrastructure has not been changed.

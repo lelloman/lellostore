@@ -15,7 +15,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class HttpServerDiscovery @Inject constructor() : ServerDiscovery {
+class HttpServerDiscovery @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context?,
+) : ServerDiscovery {
     // Never reuse the authenticated catalog client for discovery.
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .callTimeout(15, TimeUnit.SECONDS).build()
@@ -23,15 +25,37 @@ class HttpServerDiscovery @Inject constructor() : ServerDiscovery {
     override suspend fun discover(serverUrl: String): ServerMetadata = withContext(Dispatchers.IO) {
         val origin = ServerAddress.normalize(serverUrl)
         client.newCall(Request.Builder().url("$origin/api/server-config").build()).execute().use { response ->
-            check(response.code != 503) { "This store is not configured yet. Ask its operator to finish setup." }
-            check(response.isSuccessful) { "Could not read this store's configuration (${response.code}). Check the address." }
-            val source = requireNotNull(response.body).source()
-            source.request(65537)
-            check(source.buffer.size <= 65536) { "Server configuration is too large" }
-            val bytes = source.buffer.readByteArray()
-            parse(JSONObject(bytes.toString(Charsets.UTF_8)))
+            readResponse(origin, response)
         }
     }
+
+    internal fun readResponse(origin: String, response: okhttp3.Response): ServerMetadata {
+        if (response.code == 404 || response.code == 405 ||
+            (response.isSuccessful && response.body?.contentType()?.subtype == "html")) {
+            return legacyOrUnsupported(origin)
+        }
+        check(response.code != 503) { "This store is not configured yet. Ask its operator to finish setup." }
+        check(response.isSuccessful) { "Could not read this store's configuration (${response.code}). Check the address." }
+        val source = requireNotNull(response.body).source()
+        source.request(65537)
+        check(source.buffer.size <= 65536) { "Server configuration is too large" }
+        val bytes = source.buffer.readByteArray()
+        val body = bytes.toString(Charsets.UTF_8).trim()
+        if (body.startsWith("<!DOCTYPE html", ignoreCase = true) || body.startsWith("<html", ignoreCase = true)) {
+            return legacyOrUnsupported(origin)
+        }
+        val root = try { JSONObject(body) } catch (_: org.json.JSONException) {
+            error("This server returned invalid setup information. Ask its operator to check /api/server-config.")
+        }
+        return parse(root)
+    }
+
+    internal fun legacyOrUnsupported(origin: String): ServerMetadata =
+        LegacyDeploymentMigration.metadata(context, origin)
+            ?: error("This server does not support app setup yet. Ask its operator to upgrade the backend.")
+
+    override fun canMigrateLegacySession(serverUrl: String, oidc: OidcConfig): Boolean =
+        LegacyDeploymentMigration.canMigrateSession(context, serverUrl, oidc)
 
     internal fun parse(root: JSONObject): ServerMetadata {
         check(root.getInt("schema_version") == 1) { "Unsupported server setup version. Update the app." }

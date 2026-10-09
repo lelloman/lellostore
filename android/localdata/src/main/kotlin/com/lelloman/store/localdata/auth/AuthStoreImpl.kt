@@ -94,13 +94,22 @@ class AuthStoreImpl(
         val savedServer = encryptedPrefs.getString(KEY_SERVER, null)
         val stateJson = encryptedPrefs.getString(KEY_AUTH_STATE, null)
         val restored = try {
-            if (stateJson == null || (configStore != null && (server.isBlank() || savedServer != server))) {
+            if (stateJson == null || (configStore != null && server.isBlank())) {
                 null
             } else {
                 val state = net.openid.appauth.AuthState.jsonDeserialize(stateJson)
+                val request = state.lastAuthorizationResponse?.request
+                val savedOidc = request?.configuration?.discoveryDoc?.issuer?.toString()?.let { issuer ->
+                    OidcConfig(issuer, request.clientId, request.redirectUri.toString())
+                }
+                if (configStore != null && savedServer != server) {
+                    check(savedServer == null && savedOidc != null &&
+                        serverDiscovery?.canMigrateLegacySession(server, savedOidc) == true) {
+                        "Saved sign-in belongs to another server. Sign in again."
+                    }
+                }
                 if (serverDiscovery != null) {
                     val current = serverDiscovery.discover(server).oidc
-                    val request = state.lastAuthorizationResponse?.request
                     check(request?.clientId == current.clientId &&
                         request.configuration.discoveryDoc?.issuer?.toString() == current.issuerUrl) {
                         "The store's sign-in configuration changed. Sign in again."
@@ -118,6 +127,7 @@ class AuthStoreImpl(
             if (generation != epoch) return
             boundServer = if (restored != null) server else null
             appAuthState = restored
+            if (restored != null && savedServer == null) saveAuthState(restored)
             mutableAuthState.value = if (restored != null) {
                 AuthState.Authenticated(extractEmail(restored) ?: "Unknown")
             } else AuthState.NotAuthenticated
