@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 interface AuthStore {
     val authState: StateFlow<AuthState>
     suspend fun getAccessToken(): String?
+
+    /** Like [getAccessToken], but refreshes early unless the token stays valid for [minValiditySeconds]. */
+    suspend fun getAccessToken(minValiditySeconds: Long): String? = getAccessToken()
     suspend fun logout()
 }
 

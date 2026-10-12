@@ -151,11 +151,18 @@ class AuthStoreImpl(
         }
     }
 
-    override suspend fun getAccessToken(): String? = tokenRefreshMutex.withLock {
+    override suspend fun getAccessToken(): String? = getAccessToken(0)
+
+    override suspend fun getAccessToken(minValiditySeconds: Long): String? = tokenRefreshMutex.withLock {
         val state = appAuthState ?: return@withLock null
         if (configStore != null && boundServer != configStore.readServerUrl()) return@withLock null
         val epoch = synchronized(stateLock) { generation }
 
+        // AppAuth alone refreshes only within a minute of expiry.
+        val expiresAt = state.accessTokenExpirationTime
+        if (minValiditySeconds > 0 && expiresAt != null && expiresAt - System.currentTimeMillis() < minValiditySeconds * 1000) {
+            state.needsTokenRefresh = true
+        }
         val refresh = state.needsTokenRefresh
         val requestId = java.util.UUID.randomUUID().toString()
         if (refresh) logger.audit("auth.refresh_started", mapOf("request_id" to requestId))

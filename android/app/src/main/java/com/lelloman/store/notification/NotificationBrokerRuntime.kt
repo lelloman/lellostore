@@ -73,6 +73,9 @@ class NotificationBrokerRuntime @Inject constructor(
     private var serverUrl = ""
     private var connectionEpoch = ""
     private var authExpires = 0L
+    // Seconds before session expiry to renew. Delayed alarms on some devices easily
+    // exceed a minute, so this scales with the access token lifetime.
+    private var renewLead = 300L
     private var connectedAt = 0L
     private var lastIncoming = 0L
     private var lastTraffic = 0L
@@ -225,12 +228,18 @@ class NotificationBrokerRuntime @Inject constructor(
             candidateIdleFailure = if (pingLate <= 10_000 && pingIdle >= heartbeat.interval * 3 / 4) network else null
             disconnect("Heartbeat unanswered"); schedule(); return@withLock
         }
-        if (System.currentTimeMillis() / 1000 >= authExpires - 60) {
-            val token = storeAccessToken()
-            if (token == null) { disconnect("Sign-in renewal unavailable"); schedule(); return@withLock }
-            if (!sameIdentity(token)) { resetIdentity(); disconnect("Account changed"); schedule(); return@withLock }
-            sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token))
-            lastTraffic = elapsed
+        val now = System.currentTimeMillis() / 1000
+        if (now >= authExpires - renewLead) {
+            val token = storeAccessToken(minValiditySeconds = renewLead * 3 / 2)
+            if (token == null) {
+                // The session is still valid; later pulses retry until it nearly expires.
+                if (now >= authExpires - 60) { disconnect("Sign-in renewal unavailable"); schedule(); return@withLock }
+            } else {
+                if (!sameIdentity(token)) { resetIdentity(); disconnect("Account changed"); schedule(); return@withLock }
+                renewLead = renewLeadFor(tokenClaims(token))
+                sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token))
+                lastTraffic = elapsed
+            }
         }
         if (pingNonce == null && elapsed - lastTraffic >= heartbeat.interval) {
             pingNonce = UUID.randomUUID().toString(); pingAt = elapsed; pingIdle = elapsed - lastIncoming
@@ -243,11 +252,12 @@ class NotificationBrokerRuntime @Inject constructor(
 
     // Called while holding the broker mutex. A delayed lifecycle callback must
     // never send the new store's access token to an old broker destination.
-    internal suspend fun storeAccessToken(destination: String = serverUrl): String? {
+    internal suspend fun storeAccessToken(destination: String = serverUrl, minValiditySeconds: Long = 0): String? {
         val epoch = lifecycleEpoch.get()
         val selected = config.readServerUrl().trimEnd('/')
         if (destination.isBlank() || selected != destination) return null
-        return auth.getAccessToken().takeIf {
+        val token = if (minValiditySeconds > 0) auth.getAccessToken(minValiditySeconds) else auth.getAccessToken()
+        return token.takeIf {
             epoch == lifecycleEpoch.get() && config.readServerUrl().trimEnd('/') == selected
         }
     }
@@ -255,8 +265,9 @@ class NotificationBrokerRuntime @Inject constructor(
     private suspend fun connect() {
         setStatus("Connecting")
         try {
-            val token = storeAccessToken() ?: error("Sign-in required")
+            val token = storeAccessToken(minValiditySeconds = renewLead * 3 / 2) ?: error("Sign-in required")
             val claims = tokenClaims(token)
+            renewLead = renewLeadFor(claims)
             val identity = "$serverUrl\n${claims.getString("iss")}\n${claims.getString("sub")}"
             device = credentials.read()
             if (device?.optString("identity") != identity) {
@@ -291,7 +302,8 @@ class NotificationBrokerRuntime @Inject constructor(
                     audit.record("push.socket_closed", mapOf("connection_id" to epoch, "code" to code))
                     failed()
                 }
-                override fun onClosing(ws: WebSocket, code: Int, reason: String) { ws.close(code, null) }
+                // Echoing the peer's code fails for reserved codes such as 1005 (no status).
+                override fun onClosing(ws: WebSocket, code: Int, reason: String) { ws.close(1000, null) }
                 private fun failed() { scope.launch { mutex.withLock { if (epoch == connectionEpoch && enabled) { disconnect("Disconnected; reconnecting"); schedule() } } } }
             })
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -311,6 +323,9 @@ class NotificationBrokerRuntime @Inject constructor(
         return device?.optString("identity") == "$serverUrl\n${c.getString("iss")}\n${c.getString("sub")}"
     }
     private fun tokenClaims(token: String): JSONObject = JSONObject(String(android.util.Base64.decode(token.split('.')[1], android.util.Base64.URL_SAFE), Charsets.UTF_8))
+    // Renewing at half the lifetime leaves the other half to absorb delayed alarms.
+    private fun renewLeadFor(claims: JSONObject): Long =
+        if (claims.has("iat") && claims.has("exp")) ((claims.getLong("exp") - claims.getLong("iat")) / 2).coerceIn(30, 600) else 300
     private fun closeSocket() {
         if (socket != null) audit.record("push.socket_cancelled", mapOf("connection_id" to connectionEpoch))
         connectionEpoch = ""; socket?.cancel(); socket = null; ready = false; activeRoutes = emptySet(); pingNonce = null
@@ -333,7 +348,7 @@ class NotificationBrokerRuntime @Inject constructor(
             socket == null -> retryAt
             !ready -> connectedAt + 30_000
             pingNonce != null -> pingAt + AdaptiveHeartbeat.ACK_TIMEOUT
-            else -> minOf(lastTraffic + heartbeat.interval, now + ((authExpires - 60) * 1000 - System.currentTimeMillis()).coerceAtLeast(30_000))
+            else -> minOf(lastTraffic + heartbeat.interval, now + ((authExpires - renewLead) * 1000 - System.currentTimeMillis()).coerceAtLeast(30_000))
         }
         scheduledAt = maxOf(now + 1000, next)
         if (Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()) {
