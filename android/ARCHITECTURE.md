@@ -131,15 +131,18 @@ Verified APK downloads are submitted to an ordered installation coordinator.
 Foreground and background requests first try silent channels and only foreground
 requests may fall back to Android's interactive Package Installer:
 
-1. Silent Package Installer updates (Android 12+). A `PackageInstaller` session with
+1. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
+2. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
+3. Silent Package Installer updates (Android 12+). A `PackageInstaller` session with
    `USER_ACTION_NOT_REQUIRED` and `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. Android only skips
    the prompt for updates of LelloStore itself or of packages whose installer of record (or
    update owner) is LelloStore, and only when the APK meets the Android version's target-SDK
    floor. The channel checks these conditions first and reports itself unavailable instead
    of creating a session. If Android still answers `STATUS_PENDING_USER_ACTION`, the session
-   is abandoned and the next channel is tried.
-2. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
-3. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
+   is abandoned and the next channel is tried. It ranks after the ADB channels because
+   Google Play Protect asks to scan every APK it has not seen before ("App scan
+   recommended") when installed this way, while it skips ADB installs unless "Verify apps
+   over USB" is enabled. It still needs no ADB, so it keeps updates working when ADB is off.
 4. Android Package Installer for foreground requests.
 
 This is also the migration-safe default for existing installs. Settings persists the

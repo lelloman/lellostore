@@ -33,7 +33,9 @@ class SilentPackageInstallerChannel @Inject constructor(
         id = ID,
         displayName = "Android package installer (silent updates)",
         requiresUserInteraction = false,
-        priority = 0,
+        // After the ADB channels: Play Protect skips ADB installs (unless "Verify apps over
+        // USB" is on) but asks to scan every new APK installed through PackageInstaller.
+        priority = 30,
     )
 
     override suspend fun install(request: InstallationRequest): ChannelInstallationResult =
