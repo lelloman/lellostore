@@ -26,6 +26,7 @@ class UpdateCheckWorker @AssistedInject constructor(
     private val downloadManager: DownloadManager,
     private val notificationHelper: NotificationHelper,
     private val workerForegroundController: WorkerForegroundController,
+    private val automaticDownloadGate: AutomaticDownloadGate,
     private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -41,7 +42,11 @@ class UpdateCheckWorker @AssistedInject constructor(
                 onSuccess = { updates ->
                     var retryNeeded = false
                     val remainingUpdates = updates.filterNot { it.autoUpdateEnabled }.toMutableList()
+                    // Deferred updates stay visible in the Updates screen; the queued
+                    // unmetered check installs them, so no notification is posted.
                     val automaticUpdates = updates.filter { it.autoUpdateEnabled }
+                        .takeUnless { it.isNotEmpty() && automaticDownloadGate.deferUntilUnmetered() }
+                        .orEmpty()
                     val progressObserver = if (automaticUpdates.isNotEmpty()) {
                         workerForegroundController.setForeground(
                             this@UpdateCheckWorker,
@@ -115,6 +120,7 @@ class UpdateCheckWorker @AssistedInject constructor(
     companion object {
         const val WORK_NAME = "update_check_work"
         const val IMMEDIATE_WORK_NAME = "immediate_update_check_work"
+        const val UNMETERED_WORK_NAME = "unmetered_update_check_work"
         private const val MAX_RETRIES = 3
     }
 }

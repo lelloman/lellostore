@@ -6,9 +6,8 @@
     <string name="cancel">Cancel</string>
     <string name="done">Done</string>
     <string name="save">Save</string>
-    <string name="saved">Saved</string>
     <string name="dismiss">Dismiss</string>
-    <string name="logout">Logout</string>
+    <string name="logout">Log out</string>
     <string name="unknown_error">Unknown error</string>
 
     <!-- Navigation -->
@@ -117,8 +116,8 @@
     <string name="settings_theme">Theme</string>
     <string name="settings_updates">Updates</string>
     <string name="settings_auto_update_default">Automatic updates</string>
-    <string name="settings_auto_update_default_subtitle">Default for newly added apps</string>
-    <string name="settings_release_channel_default">Preferred release channel</string>
+    <string name="settings_auto_update_default_subtitle">Install updates in the background</string>
+    <string name="settings_release_channel_default">Release channel</string>
     <string name="release_channel_stable">Stable</string>
     <string name="release_channel_beta">Beta</string>
     <string name="no_release_for_channel">No %1$s release is currently available.</string>
@@ -129,32 +128,27 @@
     <string name="option_on">On</string>
     <string name="option_off">Off</string>
     <string name="settings_check_for_updates">Check for updates</string>
-    <string name="settings_wifi_only">WiFi only downloads</string>
-    <string name="settings_wifi_only_subtitle">Only download app updates over WiFi</string>
+    <string name="settings_wifi_only">Automatic updates on Wi‑Fi only</string>
+    <string name="settings_wifi_only_subtitle">On mobile data, automatic updates wait for Wi‑Fi. Manual installs are not affected.</string>
     <string name="settings_installation">Installation</string>
     <string name="installation_channels_intro">Enabled channels are tried from top to bottom. Background updates skip channels that require confirmation.</string>
     <string name="installation_channel_legacy_adb">ADB on port 5555</string>
     <string name="installation_channel_wireless_adb">Wireless debugging</string>
     <string name="installation_channel_package_installer">Android package installer</string>
     <string name="installation_channel_background">Automatic · no confirmation when provisioned</string>
-    <string name="installation_channel_interactive">Interactive · requires confirmation</string>
+    <string name="installation_channel_interactive">Asks for confirmation on every install</string>
     <string name="installation_channel_move_up">Move %1$s up</string>
     <string name="installation_channel_move_down">Move %1$s down</string>
-    <string name="legacy_adb_setup">Set up ADB on port 5555</string>
-    <string name="legacy_adb_setup_subtitle">Primary channel for automatic installations</string>
-    <string name="legacy_adb_test">Test port 5555 connection</string>
     <string name="legacy_adb_intro">LelloStore first tries the local ADB service on port 5555. This enables unattended installations without keeping Wireless Debugging switched on.</string>
     <string name="legacy_adb_step_one">1. Connect this device to a trusted computer over USB and authorize that computer if Android asks.</string>
     <string name="legacy_adb_step_two">2. With Android Platform Tools installed, run:</string>
     <string name="legacy_adb_command">adb tcpip 5555</string>
-    <string name="legacy_adb_step_three">3. Return to LelloStore and tap “Test port 5555 connection”. Android may ask once whether LelloStore may use ADB.</string>
+    <string name="legacy_adb_step_three">3. Return to LelloStore and tap “Test connection”. Android may ask once whether LelloStore may use ADB.</string>
     <string name="legacy_adb_security_warning">Security note: Android listens on all network interfaces. Use this only on a trusted private network. Most phones close port 5555 after reboot, so repeat provisioning when necessary.</string>
-    <string name="adb_connection_not_tested">Tap to test the connection</string>
+    <string name="adb_connection_not_tested">Tap to set up or test</string>
     <string name="adb_connection_testing">Testing connection…</string>
     <string name="adb_connection_ready">Ready · %1$s</string>
     <string name="adb_connection_unavailable">Unavailable · %1$s</string>
-    <string name="wireless_debugging_setup">Set up Wireless Debugging</string>
-    <string name="wireless_debugging_setup_subtitle">Pair once; re-enable after a reboot</string>
     <string name="wireless_debugging_setup_intro">LelloStore uses Android’s encrypted Wireless Debugging connection to install updates without confirmation prompts. Pairing normally survives a reboot, even when Android switches Wireless Debugging off.</string>
     <string name="wireless_debugging_step_one">1. Connect this device to Wi‑Fi.</string>
     <string name="wireless_debugging_step_two">2. Open Developer settings with the button below and enable Wireless debugging.</string>
@@ -167,19 +161,12 @@
     <string name="pairing_show_help">How do I get a code?</string>
     <string name="pairing_hide_help">Hide instructions</string>
     <string name="pair_and_test">Pair and test</string>
-    <string name="settings_wireless_debugging">Test connection</string>
-    <string name="wireless_debugging_not_tested">Tap to test the paired TLS connection</string>
-    <string name="wireless_debugging_testing">Testing connection…</string>
     <string name="wireless_debugging_pairing">Pairing with Android…</string>
-    <string name="wireless_debugging_ready">Ready · %1$s</string>
-    <string name="wireless_debugging_unavailable">Unavailable · %1$s</string>
     <string name="settings_server">Server</string>
     <string name="settings_account">Account</string>
-    <string name="settings_logged_in_as">Logged in as</string>
+    <string name="settings_logged_in_as">Signed in as</string>
     <string name="logout_subtitle">Sign out of this device</string>
-    <string name="settings_about">About</string>
     <string name="settings_app_version">App version</string>
-    <string name="settings_invalid_url">Invalid URL</string>
 
     <!-- Theme Options -->
     <string name="theme_system">System</string>
@@ -193,7 +180,7 @@
     <string name="interval_manual">Manual only</string>
 
     <!-- Logout Dialog -->
-    <string name="logout_confirmation">Are you sure you want to logout?</string>
+    <string name="logout_confirmation">Are you sure you want to log out?</string>
 
     <!-- Content Descriptions -->
     <string name="content_description_selected">Selected</string>
@@ -207,8 +194,8 @@
     <string name="paravoid_repair_confirm">Reinstall</string>
     <string name="paravoid_manage_updates">Manage app updates</string>
     <string name="paravoid_controls_unavailable">Update controls are unavailable. Open the app to manage its updates.</string>
-    <string name="settings_keep_update_connection">Shared notifications</string>
-    <string name="settings_keep_update_connection_subtitle">Keep one connection for notifications and app updates. Requires unrestricted battery use and shows an ongoing notification. Without this exemption, no app that relies on LelloStore can receive push notifications.</string>
+    <string name="settings_keep_update_connection">Push connection</string>
+    <string name="settings_keep_update_connection_subtitle">Keep a connection open so LelloStore and the apps using it get notifications instantly. Shows an ongoing notification.</string>
     <string name="push_battery_warning_title">Battery optimization blocks push notifications</string>
     <string name="push_battery_warning_text">LelloStore is not excluded from battery optimization (Doze). Allow unrestricted battery use so LelloStore and apps using it can receive push notifications.</string>
     <string name="push_battery_open_settings">Open battery settings</string>
@@ -218,4 +205,16 @@
     <string name="login_choose_store">Choose a store before signing in.</string>
     <string name="login_check_server">Check server</string>
     <string name="login_confirm_sign_in">Confirm and sign in</string>
+    <string name="settings_update_defaults_hint">Every app follows these unless you change them on its own page.</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_push_registrations">Registered apps</string>
+    <string name="settings_push_registrations_subtitle">Apps that receive push notifications through LelloStore</string>
+    <string name="installation_channel_order">Channel order</string>
+    <string name="installation_channel_order_subtitle">Enabled channels are tried from top to bottom</string>
+    <string name="test_connection">Test connection</string>
+    <string name="settings_system">System</string>
+    <string name="settings_server_change">Change server</string>
+    <string name="settings_server_change_warning">Changing the server signs you out.</string>
+    <string name="settings_server_invalid_url">Invalid URL</string>
+    <string name="settings_server_unreachable">Cannot use this server: %1$s</string>
 </resources>

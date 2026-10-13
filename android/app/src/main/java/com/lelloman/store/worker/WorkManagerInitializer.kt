@@ -66,6 +66,20 @@ class WorkManagerInitializer @Inject constructor(
         )
     }
 
+    fun enqueueUnmeteredUpdateCheck() {
+        val request = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
+            )
+            .build()
+
+        workManager.enqueueUniqueWork(
+            UpdateCheckWorker.UNMETERED_WORK_NAME,
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
+    }
+
     private fun scheduleUpdateCheck(interval: UpdateCheckInterval) {
         if (interval == UpdateCheckInterval.Manual) {
             // Cancel any existing periodic work when set to Manual

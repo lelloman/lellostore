@@ -40,9 +40,9 @@ class UserPreferencesStoreImpl(
 
     override val wifiOnlyDownloads: StateFlow<Boolean> = dataStore.data
         .map { preferences ->
-            preferences[PreferencesKeys.WIFI_ONLY_DOWNLOADS] ?: true
+            preferences[PreferencesKeys.WIFI_ONLY_DOWNLOADS] ?: false
         }
-        .stateIn(scope, SharingStarted.Eagerly, true)
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
     override val keepUpdateConnection: StateFlow<Boolean> = dataStore.data
         .map { it[PreferencesKeys.KEEP_UPDATE_CONNECTION] ?: false }

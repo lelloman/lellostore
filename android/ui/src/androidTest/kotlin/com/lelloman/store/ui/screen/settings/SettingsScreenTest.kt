@@ -42,6 +42,9 @@ class SettingsScreenTest {
                         onTestWirelessDebugging = {},
                         onPairWirelessDebugging = {},
                         onOpenDeveloperSettings = {},
+                        onOpenPushRegistrations = {},
+                        onOpenRecoverySetup = {},
+                        onOpenLocalLogs = {},
                         onServerUrlInputChanged = {},
                         onServerUrlSave = {},
                         onLogoutClick = {},
@@ -56,7 +59,7 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun installationChannelCanBeDisabledAndMoved() {
+    fun installationChannelCanBeDisabledAndReordered() {
         var disabledId: String? = null
         var movedId: String? = null
         var moveOffset: Int? = null
@@ -98,6 +101,9 @@ class SettingsScreenTest {
                         onTestWirelessDebugging = {},
                         onPairWirelessDebugging = {},
                         onOpenDeveloperSettings = {},
+                        onOpenPushRegistrations = {},
+                        onOpenRecoverySetup = {},
+                        onOpenLocalLogs = {},
                         onServerUrlInputChanged = {},
                         onServerUrlSave = {},
                         onLogoutClick = {},
@@ -106,15 +112,15 @@ class SettingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("ADB on port 5555")
+        composeRule.onNodeWithText("Android package installer")
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText("Channel order").performScrollTo().performClick()
         composeRule.onNodeWithContentDescription("Move Android package installer up")
-            .performScrollTo()
             .performClick()
 
         composeRule.runOnIdle {
-            assertThat(disabledId).isEqualTo("legacy-adb")
+            assertThat(disabledId).isEqualTo("package-installer")
             assertThat(movedId).isEqualTo("package-installer")
             assertThat(moveOffset).isEqualTo(-1)
         }

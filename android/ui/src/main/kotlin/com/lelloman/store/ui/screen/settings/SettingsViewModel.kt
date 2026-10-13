@@ -208,20 +208,17 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onServerUrlSave() {
+        if (mutableState.value.serverUrlSaving) return
+        mutableState.value = mutableState.value.copy(serverUrlSaving = true, serverUrlError = null)
         viewModelScope.launch {
             val result = interactor.setServerUrl(mutableState.value.serverUrlInput)
-            when (result) {
-                is SetServerUrlResult.Success -> {
-                    mutableState.value = mutableState.value.copy(serverUrlError = null)
-                    mutableEvents.emit(SettingsScreenEvent.NavigateToLogin)
-                }
-                is SetServerUrlResult.Error -> {
-                    mutableState.value = mutableState.value.copy(serverUrlError = result.message)
-                }
-                is SetServerUrlResult.InvalidUrl -> {
-                    mutableState.value = mutableState.value.copy(serverUrlError = "Invalid URL")
-                }
+            val error = when (result) {
+                is SetServerUrlResult.Success -> null
+                is SetServerUrlResult.Error -> ServerUrlError.Unreachable(result.message)
+                is SetServerUrlResult.InvalidUrl -> ServerUrlError.Invalid
             }
+            mutableState.value = mutableState.value.copy(serverUrlSaving = false, serverUrlError = error)
+            if (error == null) mutableEvents.emit(SettingsScreenEvent.NavigateToLogin)
         }
     }
 
@@ -260,7 +257,7 @@ class SettingsViewModel @Inject constructor(
 data class SettingsScreenState(
     val themeMode: ThemeModeOption = ThemeModeOption.System,
     val updateCheckInterval: UpdateCheckIntervalOption = UpdateCheckIntervalOption.Hours24,
-    val wifiOnlyDownloads: Boolean = true,
+    val wifiOnlyDownloads: Boolean = false,
     val keepUpdateConnection: Boolean = false,
     val autoUpdateDefault: Boolean = true,
     val releaseChannelDefault: ReleaseChannelOption = ReleaseChannelOption.Stable,
@@ -270,7 +267,8 @@ data class SettingsScreenState(
     val userEmail: String? = null,
     val serverUrl: String = "",
     val serverUrlInput: String = "",
-    val serverUrlError: String? = null,
+    val serverUrlError: ServerUrlError? = null,
+    val serverUrlSaving: Boolean = false,
     val appVersion: String = "",
 )
 
@@ -289,8 +287,13 @@ sealed interface AdbConnectionState {
     data class Unavailable(val reason: String) : AdbConnectionState
 }
 
-private val AdbConnectionState.isBusy: Boolean
+internal val AdbConnectionState.isBusy: Boolean
     get() = this == AdbConnectionState.Testing || this == AdbConnectionState.Pairing
+
+sealed interface ServerUrlError {
+    data object Invalid : ServerUrlError
+    data class Unreachable(val message: String) : ServerUrlError
+}
 
 sealed interface SettingsScreenEvent {
     data object NavigateToLogin : SettingsScreenEvent

@@ -31,6 +31,9 @@ class UpdateCheckWorkerTest {
     private val downloadManager: DownloadManager = mockk(relaxed = true)
     private val notifications: NotificationHelper = mockk(relaxed = true)
     private val foregroundController: WorkerForegroundController = mockk(relaxed = true)
+    private val downloadGate: AutomaticDownloadGate = mockk {
+        every { deferUntilUnmetered() } returns false
+    }
 
     init {
         every { downloadManager.activeDownloads } returns MutableStateFlow(emptyMap())
@@ -98,6 +101,28 @@ class UpdateCheckWorkerTest {
         verify(exactly = 0) { notifications.showUpdatesAvailableNotification(any()) }
     }
 
+    @Test
+    fun `automatic update waits for unmetered network without notifying`() = runTest {
+        coEvery { updateChecker.checkForUpdates() } returns Result.success(listOf(update(autoUpdate = true)))
+        every { downloadGate.deferUntilUnmetered() } returns true
+
+        val result = worker().doWork()
+
+        assertThat(result).isEqualTo(ListenableWorker.Result.success())
+        coVerify(exactly = 0) { downloadManager.downloadAndInstall(any(), any(), any()) }
+        coVerify(exactly = 0) { foregroundController.setForeground(any(), any()) }
+        verify(exactly = 0) { notifications.showUpdatesAvailableNotification(any()) }
+    }
+
+    @Test
+    fun `download gate is not consulted without automatic updates`() = runTest {
+        coEvery { updateChecker.checkForUpdates() } returns Result.success(listOf(update(autoUpdate = false)))
+
+        worker().doWork()
+
+        verify(exactly = 0) { downloadGate.deferUntilUnmetered() }
+    }
+
     private fun worker() = UpdateCheckWorker(
         appContext = mockk<Context>(relaxed = true),
         workerParams = mockk<WorkerParameters>(relaxed = true),
@@ -105,6 +130,7 @@ class UpdateCheckWorkerTest {
         downloadManager = downloadManager,
         notificationHelper = notifications,
         workerForegroundController = foregroundController,
+        automaticDownloadGate = downloadGate,
     )
 
     private fun update(autoUpdate: Boolean) = AvailableUpdate(

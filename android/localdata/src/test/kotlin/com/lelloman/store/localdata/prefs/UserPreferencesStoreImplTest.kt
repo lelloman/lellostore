@@ -105,31 +105,31 @@ class UserPreferencesStoreImplTest {
     }
 
     @Test
-    fun `wifiOnlyDownloads defaults to true`() = testScope.runTest {
-        assertThat(preferencesStore.wifiOnlyDownloads.value).isTrue()
+    fun `wifiOnlyDownloads defaults to false`() = testScope.runTest {
+        assertThat(preferencesStore.wifiOnlyDownloads.value).isFalse()
     }
 
     @Test
     fun `setWifiOnlyDownloads updates flow`() = testScope.runTest {
         preferencesStore.wifiOnlyDownloads.test {
-            assertThat(awaitItem()).isTrue()
-
-            preferencesStore.setWifiOnlyDownloads(false)
-
             assertThat(awaitItem()).isFalse()
+
+            preferencesStore.setWifiOnlyDownloads(true)
+
+            assertThat(awaitItem()).isTrue()
         }
     }
 
     @Test
     fun `can toggle wifiOnlyDownloads back and forth`() = testScope.runTest {
         preferencesStore.wifiOnlyDownloads.test {
-            assertThat(awaitItem()).isTrue()
-
-            preferencesStore.setWifiOnlyDownloads(false)
             assertThat(awaitItem()).isFalse()
 
             preferencesStore.setWifiOnlyDownloads(true)
             assertThat(awaitItem()).isTrue()
+
+            preferencesStore.setWifiOnlyDownloads(false)
+            assertThat(awaitItem()).isFalse()
         }
     }
 
@@ -137,11 +137,11 @@ class UserPreferencesStoreImplTest {
     fun `all preferences can be set independently`() = testScope.runTest {
         preferencesStore.setThemeMode(ThemeMode.Dark)
         preferencesStore.setUpdateCheckInterval(UpdateCheckInterval.Hours12)
-        preferencesStore.setWifiOnlyDownloads(false)
+        preferencesStore.setWifiOnlyDownloads(true)
 
         assertThat(preferencesStore.themeMode.value).isEqualTo(ThemeMode.Dark)
         assertThat(preferencesStore.updateCheckInterval.value).isEqualTo(UpdateCheckInterval.Hours12)
-        assertThat(preferencesStore.wifiOnlyDownloads.value).isFalse()
+        assertThat(preferencesStore.wifiOnlyDownloads.value).isTrue()
     }
 
     @Test

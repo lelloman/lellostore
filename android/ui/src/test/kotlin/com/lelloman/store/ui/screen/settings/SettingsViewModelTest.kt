@@ -265,6 +265,7 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertThat(viewModel.state.value.serverUrlError).isNull()
+        assertThat(viewModel.state.value.serverUrlSaving).isFalse()
         assertThat(fakeInteractor.setServerUrlCalled).isTrue()
         assertThat(fakeInteractor.lastServerUrl).isEqualTo("https://valid.example.com")
     }
@@ -279,7 +280,21 @@ class SettingsViewModelTest {
         viewModel.onServerUrlSave()
         advanceUntilIdle()
 
-        assertThat(viewModel.state.value.serverUrlError).isEqualTo("Invalid URL")
+        assertThat(viewModel.state.value.serverUrlError).isEqualTo(ServerUrlError.Invalid)
+    }
+
+    @Test
+    fun `onServerUrlSave with unreachable server keeps the reason`() = runTest {
+        fakeInteractor.setServerUrlResult = SettingsViewModel.SetServerUrlResult.Error("timeout")
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onServerUrlInputChanged("https://down.example.com")
+        viewModel.onServerUrlSave()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.serverUrlError).isEqualTo(ServerUrlError.Unreachable("timeout"))
+        assertThat(viewModel.state.value.serverUrlSaving).isFalse()
     }
 
     @Test

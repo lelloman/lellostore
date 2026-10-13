@@ -1,5 +1,6 @@
 package com.lelloman.store.ui.screen.settings
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.clickable
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -115,11 +116,25 @@ fun SettingsScreen(
         onOpenDeveloperSettings = {
             context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
         },
+        onOpenPushRegistrations = {
+            context.startAppActivity("com.lelloman.store.notification.PushRegistrationsActivity")
+        },
+        onOpenRecoverySetup = {
+            context.startAppActivity("com.lelloman.store.recovery.RecoverySetupActivity")
+        },
+        onOpenLocalLogs = {
+            context.startAppActivity("com.lelloman.store.diagnostics.AuditActivity")
+        },
         onServerUrlInputChanged = viewModel::onServerUrlInputChanged,
         onServerUrlSave = viewModel::onServerUrlSave,
         onLogoutClick = viewModel::onLogoutClick,
         modifier = modifier,
     )
+}
+
+/** These activities live in the app module, which this module cannot reference directly. */
+private fun Context.startAppActivity(className: String) {
+    startActivity(Intent().setClassName(packageName, className))
 }
 
 @Composable
@@ -137,6 +152,9 @@ internal fun SettingsContent(
     onTestWirelessDebugging: () -> Unit,
     onPairWirelessDebugging: (String) -> Unit,
     onOpenDeveloperSettings: () -> Unit,
+    onOpenPushRegistrations: () -> Unit,
+    onOpenRecoverySetup: () -> Unit,
+    onOpenLocalLogs: () -> Unit,
     onServerUrlInputChanged: (String) -> Unit,
     onServerUrlSave: () -> Unit,
     onLogoutClick: () -> Unit,
@@ -145,8 +163,10 @@ internal fun SettingsContent(
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showIntervalDialog by rememberSaveable { mutableStateOf(false) }
     var showReleaseChannelDialog by rememberSaveable { mutableStateOf(false) }
-    var showLegacyAdbSetupDialog by rememberSaveable { mutableStateOf(false) }
-    var showWirelessSetupDialog by rememberSaveable { mutableStateOf(false) }
+    var showChannelOrderDialog by rememberSaveable { mutableStateOf(false) }
+    var showLegacyAdbDialog by rememberSaveable { mutableStateOf(false) }
+    var showWirelessDialog by rememberSaveable { mutableStateOf(false) }
+    var showServerDialog by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirmation by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -166,35 +186,6 @@ internal fun SettingsContent(
             }
 
             SettingsSection(title = stringResource(R.string.settings_updates)) {
-                PushBatteryWarning()
-                val pushContext = androidx.compose.ui.platform.LocalContext.current
-                SettingsClickableItem(
-                    title = "UnifiedPush registrations",
-                    subtitle = "Manage apps using the shared push connection",
-                    onClick = { pushContext.startActivity(android.content.Intent().setClassName(pushContext.packageName, "com.lelloman.store.notification.PushRegistrationsActivity")) },
-                )
-                SettingsDivider()
-
-                SettingsSwitchItem(
-                    title = stringResource(R.string.settings_keep_update_connection),
-                    subtitle = stringResource(R.string.settings_keep_update_connection_subtitle),
-                    checked = state.keepUpdateConnection,
-                    onCheckedChange = onKeepUpdateConnectionChanged,
-                )
-                SettingsDivider()
-                SettingsSwitchItem(
-                    title = stringResource(R.string.settings_auto_update_default),
-                    subtitle = stringResource(R.string.settings_auto_update_default_subtitle),
-                    checked = state.autoUpdateDefault,
-                    onCheckedChange = onAutoUpdateDefaultChanged,
-                )
-                SettingsDivider()
-                SettingsClickableItem(
-                    title = stringResource(R.string.settings_release_channel_default),
-                    subtitle = state.releaseChannelDefault.getDisplayName(),
-                    onClick = { showReleaseChannelDialog = true },
-                )
-                SettingsDivider()
                 SettingsClickableItem(
                     title = stringResource(R.string.settings_check_for_updates),
                     subtitle = state.updateCheckInterval.getDisplayName(),
@@ -207,100 +198,71 @@ internal fun SettingsContent(
                     checked = state.wifiOnlyDownloads,
                     onCheckedChange = onWifiOnlyDownloadsChanged,
                 )
+                SettingsDivider()
+                SettingsHint(stringResource(R.string.settings_update_defaults_hint))
+                SettingsSwitchItem(
+                    title = stringResource(R.string.settings_auto_update_default),
+                    subtitle = stringResource(R.string.settings_auto_update_default_subtitle),
+                    checked = state.autoUpdateDefault,
+                    onCheckedChange = onAutoUpdateDefaultChanged,
+                )
+                SettingsDivider()
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_release_channel_default),
+                    subtitle = state.releaseChannelDefault.getDisplayName(),
+                    onClick = { showReleaseChannelDialog = true },
+                )
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_notifications)) {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.settings_keep_update_connection),
+                    subtitle = stringResource(R.string.settings_keep_update_connection_subtitle),
+                    checked = state.keepUpdateConnection,
+                    onCheckedChange = onKeepUpdateConnectionChanged,
+                )
+                if (state.keepUpdateConnection) PushBatteryWarning()
+                SettingsDivider()
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_push_registrations),
+                    subtitle = stringResource(R.string.settings_push_registrations_subtitle),
+                    onClick = onOpenPushRegistrations,
+                )
             }
 
             SettingsSection(title = stringResource(R.string.settings_installation)) {
-                Text(
-                    text = stringResource(R.string.installation_channels_intro),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
-                SettingsDivider()
-                state.installationChannels.forEachIndexed { index, channel ->
+                state.installationChannels.forEach { channel ->
                     InstallationChannelItem(
-                        channel = channel,
+                        name = channel.localizedName(),
+                        status = when (channel.id) {
+                            LEGACY_ADB_CHANNEL -> adbConnectionStatus(state.legacyAdb)
+                            WIRELESS_ADB_CHANNEL -> adbConnectionStatus(state.wirelessDebugging)
+                            else -> stringResource(
+                                if (channel.requiresUserInteraction) {
+                                    R.string.installation_channel_interactive
+                                } else {
+                                    R.string.installation_channel_background
+                                }
+                            )
+                        },
+                        enabled = channel.enabled,
                         canDisable = !channel.enabled ||
                             state.installationChannels.count { it.enabled } > 1,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < state.installationChannels.lastIndex,
                         onEnabledChanged = { enabled ->
                             onInstallationChannelEnabledChanged(channel.id, enabled)
                         },
-                        onMoveUp = { onMoveInstallationChannel(channel.id, -1) },
-                        onMoveDown = { onMoveInstallationChannel(channel.id, 1) },
+                        onClick = when (channel.id) {
+                            LEGACY_ADB_CHANNEL -> { { showLegacyAdbDialog = true } }
+                            WIRELESS_ADB_CHANNEL -> { { showWirelessDialog = true } }
+                            else -> null
+                        },
                     )
                     SettingsDivider()
                 }
                 SettingsClickableItem(
-                    title = stringResource(R.string.legacy_adb_setup),
-                    subtitle = stringResource(R.string.legacy_adb_setup_subtitle),
-                    onClick = { showLegacyAdbSetupDialog = true },
-                )
-                SettingsDivider()
-                SettingsClickableItem(
-                    title = stringResource(R.string.legacy_adb_test),
-                    subtitle = adbConnectionStatus(state.legacyAdb),
-                    onClick = onTestLegacyAdb,
-                )
-                SettingsDivider()
-                SettingsClickableItem(
-                    title = stringResource(R.string.wireless_debugging_setup),
-                    subtitle = stringResource(R.string.wireless_debugging_setup_subtitle),
-                    onClick = { showWirelessSetupDialog = true },
-                )
-                SettingsDivider()
-                SettingsClickableItem(
-                    title = stringResource(R.string.settings_wireless_debugging),
-                    subtitle = when (val wireless = state.wirelessDebugging) {
-                        AdbConnectionState.NotTested ->
-                            stringResource(R.string.wireless_debugging_not_tested)
-                        AdbConnectionState.Testing ->
-                            stringResource(R.string.wireless_debugging_testing)
-                        AdbConnectionState.Pairing ->
-                            stringResource(R.string.wireless_debugging_pairing)
-                        is AdbConnectionState.Ready ->
-                            stringResource(R.string.wireless_debugging_ready, wireless.device)
-                        is AdbConnectionState.Unavailable ->
-                            stringResource(R.string.wireless_debugging_unavailable, wireless.reason)
-                    },
-                    onClick = onTestWirelessDebugging,
-                )
-                SettingsDivider()
-                val setupContext = LocalContext.current
-                SettingsClickableItem(
-                    title = stringResource(R.string.settings_recovery_setup),
-                    subtitle = stringResource(R.string.settings_recovery_setup_subtitle),
-                    onClick = {
-                        setupContext.startActivity(Intent().setClassName(
-                            setupContext.packageName,
-                            "com.lelloman.store.recovery.RecoverySetupActivity",
-                        ))
-                    },
-                )
-            }
-
-            SettingsSection(title = stringResource(R.string.settings_audit_title)) {
-                val auditContext = LocalContext.current
-                SettingsClickableItem(
-                    title = stringResource(R.string.settings_audit_title),
-                    subtitle = stringResource(R.string.settings_audit_subtitle),
-                    onClick = {
-                        auditContext.startActivity(Intent().setClassName(
-                            auditContext.packageName,
-                            "com.lelloman.store.diagnostics.AuditActivity",
-                        ))
-                    },
-                )
-            }
-
-            SettingsSection(title = stringResource(R.string.settings_server)) {
-                ServerUrlInput(
-                    serverUrlInput = state.serverUrlInput,
-                    serverUrlError = state.serverUrlError,
-                    isSaved = state.serverUrlInput == state.serverUrl,
-                    onValueChange = onServerUrlInputChanged,
-                    onSave = onServerUrlSave,
+                    title = stringResource(R.string.installation_channel_order),
+                    subtitle = stringResource(R.string.installation_channel_order_subtitle),
+                    onClick = { showChannelOrderDialog = true },
                 )
             }
 
@@ -312,6 +274,15 @@ internal fun SettingsContent(
                     )
                     SettingsDivider()
                 }
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_server),
+                    subtitle = state.serverUrl,
+                    onClick = {
+                        onServerUrlInputChanged(state.serverUrl)
+                        showServerDialog = true
+                    },
+                )
+                SettingsDivider()
                 SettingsClickableItem(
                     title = stringResource(R.string.logout),
                     subtitle = stringResource(R.string.logout_subtitle),
@@ -327,7 +298,19 @@ internal fun SettingsContent(
                 )
             }
 
-            SettingsSection(title = stringResource(R.string.settings_about)) {
+            SettingsSection(title = stringResource(R.string.settings_system)) {
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_recovery_setup),
+                    subtitle = stringResource(R.string.settings_recovery_setup_subtitle),
+                    onClick = onOpenRecoverySetup,
+                )
+                SettingsDivider()
+                SettingsClickableItem(
+                    title = stringResource(R.string.settings_audit_title),
+                    subtitle = stringResource(R.string.settings_audit_subtitle),
+                    onClick = onOpenLocalLogs,
+                )
+                SettingsDivider()
                 SettingsInfoItem(
                     title = stringResource(R.string.settings_app_version),
                     value = state.appVersion,
@@ -338,7 +321,6 @@ internal fun SettingsContent(
         }
     }
 
-    // Theme Selection Dialog
     if (showThemeDialog) {
         SelectionDialog(
             title = stringResource(R.string.settings_theme),
@@ -353,7 +335,6 @@ internal fun SettingsContent(
         )
     }
 
-    // Update Interval Selection Dialog
     if (showIntervalDialog) {
         SelectionDialog(
             title = stringResource(R.string.settings_check_for_updates),
@@ -382,20 +363,44 @@ internal fun SettingsContent(
         )
     }
 
-    if (showWirelessSetupDialog) {
-        WirelessDebuggingSetupDialog(
-            state = state.wirelessDebugging,
-            onOpenDeveloperSettings = onOpenDeveloperSettings,
-            onPair = onPairWirelessDebugging,
-            onDismiss = { showWirelessSetupDialog = false },
+    if (showChannelOrderDialog) {
+        ChannelOrderDialog(
+            channels = state.installationChannels,
+            onMove = onMoveInstallationChannel,
+            onDismiss = { showChannelOrderDialog = false },
         )
     }
 
-    if (showLegacyAdbSetupDialog) {
-        LegacyAdbSetupDialog(onDismiss = { showLegacyAdbSetupDialog = false })
+    if (showWirelessDialog) {
+        WirelessDebuggingDialog(
+            state = state.wirelessDebugging,
+            onTest = onTestWirelessDebugging,
+            onOpenDeveloperSettings = onOpenDeveloperSettings,
+            onPair = onPairWirelessDebugging,
+            onDismiss = { showWirelessDialog = false },
+        )
     }
 
-    // Logout Confirmation Dialog
+    if (showLegacyAdbDialog) {
+        LegacyAdbDialog(
+            state = state.legacyAdb,
+            onTest = onTestLegacyAdb,
+            onDismiss = { showLegacyAdbDialog = false },
+        )
+    }
+
+    if (showServerDialog) {
+        ServerUrlDialog(
+            serverUrl = state.serverUrl,
+            serverUrlInput = state.serverUrlInput,
+            serverUrlError = state.serverUrlError,
+            saving = state.serverUrlSaving,
+            onValueChange = onServerUrlInputChanged,
+            onSave = onServerUrlSave,
+            onDismiss = { showServerDialog = false },
+        )
+    }
+
     if (showLogoutConfirmation) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirmation = false },
@@ -420,67 +425,62 @@ internal fun SettingsContent(
     }
 }
 
+private const val LEGACY_ADB_CHANNEL = "legacy-adb"
+private const val WIRELESS_ADB_CHANNEL = "wireless-tls-adb"
+private const val PACKAGE_INSTALLER_CHANNEL = "package-installer"
+
+@Composable
+private fun InstallationChannelOption.localizedName(): String = when (id) {
+    LEGACY_ADB_CHANNEL -> stringResource(R.string.installation_channel_legacy_adb)
+    WIRELESS_ADB_CHANNEL -> stringResource(R.string.installation_channel_wireless_adb)
+    PACKAGE_INSTALLER_CHANNEL -> stringResource(R.string.installation_channel_package_installer)
+    else -> displayName
+}
+
+/**
+ * Channels with a setup flow open it on row tap and expose the switch as a separate target;
+ * the others toggle from anywhere on the row.
+ */
 @Composable
 private fun InstallationChannelItem(
-    channel: InstallationChannelOption,
+    name: String,
+    status: String,
+    enabled: Boolean,
     canDisable: Boolean,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onEnabledChanged: (Boolean) -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
+    onClick: (() -> Unit)?,
 ) {
-    val name = when (channel.id) {
-        "legacy-adb" -> stringResource(R.string.installation_channel_legacy_adb)
-        "wireless-tls-adb" -> stringResource(R.string.installation_channel_wireless_adb)
-        "package-installer" -> stringResource(R.string.installation_channel_package_installer)
-        else -> channel.displayName
+    val rowAction = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier.toggleable(
+            value = enabled,
+            enabled = canDisable,
+            role = Role.Switch,
+            onValueChange = onEnabledChanged,
+        )
     }
-    val type = stringResource(
-        if (channel.requiresUserInteraction) {
-            R.string.installation_channel_interactive
-        } else {
-            R.string.installation_channel_background
-        }
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(
-                value = channel.enabled,
-                enabled = canDisable,
-                role = Role.Switch,
-                onValueChange = onEnabledChanged,
-            )
-            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+            .then(rowAction)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = name, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = type,
+                text = status,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-            Icon(
-                Icons.Default.KeyboardArrowUp,
-                contentDescription = stringResource(R.string.installation_channel_move_up, name),
-            )
-        }
-        IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-            Icon(
-                Icons.Default.KeyboardArrowDown,
-                contentDescription = stringResource(R.string.installation_channel_move_down, name),
-            )
-        }
+        Spacer(modifier = Modifier.width(16.dp))
         Switch(
-            checked = channel.enabled,
-            onCheckedChange = null,
+            checked = enabled,
+            onCheckedChange = if (onClick != null) onEnabledChanged else null,
             enabled = canDisable,
             colors = lelloStoreSwitchColors(),
-            modifier = Modifier.padding(horizontal = 12.dp),
         )
     }
 }
@@ -488,18 +488,91 @@ private fun InstallationChannelItem(
 @Composable
 private fun adbConnectionStatus(state: AdbConnectionState): String = when (state) {
     AdbConnectionState.NotTested -> stringResource(R.string.adb_connection_not_tested)
-    AdbConnectionState.Testing,
-    AdbConnectionState.Pairing -> stringResource(R.string.adb_connection_testing)
+    AdbConnectionState.Testing -> stringResource(R.string.adb_connection_testing)
+    AdbConnectionState.Pairing -> stringResource(R.string.wireless_debugging_pairing)
     is AdbConnectionState.Ready -> stringResource(R.string.adb_connection_ready, state.device)
     is AdbConnectionState.Unavailable ->
         stringResource(R.string.adb_connection_unavailable, state.reason)
 }
 
 @Composable
-private fun LegacyAdbSetupDialog(onDismiss: () -> Unit) {
+private fun ChannelOrderDialog(
+    channels: List<InstallationChannelOption>,
+    onMove: (String, Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.legacy_adb_setup)) },
+        title = { Text(stringResource(R.string.installation_channel_order)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.installation_channels_intro),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                channels.forEachIndexed { index, channel ->
+                    val name = channel.localizedName()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (channel.enabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { onMove(channel.id, -1) }, enabled = index > 0) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.installation_channel_move_up, name),
+                            )
+                        }
+                        IconButton(
+                            onClick = { onMove(channel.id, 1) },
+                            enabled = index < channels.lastIndex,
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = stringResource(R.string.installation_channel_move_down, name),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.done))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ConnectionStatusText(state: AdbConnectionState) {
+    Text(
+        text = adbConnectionStatus(state),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (state is AdbConnectionState.Unavailable) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
+}
+
+@Composable
+private fun LegacyAdbDialog(
+    state: AdbConnectionState,
+    onTest: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.installation_channel_legacy_adb)) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(stringResource(R.string.legacy_adb_intro))
@@ -527,9 +600,20 @@ private fun LegacyAdbSetupDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+                ConnectionStatusText(state)
             }
         },
         confirmButton = {
+            Button(
+                onClick = onTest,
+                enabled = !state.isBusy,
+                colors = lelloStoreButtonColors(),
+            ) {
+                Text(stringResource(R.string.test_connection))
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.done))
             }
@@ -538,8 +622,9 @@ private fun LegacyAdbSetupDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun WirelessDebuggingSetupDialog(
+private fun WirelessDebuggingDialog(
     state: AdbConnectionState,
+    onTest: () -> Unit,
     onOpenDeveloperSettings: () -> Unit,
     onPair: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -550,26 +635,28 @@ private fun WirelessDebuggingSetupDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isPairing) onDismiss() },
-        title = { Text(stringResource(R.string.wireless_debugging_setup)) },
+        title = { Text(stringResource(R.string.installation_channel_wireless_adb)) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.wireless_debugging_setup_intro))
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+                ConnectionStatusText(state)
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
+                OutlinedButton(
+                    onClick = onTest,
+                    enabled = !state.isBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.test_connection))
+                }
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
                 OutlinedTextField(
                     value = pairingCode,
                     onValueChange = { input ->
                         pairingCode = input.filter(Char::isDigit).take(PAIRING_CODE_LENGTH)
                     },
                     label = { Text(stringResource(R.string.pairing_code)) },
-                    supportingText = {
-                        when (state) {
-                            AdbConnectionState.Pairing ->
-                                Text(stringResource(R.string.wireless_debugging_pairing))
-                            is AdbConnectionState.Ready ->
-                                Text(stringResource(R.string.wireless_debugging_ready, state.device))
-                            is AdbConnectionState.Unavailable ->
-                                Text(stringResource(R.string.wireless_debugging_unavailable, state.reason))
-                            else -> Text(stringResource(R.string.pairing_code_hint))
-                        }
-                    },
+                    supportingText = { Text(stringResource(R.string.pairing_code_hint)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
                     enabled = !isPairing,
@@ -610,7 +697,7 @@ private fun WirelessDebuggingSetupDialog(
         confirmButton = {
             Button(
                 onClick = { onPair(pairingCode) },
-                enabled = pairingCode.length == PAIRING_CODE_LENGTH && !isPairing,
+                enabled = pairingCode.length == PAIRING_CODE_LENGTH && !state.isBusy,
                 colors = lelloStoreButtonColors(),
             ) {
                 Text(stringResource(R.string.pair_and_test))
@@ -618,13 +705,74 @@ private fun WirelessDebuggingSetupDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !isPairing) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(R.string.done))
             }
         },
     )
 }
 
 private const val PAIRING_CODE_LENGTH = 6
+
+@Composable
+private fun ServerUrlDialog(
+    serverUrl: String,
+    serverUrlInput: String,
+    serverUrlError: ServerUrlError?,
+    saving: Boolean,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(stringResource(R.string.settings_server_change)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.settings_server_change_warning),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
+                OutlinedTextField(
+                    value = serverUrlInput,
+                    onValueChange = onValueChange,
+                    label = { Text(stringResource(R.string.login_server_url)) },
+                    isError = serverUrlError != null,
+                    supportingText = serverUrlError?.let { error ->
+                        {
+                            Text(
+                                when (error) {
+                                    ServerUrlError.Invalid ->
+                                        stringResource(R.string.settings_server_invalid_url)
+                                    is ServerUrlError.Unreachable ->
+                                        stringResource(R.string.settings_server_unreachable, error.message)
+                                }
+                            )
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSave,
+                enabled = !saving && serverUrlInput.isNotBlank() && serverUrlInput != serverUrl,
+                colors = lelloStoreButtonColors(),
+            ) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
+}
 
 @Composable
 private fun SettingsSection(
@@ -658,13 +806,23 @@ private fun SettingsDivider() {
 }
 
 @Composable
+private fun SettingsHint(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+    )
+}
+
+@Composable
 private fun SettingsClickableItem(
     title: String,
     subtitle: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leadingIcon: @Composable (() -> Unit)? = null,
-    textColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    textColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     Row(
         modifier = modifier
@@ -805,41 +963,6 @@ private fun <T> SelectionDialog(
             }
         },
     )
-}
-
-@Composable
-private fun ServerUrlInput(
-    serverUrlInput: String,
-    serverUrlError: String?,
-    isSaved: Boolean,
-    onValueChange: (String) -> Unit,
-    onSave: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.padding(LelloStoreSpacing.large),
-    ) {
-        OutlinedTextField(
-            value = serverUrlInput,
-            onValueChange = onValueChange,
-            label = { Text(stringResource(R.string.login_server_url)) },
-            isError = serverUrlError != null,
-            supportingText = serverUrlError?.let {
-                { Text(stringResource(R.string.settings_invalid_url)) }
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(LelloStoreSpacing.small))
-        Button(
-            onClick = onSave,
-            enabled = !isSaved,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            colors = lelloStoreButtonColors(),
-        ) {
-            Text(stringResource(if (isSaved) R.string.saved else R.string.save))
-        }
-    }
 }
 
 @Composable
