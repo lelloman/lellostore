@@ -145,6 +145,37 @@ class InstallationCoordinatorTest {
         assertThat(configured.map { it.enabled }).containsExactly(false, true).inOrder()
     }
 
+    @Test
+    fun `new channel is inserted at its default position within a saved order`() {
+        val preferences = listOf(
+            InstallationChannelPreference("wireless", enabled = true),
+            InstallationChannelPreference("legacy", enabled = false),
+            InstallationChannelPreference("interactive", enabled = true),
+        )
+
+        val merged = mergeChannelOrder(
+            defaultOrder = listOf("silent", "legacy", "wireless", "interactive"),
+            preferences = preferences,
+        )
+
+        assertThat(merged.map { it.id })
+            .containsExactly("silent", "wireless", "legacy", "interactive").inOrder()
+        assertThat(merged.map { it.enabled }).containsExactly(true, true, false, true).inOrder()
+    }
+
+    @Test
+    fun `saved ids that no longer exist are dropped`() {
+        val merged = mergeChannelOrder(
+            defaultOrder = listOf("a"),
+            preferences = listOf(
+                InstallationChannelPreference("gone", enabled = true),
+                InstallationChannelPreference("a", enabled = false),
+            ),
+        )
+
+        assertThat(merged).containsExactly(InstallationChannelPreference("a", enabled = false))
+    }
+
     private fun coordinator(
         channels: Set<InstallationChannel>,
         configured: List<InstallationChannelPreference> = emptyList(),

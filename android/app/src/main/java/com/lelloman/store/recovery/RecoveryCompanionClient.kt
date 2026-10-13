@@ -20,6 +20,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 import java.util.UUID
 
+sealed interface SelfUpdateProtection {
+    data class Protected(val attemptId: String) : SelfUpdateProtection
+    data class Unprotected(val reason: String) : SelfUpdateProtection
+}
+
 class RecoveryCompanionClient(private val context: Context) {
     @dagger.hilt.EntryPoint
     @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
@@ -75,8 +80,17 @@ class RecoveryCompanionClient(private val context: Context) {
         }
     }
 
-    suspend fun recordSelfUpdate(targetVersion: Int): String? {
-        if (!selfUpdatesEnabled() || provision().isFailure) return null
+    suspend fun recordSelfUpdate(targetVersion: Int): String? =
+        (protectSelfUpdate(targetVersion) as? SelfUpdateProtection.Protected)?.attemptId
+
+    /** Registers a rollback point for a self-update, or explains why none is available. */
+    suspend fun protectSelfUpdate(targetVersion: Int): SelfUpdateProtection {
+        if (!selfUpdatesEnabled()) {
+            return SelfUpdateProtection.Unprotected("Recovery companion is not set up")
+        }
+        provision().exceptionOrNull()?.let { error ->
+            return SelfUpdateProtection.Unprotected(error.message ?: "Recovery companion is unavailable")
+        }
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             packageInfo.longVersionCode.toInt()
@@ -97,7 +111,11 @@ class RecoveryCompanionClient(private val context: Context) {
                 started + HEALTH_DEADLINE_MILLIS,
             )
         } == true
-        return attemptId.takeIf { accepted }
+        return if (accepted) {
+            SelfUpdateProtection.Protected(attemptId)
+        } else {
+            SelfUpdateProtection.Unprotected("Recovery companion rejected the update attempt")
+        }
     }
 
     suspend fun cancelUnreplacedAttempt(attemptId: String, reason: String): Boolean =

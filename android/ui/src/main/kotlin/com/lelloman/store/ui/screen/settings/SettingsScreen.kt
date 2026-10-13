@@ -237,6 +237,8 @@ internal fun SettingsContent(
                         status = when (channel.id) {
                             LEGACY_ADB_CHANNEL -> adbConnectionStatus(state.legacyAdb)
                             WIRELESS_ADB_CHANNEL -> adbConnectionStatus(state.wirelessDebugging)
+                            SILENT_INSTALLER_CHANNEL ->
+                                stringResource(R.string.installation_channel_silent_installer_status)
                             else -> stringResource(
                                 if (channel.requiresUserInteraction) {
                                     R.string.installation_channel_interactive
@@ -428,12 +430,14 @@ internal fun SettingsContent(
 private const val LEGACY_ADB_CHANNEL = "legacy-adb"
 private const val WIRELESS_ADB_CHANNEL = "wireless-tls-adb"
 private const val PACKAGE_INSTALLER_CHANNEL = "package-installer"
+private const val SILENT_INSTALLER_CHANNEL = "silent-package-installer"
 
 @Composable
 private fun InstallationChannelOption.localizedName(): String = when (id) {
     LEGACY_ADB_CHANNEL -> stringResource(R.string.installation_channel_legacy_adb)
     WIRELESS_ADB_CHANNEL -> stringResource(R.string.installation_channel_wireless_adb)
     PACKAGE_INSTALLER_CHANNEL -> stringResource(R.string.installation_channel_package_installer)
+    SILENT_INSTALLER_CHANNEL -> stringResource(R.string.installation_channel_silent_installer)
     else -> displayName
 }
 

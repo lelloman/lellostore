@@ -66,7 +66,11 @@ ANDROID_HOME=/path/to/Android/Sdk \
   ./scripts/validate-self-adb.sh legacy /path/to/fixture.apk DEVICE_SERIAL
 ```
 
-Use `tls` instead of `legacy` for a TLS-paired debug build. The fixture must be safely
+Use `tls` instead of `legacy` for a TLS-paired debug build. Use `silent` to validate the
+silent Package Installer channel without ADB in the app: the script first installs the
+fixture with the debug store as installer of record, then the test updates it silently.
+Allow **Install unknown apps** for the debug build when the device refuses `appops set`
+from the shell (OnePlus does). The fixture must be safely
 installable on the selected device. The script builds and installs the debug test APKs,
 stages the fixture in app-private storage, performs a background install, checks the
 installed version, and prints Android's install-source attribution.

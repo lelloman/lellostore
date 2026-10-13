@@ -121,16 +121,30 @@ internal fun configuredInstallationChannels(
     preferences: List<InstallationChannelPreference>,
 ): List<ConfiguredInstallationChannel> {
     val channelsById = channels.associateBy { it.metadata.id }
-    val configured = preferences.mapNotNull { preference ->
-        channelsById[preference.id]?.let { channel ->
-            ConfiguredInstallationChannel(channel, preference.enabled)
-        }
+    return mergeChannelOrder(channels.map { it.metadata.id }, preferences).map { preference ->
+        ConfiguredInstallationChannel(channelsById.getValue(preference.id), preference.enabled)
     }
-    val configuredIds = configured.mapTo(mutableSetOf()) { it.channel.metadata.id }
-    val newChannels = channels
-        .filterNot { it.metadata.id in configuredIds }
-        .map { ConfiguredInstallationChannel(it, enabled = true) }
-    return configured + newChannels
+}
+
+/**
+ * Applies a saved channel order to [defaultOrder]. Unknown saved ids are dropped. A channel
+ * missing from the saved order (one added by a newer release) is enabled and placed before the
+ * first saved channel that follows it by default, so a new preferred channel still goes first.
+ */
+fun mergeChannelOrder(
+    defaultOrder: List<String>,
+    preferences: List<InstallationChannelPreference>,
+): List<InstallationChannelPreference> {
+    val defaultIndex = defaultOrder.withIndex().associate { it.value to it.index }
+    val merged = preferences.filter { it.id in defaultIndex }.distinctBy { it.id }.toMutableList()
+    val savedIds = merged.mapTo(mutableSetOf()) { it.id }
+    defaultOrder.forEachIndexed { index, id ->
+        if (id in savedIds) return@forEachIndexed
+        val insertAt = merged.indexOfFirst { defaultIndex.getValue(it.id) > index }
+            .takeIf { it >= 0 } ?: merged.size
+        merged.add(insertAt, InstallationChannelPreference(id, enabled = true))
+    }
+    return merged
 }
 
 sealed interface InstallationResult {

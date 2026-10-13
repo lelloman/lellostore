@@ -217,4 +217,6 @@
     <string name="settings_server_change_warning">Changing the server signs you out.</string>
     <string name="settings_server_invalid_url">Invalid URL</string>
     <string name="settings_server_unreachable">Cannot use this server: %1$s</string>
+    <string name="installation_channel_silent_installer">Silent updates</string>
+    <string name="installation_channel_silent_installer_status">Android 12+ · updates apps LelloStore installed, without confirmation</string>
 </resources>

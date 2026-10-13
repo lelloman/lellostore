@@ -97,14 +97,14 @@ class LegacyAdbInstallationChannelTest {
     }
 
     @Test
-    fun `ADB install command permits upgrading an installed package`() {
-        assertThat(adbInstallCommand(1234))
-            .isEqualTo("exec:cmd package install -r -S 1234")
+    fun `ADB install command upgrades and records LelloStore as installer`() {
+        assertThat(adbInstallCommand(1234, installer = "com.lelloman.store"))
+            .isEqualTo("exec:cmd package install -r -i com.lelloman.store -S 1234")
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `ADB install command rejects an empty APK`() {
-        adbInstallCommand(0)
+        adbInstallCommand(0, installer = "com.lelloman.store")
     }
 
     @Test

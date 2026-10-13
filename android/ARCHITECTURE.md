@@ -131,18 +131,28 @@ Verified APK downloads are submitted to an ordered installation coordinator.
 Foreground and background requests first try silent channels and only foreground
 requests may fall back to Android's interactive Package Installer:
 
-1. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
-2. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
-3. Android Package Installer for foreground requests.
+1. Silent Package Installer updates (Android 12+). A `PackageInstaller` session with
+   `USER_ACTION_NOT_REQUIRED` and `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. Android only skips
+   the prompt for updates of LelloStore itself or of packages whose installer of record (or
+   update owner) is LelloStore, and only when the APK meets the Android version's target-SDK
+   floor. The channel checks these conditions first and reports itself unavailable instead
+   of creating a session. If Android still answers `STATUS_PENDING_USER_ACTION`, the session
+   is abandoned and the next channel is tried.
+2. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
+3. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
+4. Android Package Installer for foreground requests.
 
 This is also the migration-safe default for existing installs. Settings persists the
 complete ordered channel list and each enabled state. The coordinator applies that order
 for every request, skips disabled channels, and still excludes interactive channels from
-background work. Channels introduced by a later app version are appended enabled; the
+background work. Channels introduced by a later app version are enabled and inserted at
+their default position, before the first saved channel that follows them by default; the
 settings layer and preference store both prevent disabling every channel.
 
-The ADB channels stream the exact verified APK length to `cmd package install -r`
-and serialize access to their shared connection. A failure after streaming starts
+The ADB channels stream the exact verified APK length to
+`cmd package install -r -i <LelloStore package>` and serialize access to their shared
+connection. `-i` records LelloStore as installer of record, so the next update of that
+package can use the silent Package Installer channel without ADB. A failure after streaming starts
 is treated as ambiguous and never falls through to a second installer; when the
 connection closes after a self-update, the installed version is checked before
 reporting failure.

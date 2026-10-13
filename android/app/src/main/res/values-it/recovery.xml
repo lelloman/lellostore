@@ -1,7 +1,6 @@
 <resources>
     <string name="recovery_setup_installed">Companion installato e verificato</string>
     <string name="recovery_setup_details">Apri stato ripristino / risolvi un tentativo</string>
-    <string name="self_update_not_ready">Aggiornamento sospeso. Apri Impostazioni → Aggiornamenti di LelloStore e ripristino per completare la configurazione o ripristinare la connessione del companion.</string>
     <string name="recovery_setup_title">Aggiornamenti di LelloStore</string>
     <string name="recovery_setup_intro">Il companion conserva una copia protetta di LelloStore e può ripristinarla dopo un aggiornamento fallito. Configuralo qui, senza cercarlo nel catalogo.</string>
     <string name="recovery_setup_back">Torna alle impostazioni</string>

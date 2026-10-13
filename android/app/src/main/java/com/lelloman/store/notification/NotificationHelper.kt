@@ -128,6 +128,27 @@ class NotificationHelper @Inject constructor(
         notificationManager.notify(PUSH_REMINDER_NOTIFICATION_ID, notification)
     }
 
+    @SuppressLint("MissingPermission") // Permission checked.
+    fun showUnprotectedSelfUpdateWarning(reason: String) {
+        if (!hasNotificationPermission()) return
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            UNPROTECTED_SELF_UPDATE_NOTIFICATION_ID,
+            Intent(context, com.lelloman.store.recovery.RecoverySetupActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val text = context.getString(R.string.notification_unprotected_self_update_text, reason)
+        val notification = NotificationCompat.Builder(context, UPDATES_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(context.getString(R.string.notification_unprotected_self_update_title))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(UNPROTECTED_SELF_UPDATE_NOTIFICATION_ID, notification)
+    }
+
     /** Separate ID so background health checks cannot overwrite the startup warning. */
     @SuppressLint("MissingPermission")
     fun showStartupBatteryWarning(): Boolean {
@@ -294,6 +315,7 @@ class NotificationHelper @Inject constructor(
         const val OPERATIONS_CHANNEL_ID = "operations_channel"
         const val PUSH_REMINDERS_CHANNEL_ID = "push_connection_reminders"
         internal const val STARTUP_BATTERY_NOTIFICATION_ID = 1006
+        private const val UNPROTECTED_SELF_UPDATE_NOTIFICATION_ID = 1007
         private const val PUSH_REMINDER_NOTIFICATION_ID = 1005
         const val UPDATES_NOTIFICATION_ID = 1001
         const val BACKGROUND_UPDATE_NOTIFICATION_ID = 1002

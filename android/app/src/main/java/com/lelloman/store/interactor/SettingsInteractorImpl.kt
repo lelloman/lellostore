@@ -18,6 +18,7 @@ import com.lelloman.store.di.ApplicationScope
 import com.lelloman.store.installation.WirelessTlsAdbInstallationChannel
 import com.lelloman.store.installation.LegacyAdbInstallationChannel
 import com.lelloman.store.installation.InstallationCoordinator
+import com.lelloman.store.installation.mergeChannelOrder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -161,26 +162,15 @@ class SettingsInteractorImpl @Inject constructor(
         preferences: List<InstallationChannelPreference>,
     ): List<InstallationChannelOption> {
         val metadataById = channelMetadata.associateBy { it.id }
-        val configured = preferences.mapNotNull { preference ->
-            metadataById[preference.id]?.let { metadata ->
-                InstallationChannelOption(
-                    id = metadata.id,
-                    displayName = metadata.displayName,
-                    requiresUserInteraction = metadata.requiresUserInteraction,
-                    enabled = preference.enabled,
-                )
-            }
-        }
-        val configuredIds = configured.mapTo(mutableSetOf()) { it.id }
-        val added = channelMetadata.filterNot { it.id in configuredIds }.map { metadata ->
+        return mergeChannelOrder(channelMetadata.map { it.id }, preferences).map { preference ->
+            val metadata = metadataById.getValue(preference.id)
             InstallationChannelOption(
                 id = metadata.id,
                 displayName = metadata.displayName,
                 requiresUserInteraction = metadata.requiresUserInteraction,
-                enabled = true,
+                enabled = preference.enabled,
             )
         }
-        return configured + added
     }
 
     private fun ThemeMode.toOption(): ThemeModeOption = when (this) {

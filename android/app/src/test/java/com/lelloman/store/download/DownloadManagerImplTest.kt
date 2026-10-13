@@ -14,6 +14,7 @@ import com.lelloman.store.domain.model.AppDetail
 import com.lelloman.store.domain.model.AppVersion
 import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
+import com.lelloman.store.notification.NotificationHelper
 import com.lelloman.store.installation.InstallationResult
 import com.lelloman.store.installation.InstallationChannelMetadata
 import io.mockk.coEvery
@@ -52,6 +53,7 @@ class DownloadManagerImplTest {
     private lateinit var logger: Logger
     private lateinit var installationCoordinator: InstallationCoordinator
     private lateinit var foregroundServiceStarter: DownloadForegroundServiceStarter
+    private lateinit var notificationHelper: NotificationHelper
     private lateinit var downloadManager: DownloadManagerImpl
 
     @Before
@@ -63,6 +65,7 @@ class DownloadManagerImplTest {
         logger = mockk(relaxed = true)
         installationCoordinator = mockk(relaxed = true)
         foregroundServiceStarter = mockk(relaxed = true)
+        notificationHelper = mockk(relaxed = true)
 
         coEvery { remoteApiClient.acquireApk(any(), any(), any(), any()) } coAnswers {
             val packageName = firstArg<String>()
@@ -89,6 +92,7 @@ class DownloadManagerImplTest {
             logger = logger,
             installationCoordinator = installationCoordinator,
             foregroundServiceStarter = foregroundServiceStarter,
+            notificationHelper = notificationHelper,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
     }
@@ -279,20 +283,40 @@ class DownloadManagerImplTest {
     }
 
     @Test
-    fun `self installation is blocked in foreground and background until recovery is provisioned`() = runTest {
+    fun `unprotected self installation proceeds with a warning`() = runTest {
         val bytes = "apk".toByteArray()
         val store = "com.lelloman.store"
         val detail = createAppDetail(packageName = store,
             sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
             size = bytes.size.toLong())
-        every { context.getString(com.lelloman.store.R.string.self_update_not_ready) } returns "Set up recovery first"
         coEvery { appsRepository.refreshApp(store) } returns Result.success(detail)
         coEvery { remoteApiClient.downloadApk(store, 1) } answers { Result.success(ByteArrayInputStream(bytes)) }
-        for (mode in listOf(InstallationMode.FOREGROUND, InstallationMode.BACKGROUND)) {
-            val result = downloadManager.downloadAndInstall(store, 1, mode)
-            assertThat(result).isEqualTo(DownloadResult.Failed("Set up recovery first"))
-        }
-        coVerify(exactly = 0) { installationCoordinator.install(any()) }
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Installed(
+            InstallationChannelMetadata("silent", "silent", requiresUserInteraction = false, priority = 0)
+        )
+
+        val result = downloadManager.downloadAndInstall(store, 1, InstallationMode.BACKGROUND)
+
+        assertThat(result).isEqualTo(DownloadResult.Success)
+        verify(exactly = 1) { notificationHelper.showUnprotectedSelfUpdateWarning(any()) }
+        coVerify(exactly = 1) { installationCoordinator.install(any()) }
+    }
+
+    @Test
+    fun `other apps never show the unprotected self update warning`() = runTest {
+        val bytes = "apk".toByteArray()
+        val detail = createAppDetail(
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong())
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } answers { Result.success(ByteArrayInputStream(bytes)) }
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Installed(
+            InstallationChannelMetadata("silent", "silent", requiresUserInteraction = false, priority = 0)
+        )
+
+        downloadManager.downloadAndInstall("com.test.app", 1, InstallationMode.BACKGROUND)
+
+        verify(exactly = 0) { notificationHelper.showUnprotectedSelfUpdateWarning(any()) }
     }
 
     private fun createAppDetail(

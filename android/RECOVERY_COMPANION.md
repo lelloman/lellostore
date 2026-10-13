@@ -58,8 +58,12 @@ Store releases are included in update checks. Automatic execution requires both
 the ordinary update policy and explicit recovery setup. Every Store installation,
 including a foreground request, refreshes its identity and APK backup, tests the
 independent connection, and records an attempt UUID with current/target versions,
-signer and deadline before invoking an installer. Failure stops with a setup
-message. Companion packages remain excluded from ordinary automatic updates.
+signer and deadline before invoking an installer. If any of that fails (for
+example the companion has no ADB connection after a reboot), the update still
+proceeds without a rollback point: Store records `self_update.unprotected` and
+posts a warning notification before installing, because the replaced process
+cannot report afterwards. Companion packages remain excluded from ordinary
+automatic updates.
 
 After package replacement, a receiver asks the companion's ADB connection to start
 Store. The rendered Store activity restores its identity and acknowledges health;

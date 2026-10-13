@@ -1,7 +1,6 @@
 <resources>
     <string name="recovery_setup_installed">Companion installed and trusted</string>
     <string name="recovery_setup_details">Open recovery status / resolve an attempt</string>
-    <string name="self_update_not_ready">Self-update paused. Open Settings → LelloStore self-updates and recovery to finish setup or restore the companion connection.</string>
     <string name="recovery_setup_title">LelloStore self-updates</string>
     <string name="recovery_setup_intro">The recovery companion keeps a protected copy of LelloStore and can repair a failed update. Set it up here; no catalogue download is needed.</string>
     <string name="recovery_setup_back">Back to Settings</string>

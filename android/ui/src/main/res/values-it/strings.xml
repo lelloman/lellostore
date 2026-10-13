@@ -218,4 +218,6 @@
     <string name="settings_server_change_warning">Cambiando server verrai disconnesso.</string>
     <string name="settings_server_invalid_url">URL non valido</string>
     <string name="settings_server_unreachable">Impossibile usare questo server: %1$s</string>
+    <string name="installation_channel_silent_installer">Aggiornamenti silenziosi</string>
+    <string name="installation_channel_silent_installer_status">Android 12+ · aggiorna le app installate da LelloStore senza conferma</string>
 </resources>

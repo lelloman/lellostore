@@ -98,7 +98,7 @@ internal suspend fun installApkOverAdb(
     request.audit("adb.stream_opening", emptyMap())
     val response = try {
         withAdbInstallTimeout {
-            adb.openStream(adbInstallCommand(request.apk.length())).use { stream ->
+            adb.openStream(adbInstallCommand(request.apk.length(), installer = context.packageName)).use { stream ->
                 request.audit("adb.stream_opened", emptyMap())
                 request.apk.inputStream().use { input ->
                     // AdbOutputStream.close() performs another flush. The package service can close
@@ -153,9 +153,14 @@ internal fun readAdbInstallResponse(input: InputStream): String {
     }
 }
 
-internal fun adbInstallCommand(apkSize: Long): String {
+/**
+ * Records [installer] as the installer of record, so later updates of the package can go
+ * through the silent PackageInstaller channel instead of needing ADB again.
+ */
+internal fun adbInstallCommand(apkSize: Long, installer: String): String {
     require(apkSize > 0) { "APK must not be empty" }
-    return "exec:cmd package install -r -S $apkSize"
+    require(installer.matches(Regex("[A-Za-z0-9_.]+"))) { "Invalid installer package name" }
+    return "exec:cmd package install -r -i $installer -S $apkSize"
 }
 
 internal fun parseAdbInstallResponse(response: String): ChannelInstallationResult =

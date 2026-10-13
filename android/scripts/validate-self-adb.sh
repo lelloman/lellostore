@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 2 || $# -gt 3 ]]; then
-    echo "Usage: $0 <legacy|tls> <fixture.apk> [adb-serial]" >&2
+    echo "Usage: $0 <legacy|tls|silent> <fixture.apk> [adb-serial]" >&2
     exit 2
 fi
 
@@ -11,8 +11,8 @@ fixture_apk=$2
 device_serial=${3:-}
 instrument_timeout=${SELF_ADB_TEST_TIMEOUT_SECONDS:-90}
 
-if [[ $transport != legacy && $transport != tls ]]; then
-    echo "Transport must be 'legacy' or 'tls'." >&2
+if [[ $transport != legacy && $transport != tls && $transport != silent ]]; then
+    echo "Transport must be 'legacy', 'tls' or 'silent'." >&2
     exit 2
 fi
 if [[ ! -f $fixture_apk ]]; then
@@ -51,6 +51,13 @@ cd "$android_dir"
 
 adb "${adb_args[@]}" install -r app/build/outputs/apk/debug/app-debug.apk
 adb "${adb_args[@]}" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+if [[ $transport == silent ]]; then
+    # Silent updates only apply to packages LelloStore installed, so provision the fixture
+    # with the debug store as installer of record; the test then updates it silently.
+    adb "${adb_args[@]}" install -r -i com.lelloman.store.debug "$fixture_apk"
+    adb "${adb_args[@]}" shell appops set com.lelloman.store.debug REQUEST_INSTALL_PACKAGES allow \
+        || echo "Allow Install unknown apps for com.lelloman.store.debug on the device if the test reports it missing." >&2
+fi
 adb "${adb_args[@]}" push "$fixture_apk" /data/local/tmp/lellostore-self-adb-validation.apk
 adb "${adb_args[@]}" shell run-as com.lelloman.store.debug mkdir -p files
 adb "${adb_args[@]}" shell run-as com.lelloman.store.debug \
@@ -68,7 +75,7 @@ if ! instrument_output=$(timeout --foreground "${instrument_timeout}s" \
     exit 1
 fi
 printf '%s\n' "$instrument_output"
-if ! rg -q '^OK \(1 test\)$' <<<"$instrument_output"; then
+if ! grep -qE '^OK \(1 test\)' <<<"$instrument_output"; then
     exit 1
 fi
 

@@ -7,7 +7,10 @@ import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.InstallationMode
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -16,7 +19,13 @@ import org.junit.Test
  * The normal connected test suite skips this test. Use scripts/validate-self-adb.sh with a
  * harmless APK whose package can be installed or upgraded on the selected device.
  */
+@HiltAndroidTest
 class SelfAdbInstallationDeviceTest {
+
+    // Installing the fixture broadcasts PACKAGE_REPLACED to the store's Hilt receivers,
+    // which run in this process and need the test application component to exist.
+    @get:Rule
+    val hiltRule = HiltAndroidRule(this)
 
     @Test
     fun installFixtureAndRecordAttribution() {
@@ -26,6 +35,7 @@ class SelfAdbInstallationDeviceTest {
             arguments.getString(ARG_ENABLED) == "true",
         )
 
+        hiltRule.inject()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val packageName = requireNotNull(arguments.getString(ARG_PACKAGE_NAME))
         val versionCode = requireNotNull(arguments.getString(ARG_VERSION_CODE)).toInt()
@@ -36,6 +46,7 @@ class SelfAdbInstallationDeviceTest {
         val channel = when (transport) {
             TRANSPORT_LEGACY -> LegacyAdbInstallationChannel(context)
             TRANSPORT_TLS -> WirelessTlsAdbInstallationChannel(context)
+            TRANSPORT_SILENT -> SilentPackageInstallerChannel(context)
             else -> error("Unsupported validation transport: $transport")
         }
         val result = runBlocking {
@@ -61,7 +72,12 @@ class SelfAdbInstallationDeviceTest {
                     "initiator=${source.initiatingPackageName} " +
                     "originator=${source.originatingPackageName}",
             )
-            assertThat(source.initiatingPackageName).isEqualTo(ANDROID_SHELL_PACKAGE)
+            if (transport == TRANSPORT_SILENT) {
+                assertThat(source.installingPackageName).isEqualTo(context.packageName)
+            } else {
+                assertThat(source.initiatingPackageName).isEqualTo(ANDROID_SHELL_PACKAGE)
+                assertThat(source.installingPackageName).isEqualTo(context.packageName)
+            }
         }
     }
 
@@ -74,6 +90,7 @@ class SelfAdbInstallationDeviceTest {
         const val FIXTURE_FILE_NAME = "self-adb-validation.apk"
         const val TRANSPORT_LEGACY = "legacy"
         const val TRANSPORT_TLS = "tls"
+        const val TRANSPORT_SILENT = "silent"
         const val ANDROID_SHELL_PACKAGE = "com.android.shell"
     }
 }

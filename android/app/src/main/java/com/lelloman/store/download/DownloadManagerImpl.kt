@@ -18,7 +18,9 @@ import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
 import com.lelloman.store.installation.InstallationRequest
 import com.lelloman.store.installation.InstallationResult
+import com.lelloman.store.notification.NotificationHelper
 import com.lelloman.store.recovery.RecoveryCompanionClient
+import com.lelloman.store.recovery.SelfUpdateProtection
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -45,6 +47,7 @@ class DownloadManagerImpl @Inject constructor(
     private val logger: Logger,
     private val installationCoordinator: InstallationCoordinator,
     private val foregroundServiceStarter: DownloadForegroundServiceStarter,
+    private val notificationHelper: NotificationHelper,
     @ApplicationScope private val scope: CoroutineScope,
     private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : DownloadManager {
@@ -155,13 +158,15 @@ class DownloadManagerImpl @Inject constructor(
             updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
             audit("installation.started")
             val recovery = RecoveryCompanionClient(context)
-            val recoveryAttemptId = if (packageName == context.packageName) {
-                recovery.recordSelfUpdate(versionCode)
+            val protection = if (packageName == context.packageName) {
+                recovery.protectSelfUpdate(versionCode)
             } else null
-            if (packageName == context.packageName && recoveryAttemptId == null) {
-                val reason = context.getString(com.lelloman.store.R.string.self_update_not_ready)
-                failure = DownloadResult.Failed(reason)
-                throw InstallationFailedException(reason)
+            val recoveryAttemptId = (protection as? SelfUpdateProtection.Protected)?.attemptId
+            if (protection is SelfUpdateProtection.Unprotected) {
+                // Without a rollback point the update still proceeds; the user is warned
+                // before the process is replaced, since nothing can report afterwards.
+                audit("self_update.unprotected", mapOf("reason" to protection.reason))
+                notificationHelper.showUnprotectedSelfUpdateWarning(protection.reason)
             }
             when (val installResult = installationCoordinator.install(
                 InstallationRequest(
