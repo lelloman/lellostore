@@ -118,7 +118,6 @@ private fun LellostoreTopBar(
                     Text(
                         text = currentSection,
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
