@@ -579,6 +579,16 @@ class NotificationBrokerRuntime @Inject constructor(
             }
         })
     }
+    /** Diagnostic snapshot without tokens or credentials. */
+    suspend fun diagnostics(): JSONObject = mutex.withLock {
+        JSONObject().put("status", status.value).put("enabled", enabled).put("ready", ready)
+            .put("connection_id", connectionEpoch).put("auth_expires_at", authExpires)
+            .put("active_routes", JSONArray(activeRoutes.sorted()))
+            .put("registrations", JSONArray(registrations().map { (_, r) ->
+                JSONObject().put("package", r.optString("package")).put("subscription_id", r.optString("id"))
+                    .put("route_active", r.optString("id") in activeRoutes)
+            }))
+    }
     suspend fun interruptedPulse() = mutex.withLock {
         if (enabled) { disconnect("Connection operation interrupted; retrying"); schedule() }
     }

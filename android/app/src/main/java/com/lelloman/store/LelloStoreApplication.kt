@@ -51,10 +51,13 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
 
     @Inject lateinit var connectivityLog: com.lelloman.store.diagnostics.SystemConnectivityLog
 
+    @Inject lateinit var notificationBroker: com.lelloman.store.notification.NotificationBrokerRuntime
+
     override fun onCreate() {
         super.onCreate()
         auditLog.record("process.started", mapOf("version" to BuildConfig.VERSION_NAME, "version_code" to BuildConfig.VERSION_CODE))
         connectivityLog.start()
+        com.lelloman.store.diagnostics.StoreDiagnostics.init(this, auditLog, notificationBroker)
         workManagerInitializer.initialize()
         warmUpdateLifecycleObserver.initialize()
         foregroundUpdateLifecycleObserver.initialize()

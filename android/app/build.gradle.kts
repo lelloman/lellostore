@@ -141,6 +141,10 @@ dependencies {
     implementation(project(":localdata"))
     implementation(project(":remoteapi"))
     implementation(project(":logger"))
+    // Androidoscopy diagnostic sessions: release builds expose tools only after an
+    // explicit, approved session. Pinned to an androidoscopy commit built by JitPack.
+    implementation("com.github.lelloman.androidoscopy:sdk:c6b4ae3698")
+    implementation("com.github.lelloman.androidoscopy:sdk-ui:c6b4ae3698")
     implementation(project(":recovery-protocol"))
     implementation(project(":remote-adb"))
 

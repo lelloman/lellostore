@@ -22,6 +22,7 @@
     <string name="audit_title">Registri locali</string>
     <string name="audit_refresh">Aggiorna</string>
     <string name="audit_export">Esporta registro</string>
+    <string name="audit_diagnostic_session">Sessione diagnostica (Androidoscopy)</string>
     <string name="audit_exported">Registro esportato</string>
     <string name="audit_error">Impossibile leggere o esportare la diagnostica. Riprova.</string>
     <string name="audit_summary">Byte conservati: %1$d (capacità: 4 MiB)\nEventi: %2$d\nOperazioni terminate: %3$d\nCompletate: %4$d\nDurata media totale: %5$d ms\nStatistiche relative ai soli record conservati. Ultimi 100 eventi di seguito.</string>

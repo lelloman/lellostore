@@ -64,6 +64,10 @@ class AuditActivity : ComponentActivity() {
             setOnClickListener { refresh() }
         })
         layout.addView(Button(this).apply {
+            setText(R.string.audit_diagnostic_session)
+            setOnClickListener { com.lelloman.androidoscopy.ui.SessionActivity.launch(this@AuditActivity) }
+        })
+        layout.addView(Button(this).apply {
             setText(R.string.audit_export)
             setOnClickListener { export.launch("lellostore-audit.jsonl") }
         })
