@@ -285,22 +285,23 @@ class NotificationBrokerRuntime @Inject constructor(
             val wsRequest = Request.Builder().url(serverUrl.replaceFirst("https://", "wss://") + "/api/push/v1/stream")
                 .header("Authorization", "Bearer ${device!!.getString("credential")}")
                 .header("Sec-WebSocket-Protocol", "lellostore.push.v1").build()
+            val frames = OrderedFrames(scope) { text -> mutex.withLock {
+                if (epoch != connectionEpoch || !enabled) return@withLock
+                try {
+                    audit.record("push.frame_received", mapOf("connection_id" to epoch, "bytes" to text.toByteArray().size))
+                    handle(JSONObject(text)); schedule()
+                } catch (_: Exception) { disconnect("Invalid broker response"); schedule() }
+            } }
             socket = http.newWebSocket(wsRequest, object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) { sendFrame(JSONObject().put("kind", "authenticate").put("access_token", token), ws) }
-                override fun onMessage(ws: WebSocket, text: String) { scope.launch { mutex.withLock {
-                    if (epoch != connectionEpoch || !enabled) return@withLock
-                    try {
-                        audit.record("push.frame_received", mapOf("connection_id" to epoch, "bytes" to text.toByteArray().size))
-                        handle(JSONObject(text)); schedule()
-                    } catch (_: Exception) { disconnect("Invalid broker response"); schedule() }
-                } } }
+                override fun onMessage(ws: WebSocket, text: String) { frames.offer(text) }
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                     audit.record("push.socket_failed", mapOf("connection_id" to epoch, "error_type" to t.javaClass.simpleName, "http_status" to response?.code))
-                    failed()
+                    frames.close(); failed()
                 }
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     audit.record("push.socket_closed", mapOf("connection_id" to epoch, "code" to code))
-                    failed()
+                    frames.close(); failed()
                 }
                 // Echoing the peer's code fails for reserved codes such as 1005 (no status).
                 override fun onClosing(ws: WebSocket, code: Int, reason: String) { ws.close(1000, null) }
