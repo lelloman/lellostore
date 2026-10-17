@@ -124,8 +124,9 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 /// Every handler requires `AdminUser`, which refuses publish tokens, except
 /// the publishing handlers that take `AdminOrPublisher` and enforce the
 /// token's package themselves: `POST /apps` (upload), `GET /apps/{package}`,
-/// `POST /apps/{package}/publications`,
-/// `POST /apps/{package}/contracts/{contract}/vpks` and `GET /uploads/{id}`.
+/// `POST /apps/{package}/publications`, `GET /apps/{package}/distribution`,
+/// `POST /apps/{package}/contracts/{contract}/vpks`,
+/// `POST /apps/{package}/vpks/{id}/publish` and `GET /uploads/{id}`.
 fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState> {
     let multipart_body_limit = max_upload_size
         .saturating_add(1024 * 1024)

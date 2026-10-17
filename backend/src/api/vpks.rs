@@ -14,10 +14,11 @@ use simple_server::web::{
 use tokio::io::AsyncWriteExt;
 
 pub async fn overview(
-    _admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path(package): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    principal.for_package(&package)?;
     let app = crate::db::get_app(&state.db, &package)
         .await?
         .ok_or_else(|| AppError::NotFound("App not found".into()))?;
@@ -145,11 +146,12 @@ pub async fn notes(
     Ok(StatusCode::NO_CONTENT)
 }
 pub async fn publish(
-    admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path((package, id)): Path<(String, String)>,
     Json(request): Json<Revision>,
 ) -> Result<StatusCode, AppError> {
+    let actor = principal.for_package(&package)?;
     let release = paravoid::release(&state.db, &package, &id).await?;
     let path = state.config.storage_path.join(&release.archive_path);
     if crate::services::upload::calculate_sha256_file(&path).await? != release.archive_sha256
@@ -163,7 +165,7 @@ pub async fn publish(
         &state.db,
         &package,
         &id,
-        &admin.0.subject,
+        &actor.subject,
         request.expected_revision,
     )
     .await?;

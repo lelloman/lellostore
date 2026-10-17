@@ -540,6 +540,22 @@ class PublishTokenTest(unittest.TestCase):
             self.assertEqual(status, 0, stderr)
             self.assertEqual(request.call_args.args[1:], (self.TOKEN, "/api/admin/uploads/job-3", None))
 
+    def test_distribution_and_publish_vpk_use_publish_token(self):
+        with self.no_device_flow_or_cache(), mock.patch.object(
+            publisher, "store_request", side_effect=[{"publication_revision": 4}, {"status": "success"}],
+        ) as requests:
+            status, _, stderr = self.run_main(["distribution", "com.example", "--json"])
+            self.assertEqual(status, 0, stderr)
+            status, _, stderr = self.run_main(["publish-vpk", "com.example", "vpk-2", "--expected-revision", "4", "--yes", "--json"])
+            self.assertEqual(status, 0, stderr)
+        self.assertEqual(
+            [call.args[1:] for call in requests.call_args_list],
+            [
+                (self.TOKEN, "/api/admin/apps/com.example/distribution", None),
+                (self.TOKEN, "/api/admin/apps/com.example/vpks/vpk-2/publish", {"expected_revision": 4}),
+            ],
+        )
+
     def test_dry_run_with_publish_token_touches_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             artifact = Path(directory) / "app.apk"

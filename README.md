@@ -295,14 +295,18 @@ python scripts/publish-to-lellostore.py upload app-release.apk --publish --yes -
 python scripts/publish-to-lellostore.py upload shell.apk --distribution-mode paravoid --yes --json
 python scripts/publish-to-lellostore.py upload-vpk com.example.app <contract> payload.vpk --yes --json
 python scripts/publish-to-lellostore.py upload-status <upload-id> --json
+python scripts/publish-to-lellostore.py distribution com.example.app --json
+python scripts/publish-to-lellostore.py publish-vpk com.example.app <vpk-id> --expected-revision N --yes --json
 ```
 
 With the variable set, the publisher sends the token as the bearer token and never
 runs OIDC discovery, the device flow or the token cache, and it never prints the
 token. `--dry-run` needs no credentials at all. A token can only upload APKs
 (asynchronously) and VPKs for its package, poll the uploads it created, read its
-app and publish its releases; every other administrative request, including
-other apps and token management, is refused. An APK whose parsed package differs
+app and its distribution overview, and publish its APK releases and VPKs
+(`publish`, `publish-vpk`). Every other administrative request is refused,
+including withdrawals (`withdraw`, `withdraw-vpk`), other distribution changes,
+other apps and token management. An APK whose parsed package differs
 from the token's package is refused with 403 and not kept. The Publish tokens page
 shows each token's last use and recent uploads; revoking a token takes effect
 immediately and also refuses its still-queued uploads.

@@ -316,6 +316,75 @@ async fn publish_tokens_upload_poll_and_publish_only_their_package() {
     assert_eq!(vpk_job["publish_token_id"], token_id.as_str());
     assert_eq!(vpk_job["kind"], "vpk");
 
+    // The distribution overview and VPK publication are open to the token for
+    // its own package only; withdrawal and other distribution changes are not.
+    assert_eq!(
+        status(
+            &server,
+            "GET",
+            "/api/admin/apps/com.test.app/distribution",
+            &token
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        status(
+            &server,
+            "GET",
+            "/api/admin/apps/com.test.app/distribution",
+            &other_token
+        )
+        .await,
+        StatusCode::FORBIDDEN
+    );
+    let revision = json!({"expected_revision": 1});
+    for (auth, path, expected) in [
+        (
+            &other_token,
+            "/api/admin/apps/com.test.app/vpks/missing/publish",
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            &token,
+            "/api/admin/apps/com.other.app/vpks/missing/publish",
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            &token,
+            "/api/admin/apps/com.test.app/vpks/missing/publish",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            &token,
+            "/api/admin/apps/com.test.app/vpks/missing/withdraw",
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            &token,
+            "/api/admin/apps/com.test.app/vpks/missing/archive",
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            &token,
+            "/api/admin/apps/com.test.app/vpks/missing/notes",
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        let request = if path.ends_with("/publish") || path.ends_with("/withdraw") {
+            server.post(path)
+        } else {
+            server.put(path)
+        };
+        let response = request
+            .header("Authorization", auth)
+            .json(&revision)
+            .send()
+            .await
+            .expect("test request");
+        assert_eq!(response.status_code(), expected, "{path}");
+    }
+
     // Everything else is refused, including token management itself.
     for (method, path) in [
         ("GET", "/api/admin/apps"),
@@ -324,7 +393,6 @@ async fn publish_tokens_upload_poll_and_publish_only_their_package() {
         ("DELETE", "/api/admin/apps/com.test.app/versions/1"),
         ("POST", "/api/admin/apps/com.test.app/versions/1/withdraw"),
         ("GET", "/api/admin/apps/com.test.app/publications"),
-        ("GET", "/api/admin/apps/com.test.app/distribution"),
         ("GET", "/api/admin/uploads"),
         ("POST", &format!("/api/admin/uploads/{job_id}/retry")),
         ("GET", "/api/admin/users"),

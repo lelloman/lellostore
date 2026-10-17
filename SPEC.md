@@ -55,7 +55,12 @@ acquisition routes. Only these handlers admit a token, each enforcing its scope:
 | `GET` | `/api/admin/uploads/{id}` | Only jobs created by the same token |
 | `GET` | `/api/admin/apps/{package}` | Token's package |
 | `POST` | `/api/admin/apps/{package}/publications` | Token's package |
+| `GET` | `/api/admin/apps/{package}/distribution` | Token's package |
 | `POST` | `/api/admin/apps/{package}/contracts/{contract}/vpks` | Token's package |
+| `POST` | `/api/admin/apps/{package}/vpks/{id}/publish` | Token's package |
+
+VPK withdrawal, release notes, archiving, stream changes, grant revocation,
+APK withdrawal and every other administrative route remain administrator-only.
 
 Upload jobs record the creating token (`upload_jobs.publish_token_id`). The
 worker re-checks that the token is still active before validating its job, so

@@ -54,6 +54,9 @@ fn keys(directory: &std::path::Path) -> Arc<OnlineSigning> {
     Arc::new(OnlineSigning::load(&config).unwrap())
 }
 fn payload(root: &Path, contract: &str) -> Vec<u8> {
+    payload_version(root, contract, 1)
+}
+fn payload_version(root: &Path, contract: &str, version: u32) -> Vec<u8> {
     let mut files = BTreeMap::new();
     for (entry, source) in [
         ("code/classes.dex", "dex/classes.dex"),
@@ -67,7 +70,7 @@ fn payload(root: &Path, contract: &str) -> Vec<u8> {
         );
     }
     let inventory: Vec<_> = files.iter().map(|(path, bytes)| json!({"path":path,"size":bytes.len(),"sha256":hex::encode(Sha256::digest(bytes))})).collect();
-    let body = canonical_json(&json!({"version":1,"applicationId":"example.app","shellContractId":contract,"releaseId":"release-1","payloadVersion":1,"runtimeAbi":1,"formatVersion":1,"minSdk":30,"maxSdk":0,"abis":[],"ledgerSha256":hex::encode(Sha256::digest(&files["resource-ledger.json"])),"inventory":inventory})).unwrap();
+    let body = canonical_json(&json!({"version":1,"applicationId":"example.app","shellContractId":contract,"releaseId":format!("release-{version}"),"payloadVersion":version,"runtimeAbi":1,"formatVersion":1,"minSdk":30,"maxSdk":0,"abis":[],"ledgerSha256":hex::encode(Sha256::digest(&files["resource-ledger.json"])),"inventory":inventory})).unwrap();
     let mut input = b"paravoid/v1/release\n".to_vec();
     input.extend_from_slice(&body);
     std::fs::write(root.join("release-input"), input).unwrap();
@@ -247,15 +250,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .as_str()
                 .unwrap()
                 .to_owned();
-            let publisher = format!("Bearer {secret}");
-            server
-                .get("/api/admin/apps/example.app/distribution")
-                .header("Authorization", &publisher)
-                .send()
-                .await
-                .expect("test request")
-                .assert_status(StatusCode::FORBIDDEN);
-            publisher
+            format!("Bearer {secret}")
         } else {
             admin.clone()
         };
@@ -579,6 +574,75 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .await
                 .unwrap();
             assert_eq!(retained.publication_state, "published");
+        }
+
+        // A release pipeline ships a newer payload through upload-vpk,
+        // distribution and publish-vpk with the token alone.
+        if authentication == "apkKey" {
+            let next = payload_version(root.path(), &contract, 2);
+            let uploaded = server
+                .post(&format!(
+                    "/api/admin/apps/example.app/contracts/{contract}/vpks"
+                ))
+                .header("Authorization", &publisher)
+                .multipart(
+                    MultipartForm::new()
+                        .add_part("file", Part::bytes(next).file_name("payload.vpk")),
+                )
+                .send()
+                .await
+                .expect("test request");
+            uploaded.assert_status(StatusCode::ACCEPTED);
+            upload_jobs::process_next(&ctx.pool, &worker).await.unwrap();
+            let job_id = uploaded.json::<Value>().unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let job = server
+                .get(&format!("/api/admin/uploads/{job_id}"))
+                .header("Authorization", &publisher)
+                .send()
+                .await
+                .expect("test request")
+                .json::<Value>()
+                .unwrap();
+            assert_eq!(job["status"], "ready", "{job}");
+            let vpk_id = serde_json::from_str::<Value>(job["result_json"].as_str().unwrap())
+                .unwrap()["vpk_id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let overview = server
+                .get("/api/admin/apps/example.app/distribution")
+                .header("Authorization", &publisher)
+                .send()
+                .await
+                .expect("test request");
+            overview.assert_status_ok();
+            let revision = overview.json::<Value>().unwrap()["publication_revision"].clone();
+            server
+                .post(&format!("/api/admin/apps/example.app/vpks/{id}/withdraw"))
+                .header("Authorization", &publisher)
+                .json(&json!({"expected_revision":revision}))
+                .send()
+                .await
+                .expect("test request")
+                .assert_status(StatusCode::FORBIDDEN);
+            server
+                .post(&format!(
+                    "/api/admin/apps/example.app/vpks/{vpk_id}/publish"
+                ))
+                .header("Authorization", &publisher)
+                .json(&json!({"expected_revision":revision}))
+                .send()
+                .await
+                .expect("test request")
+                .assert_status(StatusCode::NO_CONTENT);
+            let published = db::paravoid::release(&ctx.pool, "example.app", &vpk_id)
+                .await
+                .unwrap();
+            assert_eq!(published.publication_state, "published");
+            assert_eq!(published.payload_version, 2);
         }
     }
 }
