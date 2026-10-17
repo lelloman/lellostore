@@ -120,6 +120,12 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 }
 
 /// Admin routes (requires authentication and admin role)
+///
+/// Every handler requires `AdminUser`, which refuses publish tokens, except
+/// the publishing handlers that take `AdminOrPublisher` and enforce the
+/// token's package themselves: `POST /apps` (upload), `GET /apps/{package}`,
+/// `POST /apps/{package}/publications`,
+/// `POST /apps/{package}/contracts/{contract}/vpks` and `GET /uploads/{id}`.
 fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState> {
     let multipart_body_limit = max_upload_size
         .saturating_add(1024 * 1024)
@@ -202,6 +208,14 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
         .route(
             "/apps/{package_name}/versions/{version_code}",
             delete(handlers::delete_version).put(handlers::set_admin_release_channel),
+        )
+        .route(
+            "/publish-tokens",
+            get(super::publish_tokens::list).post(super::publish_tokens::create),
+        )
+        .route(
+            "/publish-tokens/{id}",
+            delete(super::publish_tokens::revoke),
         )
         .route("/users", get(handlers::list_admin_users))
         .route(

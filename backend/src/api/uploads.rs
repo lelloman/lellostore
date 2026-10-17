@@ -1,6 +1,6 @@
 use super::AppState;
 use crate::{
-    auth::AdminUser,
+    auth::{AdminOrPublisher, AdminUser},
     error::AppError,
     services::upload_jobs::{self, UploadJob},
 };
@@ -20,12 +20,15 @@ pub async fn list(
     ))
 }
 
+/// Poll one upload. A publish token may read only the jobs it created.
 pub async fn get(
-    _admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<UploadJob>, AppError> {
-    Ok(Json(upload_jobs::get(&state.db, &id).await?))
+    let job = upload_jobs::get(&state.db, &id).await?;
+    principal.for_upload_job(job.publish_token_id.as_deref())?;
+    Ok(Json(job))
 }
 
 pub async fn retry(
@@ -33,11 +36,11 @@ pub async fn retry(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<UploadJob>, AppError> {
-    let changed = sqlx::query("UPDATE upload_jobs SET status = 'queued', error = NULL, updated_at = datetime('now') WHERE id = ? AND status = 'failed'")
+    let changed = sqlx::query("UPDATE upload_jobs SET status = 'queued', error = NULL, updated_at = datetime('now') WHERE id = ? AND status = 'failed' AND input_cleaned_at IS NULL")
         .bind(&id).execute(&state.db).await?.rows_affected();
     if changed == 0 {
         return Err(AppError::Conflict(
-            "Only failed uploads can be retried".into(),
+            "Only failed uploads whose artifact is still stored can be retried".into(),
         ));
     }
     Ok(Json(upload_jobs::get(&state.db, &id).await?))

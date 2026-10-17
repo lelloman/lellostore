@@ -6,6 +6,7 @@ pub mod dvpk;
 pub mod models;
 pub mod paravoid;
 pub mod publications;
+pub mod publish_tokens;
 
 use simple_server::database::migrations::{
     CompletionState, MigrationEntry, MigrationObservation, MigrationPlan, MigrationVersion,

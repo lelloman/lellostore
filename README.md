@@ -194,7 +194,8 @@ matching app/companion signatures and a single-APK app installation.
 ### Common publisher
 
 The dependency-free publisher is the authoritative client for repository build
-scripts and agents. It uses the OIDC device authorization flow and accepts
+scripts and agents. It uses the OIDC device authorization flow (or a per-app
+publish token, see below) and accepts
 configuration through options or environment variables:
 
 ```sh
@@ -277,6 +278,34 @@ Only pass `--yes` after the upload has already been authorized; without it the
 publisher asks for interactive confirmation immediately before authentication
 and upload. Direct invocation with only an artifact path remains supported for
 older wrappers.
+
+#### Unattended publishing with a publish token
+
+Release pipelines that cannot complete the device flow use a per-app publish
+token. An administrator creates one on the admin **Publish tokens** page (or with
+`POST /api/admin/publish-tokens`), choosing a name, the one Android package it
+may publish and an optional expiry. The secret starts with `lellostore_pub_` and
+is shown only once; the store keeps only its SHA-256. Store it as a CI secret and
+expose it to the publisher as `LELLOSTORE_PUBLISH_TOKEN`:
+
+```sh
+export LELLOSTORE_URL=https://store.example.com
+export LELLOSTORE_PUBLISH_TOKEN=lellostore_pub_...   # from the CI secret store
+python scripts/publish-to-lellostore.py upload app-release.apk --publish --yes --json
+python scripts/publish-to-lellostore.py upload shell.apk --distribution-mode paravoid --yes --json
+python scripts/publish-to-lellostore.py upload-vpk com.example.app <contract> payload.vpk --yes --json
+python scripts/publish-to-lellostore.py upload-status <upload-id> --json
+```
+
+With the variable set, the publisher sends the token as the bearer token and never
+runs OIDC discovery, the device flow or the token cache, and it never prints the
+token. `--dry-run` needs no credentials at all. A token can only upload APKs
+(asynchronously) and VPKs for its package, poll the uploads it created, read its
+app and publish its releases; every other administrative request, including
+other apps and token management, is refused. An APK whose parsed package differs
+from the token's package is refused with 403 and not kept. The Publish tokens page
+shows each token's last use and recent uploads; revoking a token takes effect
+immediately and also refuses its still-queued uploads.
 
 ## Verification
 

@@ -9,7 +9,7 @@ use simple_server::web::{
 };
 use tokio::io::AsyncWriteExt;
 
-use crate::auth::{AdminUser, AuthenticatedUser};
+use crate::auth::{AdminOrPublisher, AdminUser, AuthenticatedUser};
 use crate::db::access::AppAccessLevel;
 use crate::db::admin::{GroupDetail, KnownUser, UserAccessDetail};
 use crate::db::{self, models::AppVersion};
@@ -302,10 +302,11 @@ pub async fn list_admin_apps(
 }
 
 pub async fn get_admin_app(
-    _admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path(package_name): Path<String>,
 ) -> Result<Json<AppDetailResponse>, AppError> {
+    principal.for_package(&package_name)?;
     let Json(mut response) = get_app(
         State(state.clone()),
         Path(package_name.clone()),
@@ -519,11 +520,22 @@ pub struct UploadOptions {
 }
 
 pub async fn upload_app(
-    admin: AdminUser,
+    principal: AdminOrPublisher,
     simple_server::web::extract::Query(options): simple_server::web::extract::Query<UploadOptions>,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
+    // The package is only known after parsing, so a publish token's scope is
+    // enforced below (early for APKs) and authoritatively by the upload worker.
+    let uploader = principal.for_upload();
+    if let Some(scope) = &uploader.publish_scope {
+        if !options.asynchronous {
+            tracing::warn!(token_id = %scope.token_id, "Publish token refused a synchronous upload");
+            return Err(AppError::BadRequest(
+                "Publish tokens must upload with asynchronous=true".into(),
+            ));
+        }
+    }
     let upload_temp = state
         .storage
         .create_temp_dir()
@@ -651,17 +663,35 @@ pub async fn upload_app(
             "replace_latest belongs to publication, not upload".into(),
         ));
     }
+    if let Some(scope) = &uploader.publish_scope {
+        if let Some(package) = state
+            .upload_service
+            .peek_apk_package(&filename, &upload_path)
+            .await
+        {
+            if package != scope.package {
+                // The temporary upload directory is dropped on return, so the
+                // refused artifact is not kept.
+                tracing::warn!(token_id = %scope.token_id, package = %package, "Publish token upload refused: package outside token scope");
+                return Err(AppError::Forbidden);
+            }
+        }
+    }
     if options.asynchronous {
-        let job = crate::services::upload_jobs::enqueue_with_mode(
+        let job = crate::services::upload_jobs::enqueue_with_mode_for_token(
             &state.db,
             &state.config.storage_path,
-            &admin.0.subject,
+            &uploader.subject,
             &filename,
             &upload_path,
             override_name,
             override_description,
             is_beta,
             mode,
+            uploader
+                .publish_scope
+                .as_ref()
+                .map(|scope| scope.token_id.as_str()),
         )
         .await?;
         return Ok((StatusCode::ACCEPTED, Json(job)).into_response());

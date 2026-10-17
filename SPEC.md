@@ -35,6 +35,38 @@ The frontend and Android app use Authorization Code with PKCE. The publisher
 uses Device Authorization Grant. Clients send access tokens as
 `Authorization: Bearer <token>`.
 
+### Publish tokens
+
+Unattended release pipelines authenticate with per-app publish tokens instead of
+OIDC. A token is `lellostore_pub_` followed by 32 random bytes in hex, sent as
+`Authorization: Bearer <token>`. The store keeps only its SHA-256
+(`publish_tokens` table) with name, package, creator, creation, optional expiry,
+last use and revocation times. A bearer value with the `lellostore_pub_` prefix
+is resolved against that table instead of being validated as a JWT; an unknown,
+revoked or expired token is `401`. A valid one becomes a non-administrator
+principal scoped to one package.
+
+Administrator-only handlers refuse publish tokens (`403`), as do catalog and
+acquisition routes. Only these handlers admit a token, each enforcing its scope:
+
+| Method | Path | Token scope |
+| --- | --- | --- |
+| `POST` | `/api/admin/apps?asynchronous=true` | Parsed APK package must equal the token's package; otherwise `403` (checked at upload for APKs, and by the validation worker, which fails the job and discards the artifact). Synchronous uploads are refused. |
+| `GET` | `/api/admin/uploads/{id}` | Only jobs created by the same token |
+| `GET` | `/api/admin/apps/{package}` | Token's package |
+| `POST` | `/api/admin/apps/{package}/publications` | Token's package |
+| `POST` | `/api/admin/apps/{package}/contracts/{contract}/vpks` | Token's package |
+
+Upload jobs record the creating token (`upload_jobs.publish_token_id`). The
+worker re-checks that the token is still active before validating its job, so
+revocation also refuses queued work. Administrators manage tokens with
+`POST /api/admin/publish-tokens` (`name`, `package_name`, optional RFC 3339
+`expires_at`; returns the secret once), `GET /api/admin/publish-tokens` (no
+secrets; includes `last_used_at` and recent uploads) and
+`DELETE /api/admin/publish-tokens/{id}` (revoke). Creation and revocation are
+written to the access audit log. Refusals are logged with the token id, never the
+secret.
+
 `GET /api/server-config` advertises a versioned authentication method, issuer,
 public client IDs/scopes, instance name, and optional capabilities. Missing
 operator configuration returns an uncached 503 with `server_not_configured`.
@@ -122,6 +154,9 @@ replaced. The icon endpoint also continues to accept unversioned URLs.
 | `POST` | `/api/admin/apps/{package_name}/icon` | Multipart `file` or `icon` | Replace icon with a normalized 192×192 PNG |
 | `DELETE` | `/api/admin/apps/{package_name}` | None | Delete catalog entry, versions, and stored files |
 | `DELETE` | `/api/admin/apps/{package_name}/versions/{version_code}` | None | Delete version; delete application if it was the last |
+| `GET` | `/api/admin/publish-tokens` | None | Publish tokens without secrets, with `last_used_at` and `recent_uploads` |
+| `POST` | `/api/admin/publish-tokens` | JSON `name`, `package_name`, optional `expires_at` | `201` with the token and its one-time `secret` |
+| `DELETE` | `/api/admin/publish-tokens/{id}` | None | Revoke; returns the token with `revoked_at` |
 
 Uploads accept exactly one `.apk` or `.aab` file. The backend streams the input
 to a private temporary location while enforcing `MAX_UPLOAD_SIZE`. It extracts

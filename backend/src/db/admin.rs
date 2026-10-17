@@ -128,7 +128,7 @@ pub async fn list_groups(pool: &SqlitePool) -> Result<Vec<GroupDetail>, AppError
     Ok(details)
 }
 
-async fn audit(
+pub(crate) async fn audit(
     conn: &mut SqliteConnection,
     actor: &str,
     action: &str,

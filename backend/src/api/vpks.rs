@@ -1,5 +1,9 @@
 use super::AppState;
-use crate::{auth::AdminUser, db::paravoid, error::AppError};
+use crate::{
+    auth::{AdminOrPublisher, AdminUser},
+    db::paravoid,
+    error::AppError,
+};
 use serde::Deserialize;
 use simple_server::web::{
     extract::{Multipart, Path, State},
@@ -53,11 +57,12 @@ pub async fn overview(
     ))
 }
 pub async fn upload(
-    admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path((package, contract)): Path<(String, String)>,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
+    let uploader = principal.for_package(&package)?;
     paravoid::contract(&state.db, &package, &contract).await?;
     let temporary = state
         .storage
@@ -97,14 +102,18 @@ pub async fn upload(
         output.flush().await?;
     }
     let filename = filename.ok_or_else(|| AppError::BadRequest("VPK file missing".into()))?;
-    let job = crate::services::upload_jobs::enqueue_vpk(
+    let job = crate::services::upload_jobs::enqueue_vpk_for_token(
         &state.db,
         &state.config.storage_path,
-        &admin.0.subject,
+        &uploader.subject,
         &filename,
         &path,
         &package,
         &contract,
+        uploader
+            .publish_scope
+            .as_ref()
+            .map(|scope| scope.token_id.as_str()),
     )
     .await?;
     Ok((StatusCode::ACCEPTED, Json(job)).into_response())

@@ -17,10 +17,10 @@ mod validator;
 
 pub use discovery::{fetch_discovery, OidcDiscovery};
 pub use error::AuthError;
-pub use extractors::{AdminUser, AuthenticatedUser};
+pub use extractors::{AdminOrPublisher, AdminUser, AuthenticatedUser};
 pub use jwks::JwksCache;
 pub use middleware::auth_middleware;
-pub use user::User;
+pub use user::{PublishScope, User};
 pub use validator::{TokenClaims, TokenValidator};
 
 use sqlx::SqlitePool;
@@ -39,7 +39,9 @@ pub struct AuthState {
     pub role_claim_path: String,
     /// Role name that grants admin access
     pub admin_role: String,
-    /// Optional local directory populated only after successful token validation.
+    /// The store database. It holds the local user directory, populated only
+    /// after successful OIDC token validation, and resolves publish tokens.
+    /// Without it, publish tokens are rejected.
     pub user_registry: Option<SqlitePool>,
 }
 

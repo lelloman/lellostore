@@ -23,6 +23,9 @@ pub enum UploadError {
     #[error("Invalid file type: expected APK or AAB")]
     InvalidFileType,
 
+    #[error("This publish token is not allowed to upload {package}")]
+    PackageNotAllowed { package: String },
+
     #[error("This is a Paravoid shell. Select Paravoid distribution when uploading.")]
     UnsupportedShell,
 
@@ -89,6 +92,20 @@ impl UploadService {
             db,
             max_size,
         }
+    }
+
+    /// Best-effort early read of an APK's package for request-time publish
+    /// token checks. Returns `None` for other artifact types or unparsable
+    /// files; the queued validation remains authoritative.
+    pub async fn peek_apk_package(&self, file_name: &str, path: &Path) -> Option<String> {
+        if detect_file_type(path, file_name) != FileType::Apk {
+            return None;
+        }
+        self.apk_parser
+            .parse(path)
+            .await
+            .ok()
+            .map(|metadata| metadata.package_name)
     }
 
     /// Re-extract icons for catalog entries created by an older or less capable
@@ -199,6 +216,7 @@ impl UploadService {
             false,
             None,
             "normal",
+            None,
         )
         .await
     }
@@ -221,6 +239,7 @@ impl UploadService {
             true,
             None,
             "normal",
+            None,
         )
         .await
     }
@@ -245,13 +264,18 @@ impl UploadService {
             true,
             None,
             mode,
+            None,
         )
         .await
     }
 
+    /// Process a queued upload. `expected_package` is the package of the
+    /// publish token that created the job; any other parsed package is
+    /// rejected before anything is stored.
     pub async fn process_queued_upload(
         &self,
         job: &super::upload_jobs::UploadJob,
+        expected_package: Option<&str>,
     ) -> Result<UploadResult, UploadError> {
         self.process_upload(
             &job.file_name,
@@ -263,6 +287,7 @@ impl UploadService {
             true,
             Some(&job.id),
             &job.distribution_mode,
+            expected_package,
         )
         .await
     }
@@ -279,6 +304,7 @@ impl UploadService {
         draft: bool,
         job_id: Option<&str>,
         distribution_mode: &str,
+        expected_package: Option<&str>,
     ) -> Result<UploadResult, UploadError> {
         // 1. Validate file size
         let size = tokio::fs::metadata(upload_path).await?.len();
@@ -345,6 +371,13 @@ impl UploadService {
             }
         }
         let metadata = self.apk_parser.parse(&apk_path).await?;
+        if let Some(expected) = expected_package {
+            if metadata.package_name != expected {
+                return Err(UploadError::PackageNotAllowed {
+                    package: metadata.package_name,
+                });
+            }
+        }
         let shell = if distribution_mode == "paravoid" {
             Some(
                 super::shells::verify(&apk_path, &metadata, is_beta)

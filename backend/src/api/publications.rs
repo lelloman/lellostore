@@ -6,17 +6,18 @@ use simple_server::web::{
 
 use super::AppState;
 use crate::{
-    auth::AdminUser,
+    auth::{AdminOrPublisher, AdminUser},
     db::{self, publications::*},
     error::AppError,
 };
 
 pub async fn publish(
-    admin: AdminUser,
+    principal: AdminOrPublisher,
     State(state): State<AppState>,
     Path(package): Path<String>,
     Json(request): Json<PublishRequest>,
 ) -> Result<Json<PublicationResult>, AppError> {
+    let actor = principal.for_package(&package)?;
     let version = db::get_app_versions(&state.db, &package)
         .await?
         .into_iter()
@@ -129,7 +130,7 @@ pub async fn publish(
     let result = db::publications::publish_checked(
         &state.db,
         &package,
-        &admin.0.subject,
+        &actor.subject,
         &request,
         transition_signer.as_deref(),
     )

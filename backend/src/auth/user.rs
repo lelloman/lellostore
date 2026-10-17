@@ -15,6 +15,17 @@ pub struct User {
     pub roles: Vec<String>,
     /// Whether user has admin role
     pub is_admin: bool,
+    /// Present only for machine principals authenticated with a publish token.
+    /// Such principals are never admins and may only reach handlers that
+    /// explicitly authorize publishing for `publish_scope.package`.
+    pub publish_scope: Option<PublishScope>,
+}
+
+/// The authority carried by a per-app publish token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishScope {
+    pub token_id: String,
+    pub package: String,
 }
 
 impl User {
@@ -33,7 +44,23 @@ impl User {
             email: claims.email.clone(),
             roles,
             is_admin,
+            publish_scope: None,
         }
+    }
+
+    /// A machine principal limited to publishing one package.
+    pub fn publisher(token_id: String, package: String) -> Self {
+        Self {
+            subject: format!("publish-token:{token_id}"),
+            email: None,
+            roles: Vec::new(),
+            is_admin: false,
+            publish_scope: Some(PublishScope { token_id, package }),
+        }
+    }
+
+    pub fn is_publish_token(&self) -> bool {
+        self.publish_scope.is_some()
     }
 }
 

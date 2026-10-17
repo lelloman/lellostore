@@ -4,7 +4,10 @@
 Configuration is supplied with command-line options or these environment
 variables: LELLOSTORE_URL, and optional legacy overrides LELLOSTORE_OIDC_ISSUER
 and LELLOSTORE_CLIENT_ID. With only a store URL, public OAuth settings are discovered.
-Authentication uses the OIDC Device Authorization Grant.
+Authentication uses the OIDC Device Authorization Grant. For unattended
+release pipelines, set LELLOSTORE_PUBLISH_TOKEN to a per-app publish token
+created by a LelloStore administrator: it is sent as the bearer token, and the
+device flow, OIDC discovery and the token cache are skipped entirely.
 """
 
 import argparse
@@ -24,6 +27,8 @@ from typing import Mapping
 
 VERSION = "3.0.0"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "lellostore" / "tokens"
+PUBLISH_TOKEN_ENV = "LELLOSTORE_PUBLISH_TOKEN"
+PUBLISH_TOKEN_PREFIX = "lellostore_pub_"
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -63,6 +68,7 @@ class PublisherConfig:
         client_id: str | None,
         environ: Mapping[str, str],
         allow_insecure_http: bool = False,
+        require_oidc: bool = True,
     ) -> "PublisherConfig":
         values = {
             "store_url": (store_url or environ.get("LELLOSTORE_URL", "")).strip(),
@@ -72,6 +78,9 @@ class PublisherConfig:
         if not values["store_url"]:
             raise PublisherError("Missing configuration: LELLOSTORE_URL. Set it or pass --store-url.")
         normalized_store = _normalize_url(values["store_url"], "store URL", allow_insecure_http)
+        if not require_oidc:
+            # Publish-token mode: no identity provider is contacted at all.
+            return cls(normalized_store, "", "", allow_insecure_http)
         scopes = ["openid"]
         if not values["issuer"] or not values["client_id"]:
             metadata = discover_store(normalized_store)
@@ -345,6 +354,23 @@ def device_flow_auth(
     raise PublisherError("Device authorization timed out")
 
 
+def publish_token_from(environ: Mapping[str, str]) -> str | None:
+    """The publish token from the environment, if set. Never logged or printed."""
+    token = environ.get(PUBLISH_TOKEN_ENV, "").strip()
+    if not token:
+        return None
+    if not token.startswith(PUBLISH_TOKEN_PREFIX) or any(c.isspace() for c in token):
+        raise PublisherError(f"{PUBLISH_TOKEN_ENV} is not a LelloStore publish token")
+    return token
+
+
+def obtain_token(config: PublisherConfig, publish_token: str | None, json_output: bool = False) -> str:
+    """Use the publish token when one is configured; otherwise the device flow."""
+    if publish_token:
+        return publish_token
+    return device_flow_auth(config, json_output=json_output)
+
+
 def validate_artifact(artifact: Path) -> dict:
     artifact = artifact.expanduser().resolve()
     if not artifact.is_file():
@@ -449,7 +475,7 @@ def upload_artifact(
     if not 200 <= response.status < 300:
         friendly_errors = {
             401: "Authentication failed; run the logout command and authenticate again",
-            403: "Permission denied; the authenticated user needs the administrator role",
+            403: "Permission denied; an administrator, or a publish token for this application, is required",
             409: "This application version already exists",
             413: "The artifact exceeds the server upload limit",
             415: "The server rejected the artifact type",
@@ -677,12 +703,15 @@ def main(
     environment = os.environ if environ is None else environ
     json_output = bool(getattr(parsed, "json", False))
     try:
+        # logout only manages the device-flow cache, so it ignores the token.
+        publish_token = None if parsed.command == "logout" else publish_token_from(environment)
         config = PublisherConfig.resolve(
             parsed.store_url,
             parsed.issuer,
             parsed.client_id,
             environment,
             parsed.allow_insecure_http,
+            require_oidc=publish_token is None,
         )
         if parsed.command == "logout":
             token_file = token_file_for(config)
@@ -697,7 +726,7 @@ def main(
             if parsed.command != "inspect" and not parsed.yes:
                 if not sys.stdin.isatty() or input(f"{parsed.command.capitalize()} {parsed.package_name} APK {parsed.version_code}? Type '{parsed.command}': ").strip() != parsed.command:
                     raise PublisherError("Action cancelled; pass --yes only after authorization", exit_code=2)
-            token = device_flow_auth(config, json_output=json_output)
+            token = obtain_token(config, publish_token, json_output=json_output)
             package = urllib.parse.quote(parsed.package_name, safe="")
             path = f"/api/admin/apps/{package}"
             data = None
@@ -714,7 +743,7 @@ def main(
             if hasattr(parsed, "yes") and not parsed.yes:
                 if not sys.stdin.isatty() or input(f"Type '{parsed.command}' to confirm: ").strip() != parsed.command:
                     raise PublisherError("Action cancelled; pass --yes after authorization", exit_code=2)
-            token = device_flow_auth(config, json_output=json_output)
+            token = obtain_token(config, publish_token, json_output=json_output)
             if parsed.command == "upload-vpk":
                 result = upload_vpk(parsed.artifact, parsed.package_name, parsed.contract_id, config, token)
             else:
@@ -745,7 +774,7 @@ def main(
             return 0
         if not parsed.yes:
             _confirm_upload(Path(artifact_info["artifact"]))
-        token = device_flow_auth(config, json_output=json_output)
+        token = obtain_token(config, publish_token, json_output=json_output)
         upload_artifact(
             Path(artifact_info["artifact"]),
             token,

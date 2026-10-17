@@ -51,6 +51,9 @@ fn authenticated_access(auth: AuthState) -> AsyncAccess<Parts, User, AuthError> 
                 warn!(path = %path, error = %error, "Authentication failed: missing or invalid token");
                 error
             })?;
+            if token.starts_with(crate::db::publish_tokens::SECRET_PREFIX) {
+                return authenticate_publish_token(&auth, token, path).await;
+            }
             let claims = auth.validator.validate(token).await.map_err(|error| {
                 warn!(path = %path, error = %error, "Authentication failed: token validation error");
                 error
@@ -65,6 +68,28 @@ fn authenticated_access(auth: AuthState) -> AsyncAccess<Parts, User, AuthError> 
             Ok(user)
         })
     })
+}
+
+/// Resolve a publish token secret against the store database. The secret is
+/// never logged; only the token id of a resolved token is.
+async fn authenticate_publish_token(
+    auth: &AuthState,
+    secret: &str,
+    path: &str,
+) -> Result<User, AuthError> {
+    let Some(pool) = &auth.user_registry else {
+        warn!(path = %path, "Authentication failed: publish tokens require the store database");
+        return Err(AuthError::TokenInvalid("publish token".into()));
+    };
+    let resolved = crate::db::publish_tokens::authenticate(pool, secret)
+        .await
+        .map_err(|error| AuthError::UserRegistryUnavailable(error.to_string()))?
+        .ok_or_else(|| {
+            warn!(path = %path, "Authentication failed: unknown, revoked or expired publish token");
+            AuthError::TokenInvalid("publish token".into())
+        })?;
+    debug!(token_id = %resolved.id, package = %resolved.package_name, path = %path, "Publish token authenticated");
+    Ok(User::publisher(resolved.id, resolved.package_name))
 }
 
 /// Authentication middleware that validates tokens and attaches User to request

@@ -458,5 +458,114 @@ class ParavoidCommandTest(unittest.TestCase):
         self.assertEqual(publish.transition_review, "review")
 
 
+class PublishTokenTest(unittest.TestCase):
+    TOKEN = "lellostore_pub_" + "ab" * 32
+    ENVIRONMENT = {
+        "LELLOSTORE_URL": "https://store.example.com",
+        "LELLOSTORE_PUBLISH_TOKEN": TOKEN,
+    }
+
+    @contextlib.contextmanager
+    def no_device_flow_or_cache(self):
+        """Fail the test if any device-flow, discovery or cache path is touched."""
+        names = [
+            "device_flow_auth", "discover_store", "discover_oidc", "refresh_access_token",
+            "token_file_for", "load_token", "save_token", "get_cached_access_token", "http_request",
+        ]
+        with contextlib.ExitStack() as stack:
+            for name in names:
+                stack.enter_context(mock.patch.object(
+                    publisher, name, side_effect=AssertionError(f"{name} must not be used with a publish token"),
+                ))
+            yield
+
+    def run_main(self, arguments):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            status = publisher.main(arguments, environ=self.ENVIRONMENT)
+        self.assertNotIn(self.TOKEN, stdout.getvalue() + stderr.getvalue())
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_normal_upload_uses_publish_token_without_device_flow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "app.apk"
+            artifact.write_bytes(b"PK\x03\x04test apk")
+            connection = FakeConnection(FakeHttpResponse({"id": "job-1", "status": "queued"}, status=202, reason="Accepted"))
+            ready = {"id": "job-1", "status": "ready", "result_json": json.dumps({"package_name": "com.example", "version_code": 7})}
+            app = {"package_name": "com.example", "name": "Example", "publication_revision": 3, "versions": [{"version_code": 7, "version_name": "1.7"}]}
+            published = {"status": "published"}
+            with self.no_device_flow_or_cache(), mock.patch.object(publisher, "_open_connection", return_value=connection), mock.patch.object(
+                publisher, "store_request", side_effect=[ready, app, app, published],
+            ) as requests, mock.patch.object(publisher.time, "sleep"):
+                status, _, stderr = self.run_main(["upload", str(artifact), "--publish", "--yes", "--json"])
+
+        self.assertEqual(status, 0, stderr)
+        self.assertEqual(connection.request, ("POST", "/api/admin/apps?asynchronous=true"))
+        self.assertIn(("Authorization", f"Bearer {self.TOKEN}"), connection.headers)
+        self.assertIn(b"normal", b"".join(connection.chunks))
+        self.assertEqual([call.args[1] for call in requests.call_args_list], [self.TOKEN] * 4)
+        self.assertEqual(
+            [call.args[2] for call in requests.call_args_list],
+            ["/api/admin/uploads/job-1", "/api/admin/apps/com.example", "/api/admin/apps/com.example", "/api/admin/apps/com.example/publications"],
+        )
+
+    def test_paravoid_upload_uses_publish_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "shell.apk"
+            artifact.write_bytes(b"PK\x03\x04shell")
+            connection = FakeConnection(FakeHttpResponse({"id": "job-2", "status": "ready", "result_json": json.dumps({"package_name": "com.example", "version_code": 1})}, status=202, reason="Accepted"))
+            app = {"package_name": "com.example", "name": "Example", "versions": [{"version_code": 1}]}
+            with self.no_device_flow_or_cache(), mock.patch.object(publisher, "_open_connection", return_value=connection), mock.patch.object(
+                publisher, "store_request", return_value=app,
+            ) as requests:
+                status, _, stderr = self.run_main(["upload", str(artifact), "--distribution-mode", "paravoid", "--yes", "--json"])
+
+        self.assertEqual(status, 0, stderr)
+        self.assertIn(("Authorization", f"Bearer {self.TOKEN}"), connection.headers)
+        self.assertIn(b"paravoid", b"".join(connection.chunks))
+        self.assertEqual(requests.call_args.args[1], self.TOKEN)
+
+    def test_vpk_upload_and_polling_use_publish_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "payload.vpk"
+            artifact.write_bytes(b"vpk")
+            connection = FakeConnection(FakeHttpResponse({"id": "job-3", "status": "queued"}, status=202, reason="Accepted"))
+            with self.no_device_flow_or_cache(), mock.patch.object(publisher, "_open_connection", return_value=connection):
+                status, stdout, stderr = self.run_main(["upload-vpk", "com.example", "c" * 64, str(artifact), "--yes", "--json"])
+            self.assertEqual(status, 0, stderr)
+            self.assertEqual(json.loads(stdout)["id"], "job-3")
+            self.assertIn(("Authorization", f"Bearer {self.TOKEN}"), connection.headers)
+            with self.no_device_flow_or_cache(), mock.patch.object(publisher, "store_request", return_value={"status": "ready"}) as request:
+                status, _, stderr = self.run_main(["upload-status", "job-3", "--json"])
+            self.assertEqual(status, 0, stderr)
+            self.assertEqual(request.call_args.args[1:], (self.TOKEN, "/api/admin/uploads/job-3", None))
+
+    def test_dry_run_with_publish_token_touches_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "app.apk"
+            artifact.write_bytes(b"test apk")
+            with self.no_device_flow_or_cache(), mock.patch.object(publisher, "_open_connection", side_effect=AssertionError("no network")):
+                status, stdout, stderr = self.run_main(["upload", str(artifact), "--dry-run", "--json"])
+        self.assertEqual(status, 0, stderr)
+        self.assertEqual(json.loads(stdout)["status"], "valid")
+
+    def test_store_request_sends_publish_token_as_bearer(self):
+        connection = mock.Mock()
+        connection.getresponse.return_value = FakeHttpResponse({"ok": True}, status=200, reason="OK")
+        config = publisher.PublisherConfig.resolve(None, None, None, self.ENVIRONMENT, require_oidc=False)
+        with mock.patch.object(publisher, "_open_connection", return_value=connection):
+            publisher.store_request(config, self.TOKEN, "/api/admin/apps/com.example")
+        self.assertEqual(connection.request.call_args.kwargs["headers"]["Authorization"], f"Bearer {self.TOKEN}")
+
+    def test_malformed_publish_token_is_rejected_without_echoing_it(self):
+        environment = dict(self.ENVIRONMENT, LELLOSTORE_PUBLISH_TOKEN="not-a-token-secret")
+        stderr = io.StringIO()
+        with self.no_device_flow_or_cache(), contextlib.redirect_stderr(stderr):
+            status = publisher.main(["upload-status", "job"], environ=environment)
+        self.assertEqual(status, 1)
+        self.assertIn("LELLOSTORE_PUBLISH_TOKEN", stderr.getvalue())
+        self.assertNotIn("not-a-token-secret", stderr.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

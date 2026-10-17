@@ -232,9 +232,36 @@ async fn signed_shell_to_authenticated_http_delivery() {
         let server = TestServer::new(ctx.router);
         let admin = format!("Bearer {}", oidc.get_admin_token());
         let user = format!("Bearer {}", oidc.get_user_token());
+        // Keyed shells are uploaded and published by a per-app publish token,
+        // as an unattended release pipeline would; public shells by an admin.
+        let publisher = if authentication == "apkKey" {
+            let created = server
+                .post("/api/admin/publish-tokens")
+                .header("Authorization", &admin)
+                .json(&json!({"name":"CI","package_name":"example.app"}))
+                .send()
+                .await
+                .expect("test request");
+            created.assert_status(StatusCode::CREATED);
+            let secret = created.json::<Value>().unwrap()["secret"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let publisher = format!("Bearer {secret}");
+            server
+                .get("/api/admin/apps/example.app/distribution")
+                .header("Authorization", &publisher)
+                .send()
+                .await
+                .expect("test request")
+                .assert_status(StatusCode::FORBIDDEN);
+            publisher
+        } else {
+            admin.clone()
+        };
         let uploaded = server
             .post("/api/admin/apps?asynchronous=true")
-            .header("Authorization", &admin)
+            .header("Authorization", &publisher)
             .multipart(
                 MultipartForm::new()
                     .add_text("publication", "draft")
@@ -255,7 +282,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 "/api/admin/uploads/{}",
                 job["id"].as_str().unwrap()
             ))
-            .header("Authorization", &admin)
+            .header("Authorization", &publisher)
             .send()
             .await
             .expect("test request");
@@ -278,7 +305,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
                 .post(&format!(
                     "/api/admin/apps/example.app/contracts/{contract}/vpks"
                 ))
-                .header("Authorization", &admin)
+                .header("Authorization", &publisher)
                 .multipart(
                     MultipartForm::new()
                         .add_part("file", Part::bytes(vpk.clone()).file_name("payload.vpk")),
@@ -312,13 +339,13 @@ async fn signed_shell_to_authenticated_http_delivery() {
         let id = overview["releases"][0]["id"].as_str().unwrap();
         if bootstrap == "embedded" {
             assert_eq!(overview["installers"][0]["embedded_vpk_id"], id);
-            server.post("/api/admin/apps/example.app/publications").header("Authorization", &admin)
+            server.post("/api/admin/apps/example.app/publications").header("Authorization", &publisher)
                 .json(&json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk":"different-payload"})).send().await.expect("test request").assert_status(simple_server::web::http::StatusCode::CONFLICT);
         }
         let publish = json!({"version_code":1,"expected_revision":overview["publication_revision"],"bootstrap_vpk": if bootstrap == "embedded" { Value::Null } else { json!(id) }});
         server
             .post("/api/admin/apps/example.app/publications")
-            .header("Authorization", &admin)
+            .header("Authorization", &publisher)
             .json(&publish)
             .send()
             .await
@@ -326,7 +353,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
             .assert_status_ok();
         server
             .post("/api/admin/apps/example.app/publications")
-            .header("Authorization", &admin)
+            .header("Authorization", &publisher)
             .json(&publish)
             .send()
             .await
