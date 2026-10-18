@@ -271,33 +271,43 @@ internal fun SettingsContent(
             SettingsSection(title = stringResource(R.string.settings_account)) {
                 state.userEmail?.let { email ->
                     SettingsInfoItem(
-                        title = stringResource(R.string.settings_logged_in_as),
+                        title = stringResource(
+                            if (state.isDeviceToken) R.string.device_token_label else R.string.settings_logged_in_as,
+                        ),
                         value = email,
                     )
                     SettingsDivider()
                 }
-                SettingsClickableItem(
-                    title = stringResource(R.string.settings_server),
-                    subtitle = state.serverUrl,
-                    onClick = {
-                        onServerUrlInputChanged(state.serverUrl)
-                        showServerDialog = true
-                    },
-                )
-                SettingsDivider()
-                SettingsClickableItem(
-                    title = stringResource(R.string.logout),
-                    subtitle = stringResource(R.string.logout_subtitle),
-                    onClick = { showLogoutConfirmation = true },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                    textColor = MaterialTheme.colorScheme.error,
-                )
+                if (state.isDeviceToken) {
+                    // The provisioned token file pins the server; changing it would drop the token.
+                    SettingsInfoItem(
+                        title = stringResource(R.string.settings_server),
+                        value = state.serverUrl,
+                    )
+                } else {
+                    SettingsClickableItem(
+                        title = stringResource(R.string.settings_server),
+                        subtitle = state.serverUrl,
+                        onClick = {
+                            onServerUrlInputChanged(state.serverUrl)
+                            showServerDialog = true
+                        },
+                    )
+                    SettingsDivider()
+                    SettingsClickableItem(
+                        title = stringResource(R.string.logout),
+                        subtitle = stringResource(R.string.logout_subtitle),
+                        onClick = { showLogoutConfirmation = true },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        textColor = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
 
             SettingsSection(title = stringResource(R.string.settings_system)) {

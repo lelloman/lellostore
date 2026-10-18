@@ -29,6 +29,7 @@ fun ProfileBottomSheet(
     userEmail: String,
     onLogout: () -> Unit,
     onDismiss: () -> Unit,
+    isDeviceToken: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState()
 
@@ -50,7 +51,7 @@ fun ProfileBottomSheet(
             )
             Spacer(Modifier.height(LelloStoreSpacing.small))
             Text(
-                text = stringResource(R.string.profile_signed_in_as),
+                text = stringResource(if (isDeviceToken) R.string.device_token_label else R.string.profile_signed_in_as),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -59,15 +60,18 @@ fun ProfileBottomSheet(
                 text = userEmail,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Spacer(Modifier.height(LelloStoreSpacing.xLarge))
-            HorizontalDivider()
-            Spacer(Modifier.height(LelloStoreSpacing.xLarge))
-            Button(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                colors = lelloStoreButtonColors(),
-            ) {
-                Text(stringResource(R.string.logout))
+            // A provisioned device token cannot be signed out of; it is revoked from the admin UI.
+            if (!isDeviceToken) {
+                Spacer(Modifier.height(LelloStoreSpacing.xLarge))
+                HorizontalDivider()
+                Spacer(Modifier.height(LelloStoreSpacing.xLarge))
+                Button(
+                    onClick = onLogout,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    colors = lelloStoreButtonColors(),
+                ) {
+                    Text(stringResource(R.string.logout))
+                }
             }
             Spacer(Modifier.height(LelloStoreSpacing.large))
         }

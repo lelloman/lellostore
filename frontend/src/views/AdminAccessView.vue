@@ -46,7 +46,19 @@
               variant="outlined"
               hide-details
               @update:model-value="loadSelectedUser"
-            />
+            >
+              <template #selection="{ item }">
+                <v-chip v-if="item.raw.device" class="mr-2" size="small" color="secondary" variant="tonal" prepend-icon="mdi-television-classic">Device</v-chip>
+                {{ item.title }}
+              </template>
+              <template #item="{ item, props: itemProps }">
+                <v-list-item v-bind="itemProps">
+                  <template v-if="item.raw.device" #append>
+                    <v-chip size="small" color="secondary" variant="tonal" prepend-icon="mdi-television-classic">Device</v-chip>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
 
             <v-skeleton-loader v-if="userLoading" type="table-row@4" />
             <template v-else-if="selectedAccess">
@@ -174,9 +186,14 @@
                     v-for="user in users"
                     :key="user.subject"
                     :model-value="group.user_subjects.includes(user.subject)"
-                    :label="user.email || user.subject"
+                    :label="userLabel(user)"
                     @update:model-value="setGroupMembership(group, user.subject, $event)"
-                  />
+                  >
+                    <template v-if="user.device_token_name" #label>
+                      {{ user.device_token_name }}
+                      <v-chip class="ml-2" size="x-small" color="secondary" variant="tonal">Device</v-chip>
+                    </template>
+                  </v-checkbox-btn>
                   <p v-if="users.length === 0" class="text-body-2 text-medium-emphasis">No known users.</p>
                 </section>
               </div>
@@ -190,6 +207,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import {
   api,
@@ -228,10 +246,19 @@ const userHeaders = [
   { title: 'Effective', key: 'effective', sortable: false },
 ]
 
-const userOptions = computed(() => users.value.map(user => ({
-  title: user.email ? `${user.email} · ${user.subject}` : user.subject,
-  value: user.subject,
-})))
+const route = useRoute()
+
+// Device-token principals are shown by their token name, never by the raw subject.
+function userLabel(user: KnownUser) {
+  return user.device_token_name || user.email || user.subject
+}
+
+const userOptions = computed(() => users.value.map(user => user.device_token_name
+  ? { title: user.device_token_name, value: user.subject, device: true }
+  : {
+    title: user.email ? `${user.email} · ${user.subject}` : user.subject,
+    value: user.subject,
+  }))
 
 function higherLevel(levels: Array<AccessLevel | undefined>): AccessLevel | null {
   if (levels.includes('beta')) return 'beta'
@@ -268,6 +295,10 @@ async function loadAll() {
     groups.value = groupResponse.groups
     apps.value = appResponse.apps
     for (const group of groups.value) groupNames[group.id] = group.name
+    const requested = typeof route?.query.subject === 'string' ? route.query.subject : ''
+    if (!selectedSubject.value && requested && users.value.some(user => user.subject === requested)) {
+      selectedSubject.value = requested
+    }
     if (!selectedSubject.value && users.value.length) selectedSubject.value = users.value[0].subject
     if (selectedSubject.value) await loadSelectedUser()
     loaded.value = true

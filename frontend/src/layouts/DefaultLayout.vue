@@ -30,6 +30,7 @@
         <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'distribution-admin' }" variant="text">Distribution</v-btn>
         <v-btn v-if="authStore.isAdmin" class="d-none d-lg-flex" :to="{ name: 'notifications-admin' }" variant="text">Notifications</v-btn>
         <v-btn v-if="authStore.isAdmin" class="d-none d-xl-flex" :to="{ name: 'publish-tokens-admin' }" variant="text">Publish tokens</v-btn>
+        <v-btn v-if="authStore.isAdmin" class="d-none d-xl-flex" :to="{ name: 'device-tokens-admin' }" variant="text">Device tokens</v-btn>
         <v-spacer />
         <ConnectPhone class="d-none d-md-flex" />
 
@@ -84,6 +85,7 @@
               <v-list-item :to="{ name: 'uploads-admin' }" prepend-icon="mdi-upload" title="Uploads" />
               <v-list-item :to="{ name: 'distribution-admin' }" prepend-icon="mdi-key-outline" title="Distribution" />
               <v-list-item :to="{ name: 'publish-tokens-admin' }" prepend-icon="mdi-robot-outline" title="Publish tokens" />
+              <v-list-item :to="{ name: 'device-tokens-admin' }" prepend-icon="mdi-television-classic" title="Device tokens" />
               <v-divider />
             </template>
             <v-list-item prepend-icon="mdi-logout" title="Sign out" @click="handleLogout" />

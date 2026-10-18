@@ -223,6 +223,19 @@ class LoginViewModelTest {
         assertThat(viewModel.state.value.error).isEqualTo("Login failed")
         assertThat(viewModel.state.value.isLoading).isFalse()
     }
+
+    @Test
+    fun `rejected device token shows a notice and keeps sign-in available`() = runTest {
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.deviceTokenRejected).isFalse()
+
+        fakeInteractor.mutableDeviceTokenRejected.value = true
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.deviceTokenRejected).isTrue()
+        assertThat(viewModel.state.value.isLoading).isFalse()
+        assertThat(viewModel.state.value.error).isNull()
+    }
 }
 
 class FakeLoginInteractor : LoginViewModel.Interactor {
@@ -235,6 +248,8 @@ class FakeLoginInteractor : LoginViewModel.Interactor {
 
     override val authState: StateFlow<AuthState> = mutableAuthState
     override val serverUrl: StateFlow<String> = mutableServerUrl
+    val mutableDeviceTokenRejected = MutableStateFlow(false)
+    override val deviceTokenRejected: StateFlow<Boolean> = mutableDeviceTokenRejected
 
     override fun getInitialServerUrl() = _initialServerUrl
 

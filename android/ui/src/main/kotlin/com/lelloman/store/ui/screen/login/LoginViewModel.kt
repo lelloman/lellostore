@@ -39,6 +39,15 @@ class LoginViewModel @Inject constructor(
         )
         observeAuthState()
         observeServerUrl()
+        observeDeviceTokenRejection()
+    }
+
+    private fun observeDeviceTokenRejection() {
+        viewModelScope.launch {
+            interactor.deviceTokenRejected.collect { rejected ->
+                mutableState.value = mutableState.value.copy(deviceTokenRejected = rejected)
+            }
+        }
     }
 
     private fun observeAuthState() {
@@ -170,9 +179,13 @@ class LoginViewModel @Inject constructor(
     interface Interactor {
         val authState: StateFlow<AuthState>
         val serverUrl: StateFlow<String>
+        /** The server rejected the provisioned device token; OIDC sign-in remains the fallback. */
+        val deviceTokenRejected: StateFlow<Boolean> get() = NoDeviceTokenRejection
         fun getInitialServerUrl(): String
         suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun createAuthIntent(): Intent
         suspend fun discoverServer(url: String): com.lelloman.store.domain.config.ServerMetadata
     }
 }
+
+private val NoDeviceTokenRejection: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()

@@ -95,6 +95,12 @@ class SettingsInteractorImpl @Inject constructor(
             .stateIn(scope, SharingStarted.Eagerly, null)
     }
 
+    override fun isDeviceToken(): StateFlow<Boolean> {
+        return authStore.authState
+            .map { state -> state is AuthState.Authenticated && state.deviceToken }
+            .stateIn(scope, SharingStarted.Eagerly, false)
+    }
+
     override fun serverUrl(): StateFlow<String> {
         return configStore.serverUrl
     }

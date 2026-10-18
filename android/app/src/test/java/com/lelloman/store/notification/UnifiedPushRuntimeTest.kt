@@ -92,14 +92,26 @@ class UnifiedPushRuntimeTest {
         val config = mockk<com.lelloman.store.domain.config.ConfigStore>()
         var selected = "https://new.example"
         coEvery { config.readServerUrl() } answers { selected }
-        coEvery { auth.getAccessToken() } returns "new-token"
+        coEvery { auth.getAccessToken() } returns "new.jwt.token"
         val runtime = NotificationBrokerRuntime(RuntimeEnvironment.getApplication(), auth, config,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), backgroundScope)
         assertNull(runtime.storeAccessToken("https://old.example"))
         io.mockk.coVerify(exactly = 0) { auth.getAccessToken() }
-        assertEquals("new-token", runtime.storeAccessToken("https://new.example"))
-        coEvery { auth.getAccessToken() } answers { selected = "https://third.example"; "stale-token" }
+        assertEquals("new.jwt.token", runtime.storeAccessToken("https://new.example"))
+        coEvery { auth.getAccessToken() } answers { selected = "https://third.example"; "stale.jwt.token" }
         assertNull(runtime.storeAccessToken("https://new.example"))
+    }
+
+    @Test fun deviceTokenIsNeverUsedAsABrokerCredential() = runTest {
+        val auth = mockk<AuthStore>()
+        val config = mockk<com.lelloman.store.domain.config.ConfigStore>()
+        val audit = mockk<com.lelloman.store.logger.AuditLog>(relaxed = true)
+        coEvery { config.readServerUrl() } returns "https://store.example"
+        coEvery { auth.getAccessToken() } returns "lellostore_dev_" + "a".repeat(64)
+        val runtime = NotificationBrokerRuntime(RuntimeEnvironment.getApplication(), auth, config,
+            mockk(relaxed = true), mockk(relaxed = true), audit, backgroundScope)
+        assertNull(runtime.storeAccessToken("https://store.example"))
+        io.mockk.verify { audit.record("push.unsupported_credential", any()) }
     }
 
     @Test fun signedOutStoreDoesNotCreateRegistration() = runTest {

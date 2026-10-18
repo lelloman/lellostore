@@ -2,18 +2,17 @@
 //!
 //! A token authorizes uploading and publishing exactly one package. Only the
 //! SHA-256 of the secret is stored; the secret itself is returned once.
-use ring::rand::{SecureRandom, SystemRandom};
 use serde::Serialize;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
+pub use super::token_secrets::hash_secret;
+use super::token_secrets::{normalize_expiry, validate_name};
 use crate::error::AppError;
 
 /// Every publish token secret starts with this prefix, which is how the
 /// authentication middleware tells it apart from an OIDC access token.
 pub const SECRET_PREFIX: &str = "lellostore_pub_";
-const SECRET_BYTES: usize = 32;
 const RECENT_UPLOADS: i64 = 10;
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -60,16 +59,8 @@ pub struct ResolvedToken {
     pub package_name: String,
 }
 
-pub fn hash_secret(secret: &str) -> String {
-    hex::encode(Sha256::digest(secret.as_bytes()))
-}
-
 fn generate_secret() -> Result<String, AppError> {
-    let mut bytes = [0_u8; SECRET_BYTES];
-    SystemRandom::new()
-        .fill(&mut bytes)
-        .map_err(|_| AppError::Internal("Secure random generator unavailable".into()))?;
-    Ok(format!("{SECRET_PREFIX}{}", hex::encode(bytes)))
+    super::token_secrets::generate_secret(SECRET_PREFIX)
 }
 
 fn validate_package(package: &str) -> Result<(), AppError> {
@@ -89,23 +80,6 @@ fn validate_package(package: &str) -> Result<(), AppError> {
     }
 }
 
-/// Normalize an RFC 3339 expiry into SQLite's UTC `datetime()` format so it
-/// compares correctly with `datetime('now')`.
-fn normalize_expiry(expires_at: Option<&str>) -> Result<Option<String>, AppError> {
-    let Some(raw) = expires_at.map(str::trim).filter(|v| !v.is_empty()) else {
-        return Ok(None);
-    };
-    let parsed = chrono::DateTime::parse_from_rfc3339(raw)
-        .map_err(|_| AppError::BadRequest("expires_at must be an RFC 3339 timestamp".into()))?
-        .with_timezone(&chrono::Utc);
-    if parsed <= chrono::Utc::now() {
-        return Err(AppError::BadRequest(
-            "expires_at must be in the future".into(),
-        ));
-    }
-    Ok(Some(parsed.format("%Y-%m-%d %H:%M:%S").to_string()))
-}
-
 pub async fn create(
     pool: &SqlitePool,
     actor: &str,
@@ -113,12 +87,7 @@ pub async fn create(
     package: &str,
     expires_at: Option<&str>,
 ) -> Result<CreatedPublishToken, AppError> {
-    let name = name.trim();
-    if name.is_empty() || name.chars().count() > 100 {
-        return Err(AppError::BadRequest(
-            "name must contain 1 to 100 characters".into(),
-        ));
-    }
+    let name = validate_name(name)?;
     let package = package.trim();
     validate_package(package)?;
     let expires_at = normalize_expiry(expires_at)?;

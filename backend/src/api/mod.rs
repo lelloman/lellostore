@@ -1,4 +1,5 @@
 pub mod acquisitions;
+pub mod device_tokens;
 pub mod events;
 pub mod file_response;
 pub mod handlers;

@@ -72,6 +72,56 @@ secrets; includes `last_used_at` and recent uploads) and
 written to the access audit log. Refusals are logged with the token id, never the
 secret.
 
+### Device tokens
+
+Provisioned devices (for example a TV box that self-updates through the Android
+client) can read the catalog without an interactive login using a device token.
+A token is `lellostore_dev_` followed by 32 random bytes in hex, sent as
+`Authorization: Bearer <token>`. The store keeps only its SHA-256
+(`device_tokens` table) with name, creator, creation, optional expiry, last use
+and revocation times; a token has no package or scope of its own. A bearer value
+with the `lellostore_dev_` prefix is resolved against that table instead of
+being validated as a JWT; an unknown, revoked or expired token is `401`.
+
+A valid token authenticates as the ordinary non-administrator principal
+`device-token:<id>`. Creating a token registers that subject as a known user, so
+administrators grant it apps directly or through group memberships exactly like
+any other user, and `GET /api/admin/users` labels it with `device_token_name`
+(`null` for other users). The principal can use every catalog, download,
+acquisition, `/api/me` and `/api/events` route, sees only what it is granted,
+and is refused (`403`) by every administrator route, including publishing
+routes and token management.
+
+Administrators manage tokens with `POST /api/admin/device-tokens` (`name`,
+optional RFC 3339 `expires_at`, optional `group_ids`; returns the secret once),
+`GET /api/admin/device-tokens` (no secrets) and
+`DELETE /api/admin/device-tokens/{id}` (revoke, idempotent; unknown ids are
+`404`). Each token is returned as:
+
+```json
+{
+  "id": "6f1c…",
+  "name": "Living room TV",
+  "created_by": "admin-subject",
+  "created_at": "2026-10-18 10:00:00",
+  "expires_at": null,
+  "last_used_at": "2026-10-18 10:05:00",
+  "revoked_at": null,
+  "subject": "device-token:6f1c…",
+  "groups": [{"id": 3, "name": "TV boxes"}]
+}
+```
+
+The create response adds `secret`. Group memberships requested at creation are
+applied in the same transaction as the token: an unknown group fails the request
+(`404`) and creates nothing. Creation, revocation and memberships are written to
+the access audit log; refusals are logged with the token id, never the secret.
+Revocation keeps the principal's known-user row, grants and memberships.
+
+Push notification registration and Paravoid keyed delivery validate OIDC JWTs
+only and do not accept device tokens; a device-token client relies on its
+periodic update checks and the authenticated `/api/events` stream.
+
 `GET /api/server-config` advertises a versioned authentication method, issuer,
 public client IDs/scopes, instance name, and optional capabilities. Missing
 operator configuration returns an uncached 503 with `server_not_configured`.
@@ -162,6 +212,9 @@ replaced. The icon endpoint also continues to accept unversioned URLs.
 | `GET` | `/api/admin/publish-tokens` | None | Publish tokens without secrets, with `last_used_at` and `recent_uploads` |
 | `POST` | `/api/admin/publish-tokens` | JSON `name`, `package_name`, optional `expires_at` | `201` with the token and its one-time `secret` |
 | `DELETE` | `/api/admin/publish-tokens/{id}` | None | Revoke; returns the token with `revoked_at` |
+| `GET` | `/api/admin/device-tokens` | None | Device tokens without secrets, with `subject`, `groups` and `last_used_at` |
+| `POST` | `/api/admin/device-tokens` | JSON `name`, optional `expires_at` and `group_ids` | `201` with the token and its one-time `secret` |
+| `DELETE` | `/api/admin/device-tokens/{id}` | None | Revoke (idempotent); returns the token with `revoked_at` |
 
 Uploads accept exactly one `.apk` or `.aab` file. The backend streams the input
 to a private temporary location while enforcing `MAX_UPLOAD_SIZE`. It extracts

@@ -158,6 +158,7 @@ mod tests {
             },
             is_admin,
             publish_scope: None,
+            device_token_id: None,
         }
     }
 
@@ -178,6 +179,26 @@ mod tests {
         let mut parts = parts_with(token, "/api/apps");
         assert!(matches!(
             AuthenticatedUser::from_request_parts(&mut parts, &()).await,
+            Err(AuthError::Forbidden)
+        ));
+    }
+
+    #[tokio::test]
+    async fn device_tokens_are_catalog_users_but_never_admins_or_publishers() {
+        let device = User::device("d1".into());
+        let mut parts = parts_with(device.clone(), "/api/apps");
+        let user = AuthenticatedUser::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
+        assert_eq!(user.0.subject, "device-token:d1");
+        let mut parts = parts_with(device.clone(), "/api/admin/users");
+        assert!(matches!(
+            AdminUser::from_request_parts(&mut parts, &()).await,
+            Err(AuthError::Forbidden)
+        ));
+        let mut parts = parts_with(device, "/api/admin/apps");
+        assert!(matches!(
+            AdminOrPublisher::from_request_parts(&mut parts, &()).await,
             Err(AuthError::Forbidden)
         ));
     }

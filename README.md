@@ -311,6 +311,34 @@ from the token's package is refused with 403 and not kept. The Publish tokens pa
 shows each token's last use and recent uploads; revoking a token takes effect
 immediately and also refuses its still-queued uploads.
 
+#### Zero-login devices with a device token
+
+Devices that should update themselves without anyone signing in (for example a
+TV box) use a device token instead of an OIDC session. A device token only reads
+the catalog: it authenticates as an ordinary non-admin user and can never reach
+administrator or publishing routes.
+
+1. **Create**: an administrator creates the token on the admin **Device tokens**
+   page (or with `POST /api/admin/device-tokens`), choosing a name, an optional
+   expiry and optionally the groups it joins. The secret starts with
+   `lellostore_dev_` and is shown only once; the store keeps only its SHA-256.
+2. **Grant**: the token appears in **Access → Users** under its name (subject
+   `device-token:<id>`). Grant it apps directly or add it to a group, for example
+   one that grants the device's apps and the LelloStore client itself so the
+   client keeps updating too.
+3. **Provision**: put the secret on the device. The Android client reads it from
+   a provisioned token file and then starts straight into the catalog; see the
+   Android client documentation for the file format.
+
+```sh
+curl -H "Authorization: Bearer lellostore_dev_..." https://store.example.com/api/apps
+```
+
+Revoking the token in the admin UI takes effect immediately (`401`); the
+principal's grants are kept, but a new token is a new principal and needs its
+own grants. Device tokens do not register for push notifications; the client
+falls back to its periodic update checks.
+
 ## Verification
 
 See the [Axum migration notes](docs/SIMPLE_SERVER_MIGRATION.md) and

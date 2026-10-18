@@ -257,6 +257,11 @@ class NotificationBrokerRuntime @Inject constructor(
         val selected = config.readServerUrl().trimEnd('/')
         if (destination.isBlank() || selected != destination) return null
         val token = if (minValiditySeconds > 0) auth.getAccessToken(minValiditySeconds) else auth.getAccessToken()
+        // The broker parses JWT claims; opaque credentials such as device tokens cannot use push.
+        if (token != null && token.count { it == '.' } != 2) {
+            audit.record("push.unsupported_credential")
+            return null
+        }
         return token.takeIf {
             epoch == lifecycleEpoch.get() && config.readServerUrl().trimEnd('/') == selected
         }

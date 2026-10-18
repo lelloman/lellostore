@@ -32,13 +32,16 @@ class LoginInteractorImpl @Inject constructor(
             when (domainState) {
                 is DomainAuthState.Loading -> AuthState.Loading
                 is DomainAuthState.NotAuthenticated -> AuthState.NotAuthenticated
-                is DomainAuthState.Authenticated -> AuthState.Authenticated(domainState.userEmail)
+                is DomainAuthState.Authenticated -> AuthState.Authenticated(domainState.userEmail, domainState.deviceToken)
             }
         }
         .stateIn(scope, SharingStarted.Eagerly, AuthState.Loading)
 
     override val serverUrl: StateFlow<String>
         get() = configStore.serverUrl
+
+    override val deviceTokenRejected: StateFlow<Boolean>
+        get() = domainAuthStore.deviceTokenRejected
 
     override fun getInitialServerUrl(): String {
         return configStore.serverUrl.value

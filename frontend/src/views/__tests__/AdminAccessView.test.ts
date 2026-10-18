@@ -3,6 +3,9 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import AdminAccessView from '../AdminAccessView.vue'
 import { api } from '@/services/api'
 
+const routeQuery: Record<string, string> = {}
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeQuery }) }))
+
 vi.mock('@/services/api', () => ({
   api: {
     getAdminUsers: vi.fn(),
@@ -40,6 +43,7 @@ function mountView() {
         VTab: { template: '<button><slot /></button>' },
         VAlert: { template: '<div><slot /></div>' },
         VChip: { template: '<span><slot /></span>' },
+        VCheckboxBtn: { props: ['label'], template: '<label><slot name="label">{{ label }}</slot></label>' },
         VSelect: {
           name: 'VSelect',
           props: ['modelValue', 'items'],
@@ -58,6 +62,7 @@ function mountView() {
 describe('AdminAccessView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const key of Object.keys(routeQuery)) delete routeQuery[key]
     vi.mocked(api.getAdminUsers).mockResolvedValue({ users: [user] })
     vi.mocked(api.getAppGroups).mockResolvedValue({ groups: [] })
     vi.mocked(api.getAdminApps).mockResolvedValue({ apps: [] })
@@ -119,5 +124,27 @@ describe('AdminAccessView', () => {
     expect(wrapper.text()).toContain('stable and beta releases of every current and future app')
     expect(wrapper.text()).not.toContain('Save name')
     expect(wrapper.text()).not.toContain('Delete')
+  })
+
+  it('shows device-token principals by token name with a Device marker and honours the subject query', async () => {
+    const device = { subject: 'device-token:tok-9', device_token_name: 'Living room TV', first_seen_at: '2026-10-18', last_seen_at: '2026-10-18' }
+    vi.mocked(api.getAdminUsers).mockResolvedValue({ users: [user, device] })
+    vi.mocked(api.getAppGroups).mockResolvedValue({
+      groups: [{ id: 1, name: 'all', system_kind: 'all', created_at: '2026-09-09', updated_at: '2026-09-09', grants: [], user_subjects: [] }],
+    })
+    routeQuery.subject = 'device-token:tok-9'
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(api.getUserAccess).toHaveBeenCalledWith('device-token:tok-9')
+    const userSelect = wrapper.findAllComponents({ name: 'VSelect' })[0]
+    expect(userSelect.props('items')).toEqual([
+      { title: 'user@example.com · user-1', value: 'user-1' },
+      { title: 'Living room TV', value: 'device-token:tok-9', device: true },
+    ])
+    expect(wrapper.text()).toContain('Living room TV')
+    expect(wrapper.text()).toContain('Device')
+    expect(wrapper.text()).not.toContain('device-token:tok-9')
   })
 })

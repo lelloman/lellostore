@@ -13,7 +13,11 @@ pub struct KnownUser {
     pub email: Option<String>,
     pub first_seen_at: String,
     pub last_seen_at: String,
+    /// The device token's name when this principal is a device token.
+    pub device_token_name: Option<String>,
 }
+
+const KNOWN_USER_SELECT: &str = "SELECT ku.subject, ku.email, ku.first_seen_at, ku.last_seen_at, dt.name AS device_token_name FROM known_users ku LEFT JOIN device_tokens dt ON ku.subject = 'device-token:' || dt.id";
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct GrantRecord {
@@ -55,17 +59,19 @@ pub async fn observe_user(pool: &SqlitePool, user: &User) -> Result<(), AppError
 }
 
 pub async fn list_users(pool: &SqlitePool) -> Result<Vec<KnownUser>, AppError> {
-    sqlx::query_as("SELECT * FROM known_users ORDER BY COALESCE(email, subject), subject")
-        .fetch_all(pool)
-        .await
-        .map_err(AppError::Database)
+    sqlx::query_as(&format!(
+        "{KNOWN_USER_SELECT} ORDER BY COALESCE(ku.email, ku.subject), ku.subject"
+    ))
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Database)
 }
 
 pub async fn get_user_access(
     pool: &SqlitePool,
     subject: &str,
 ) -> Result<UserAccessDetail, AppError> {
-    let user = sqlx::query_as::<_, KnownUser>("SELECT * FROM known_users WHERE subject = ?")
+    let user = sqlx::query_as::<_, KnownUser>(&format!("{KNOWN_USER_SELECT} WHERE ku.subject = ?"))
         .bind(subject)
         .fetch_optional(pool)
         .await
@@ -428,11 +434,25 @@ pub async fn set_membership(
     present: bool,
 ) -> Result<(), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
-    require_known_user(&mut tx, subject).await?;
+    apply_membership(&mut tx, actor, group_id, subject, present).await?;
+    tx.commit().await.map_err(AppError::Database)?;
+    Ok(())
+}
+
+/// Add or remove a group membership inside the caller's transaction, with the
+/// same known-user and group checks and audit entry as [`set_membership`].
+pub(crate) async fn apply_membership(
+    conn: &mut SqliteConnection,
+    actor: &str,
+    group_id: i64,
+    subject: &str,
+    present: bool,
+) -> Result<(), AppError> {
+    require_known_user(&mut *conn, subject).await?;
     let group_exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM app_groups WHERE id = ?)")
             .bind(group_id)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut *conn)
             .await
             .map_err(AppError::Database)?;
     if !group_exists {
@@ -442,14 +462,14 @@ pub async fn set_membership(
     }
     if present {
         sqlx::query("INSERT INTO user_app_group_memberships (user_subject, group_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
-            .bind(subject).bind(group_id).execute(&mut *tx).await.map_err(AppError::Database)?;
+            .bind(subject).bind(group_id).execute(&mut *conn).await.map_err(AppError::Database)?;
     } else {
         let result = sqlx::query(
             "DELETE FROM user_app_group_memberships WHERE user_subject = ? AND group_id = ?",
         )
         .bind(subject)
         .bind(group_id)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
         .map_err(AppError::Database)?;
         if result.rows_affected() == 0 {
@@ -457,7 +477,7 @@ pub async fn set_membership(
         }
     }
     audit(
-        &mut tx,
+        conn,
         actor,
         if present {
             "membership.set"
@@ -468,9 +488,7 @@ pub async fn set_membership(
         &format!("{group_id}:{subject}"),
         json!({}),
     )
-    .await?;
-    tx.commit().await.map_err(AppError::Database)?;
-    Ok(())
+    .await
 }
 
 pub async fn set_release_channel(

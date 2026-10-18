@@ -218,6 +218,11 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/publish-tokens/{id}",
             delete(super::publish_tokens::revoke),
         )
+        .route(
+            "/device-tokens",
+            get(super::device_tokens::list).post(super::device_tokens::create),
+        )
+        .route("/device-tokens/{id}", delete(super::device_tokens::revoke))
         .route("/users", get(handlers::list_admin_users))
         .route(
             "/users/{subject}/access",

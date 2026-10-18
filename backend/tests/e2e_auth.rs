@@ -1730,6 +1730,9 @@ mod paravoid_device;
 #[path = "support/publish_tokens.rs"]
 mod publish_tokens;
 
+#[path = "support/device_tokens.rs"]
+mod device_tokens;
+
 #[tokio::test]
 async fn shared_multipart_preserves_upload_rejections_and_temp_cleanup() {
     use simple_server::testing::{MultipartForm, Part};

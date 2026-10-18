@@ -18,7 +18,7 @@ enum class ThemeMode {
 sealed interface AuthState {
     data object Loading : AuthState
     data object NotAuthenticated : AuthState
-    data class Authenticated(val userEmail: String) : AuthState
+    data class Authenticated(val userEmail: String, val deviceToken: Boolean = false) : AuthState
 }
 
 sealed interface AuthResult {

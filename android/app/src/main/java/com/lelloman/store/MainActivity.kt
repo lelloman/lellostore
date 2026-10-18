@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
             }
             val isLoggedIn = domainAuthState is DomainAuthState.Authenticated
             val userEmail = (domainAuthState as? DomainAuthState.Authenticated)?.userEmail ?: ""
+            val isDeviceToken = (domainAuthState as? DomainAuthState.Authenticated)?.deviceToken == true
 
             SideEffect {
                 val transparent = android.graphics.Color.TRANSPARENT
@@ -122,6 +123,7 @@ class MainActivity : ComponentActivity() {
                     isLoggedIn = isLoggedIn,
                     isAuthLoading = domainAuthState is DomainAuthState.Loading,
                     userEmail = userEmail,
+                    isDeviceToken = isDeviceToken,
                     onAuthResponse = { response, exception, onResult ->
                         authStoreImpl.handleAuthResponse(response, exception) { domainResult ->
                             onResult(domainResult.toUiModel())

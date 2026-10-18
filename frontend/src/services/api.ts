@@ -202,6 +202,8 @@ export interface App {
 export interface KnownUser {
   subject: string
   email?: string
+  /** Name of the device token when this subject is a `device-token:<id>` principal. */
+  device_token_name?: string | null
   first_seen_at: string
   last_seen_at: string
 }

@@ -51,6 +51,7 @@ fun AppUi(
     isLoggedIn: Boolean = false,
     isAuthLoading: Boolean = false,
     userEmail: String = "",
+    isDeviceToken: Boolean = false,
     onAuthResponse: (AuthorizationResponse?, AuthorizationException?, onResult: (AuthResult) -> Unit) -> Unit = { _, _, _ -> },
     onLogout: () -> Unit = {},
     forceNavigateToLogin: Boolean = false,
@@ -160,6 +161,7 @@ fun AppUi(
         if (showProfileSheet) {
             ProfileBottomSheet(
                 userEmail = userEmail,
+                isDeviceToken = isDeviceToken,
                 onLogout = {
                     showProfileSheet = false
                     onLogout()

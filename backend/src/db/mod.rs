@@ -2,11 +2,13 @@ pub mod access;
 pub mod acquisitions;
 pub mod admin;
 pub mod deployment;
+pub mod device_tokens;
 pub mod dvpk;
 pub mod models;
 pub mod paravoid;
 pub mod publications;
 pub mod publish_tokens;
+pub mod token_secrets;
 
 use simple_server::database::migrations::{
     CompletionState, MigrationEntry, MigrationObservation, MigrationPlan, MigrationVersion,

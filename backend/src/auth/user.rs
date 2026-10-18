@@ -19,6 +19,10 @@ pub struct User {
     /// Such principals are never admins and may only reach handlers that
     /// explicitly authorize publishing for `publish_scope.package`.
     pub publish_scope: Option<PublishScope>,
+    /// Present only for device principals authenticated with a device token.
+    /// Such principals are ordinary non-admin catalog users whose access
+    /// comes from grants and group memberships.
+    pub device_token_id: Option<String>,
 }
 
 /// The authority carried by a per-app publish token.
@@ -45,6 +49,7 @@ impl User {
             roles,
             is_admin,
             publish_scope: None,
+            device_token_id: None,
         }
     }
 
@@ -56,11 +61,28 @@ impl User {
             roles: Vec::new(),
             is_admin: false,
             publish_scope: Some(PublishScope { token_id, package }),
+            device_token_id: None,
+        }
+    }
+
+    /// A read-only device principal: a plain non-admin catalog user.
+    pub fn device(token_id: String) -> Self {
+        Self {
+            subject: crate::db::device_tokens::subject(&token_id),
+            email: None,
+            roles: Vec::new(),
+            is_admin: false,
+            publish_scope: None,
+            device_token_id: Some(token_id),
         }
     }
 
     pub fn is_publish_token(&self) -> bool {
         self.publish_scope.is_some()
+    }
+
+    pub fn is_device_token(&self) -> bool {
+        self.device_token_id.is_some()
     }
 }
 
@@ -214,5 +236,19 @@ mod tests {
         let user = User::from_claims(&claims, "roles", "admin");
         assert_eq!(user.subject, "user-456");
         assert!(!user.is_admin);
+        assert!(!user.is_device_token());
+    }
+
+    #[test]
+    fn device_users_are_plain_non_admin_principals() {
+        let user = User::device("abc".into());
+        assert_eq!(user.subject, "device-token:abc");
+        assert_eq!(user.email, None);
+        assert!(user.roles.is_empty());
+        assert!(!user.is_admin);
+        assert!(!user.is_publish_token());
+        assert!(user.is_device_token());
+        assert_eq!(user.device_token_id.as_deref(), Some("abc"));
+        assert!(!User::publisher("t".into(), "a.b".into()).is_device_token());
     }
 }

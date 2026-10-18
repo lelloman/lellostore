@@ -59,6 +59,22 @@ The store server and OIDC issuer are separate concerns. The initial server URL
 comes from `default.server.url` in `local.properties`, defaults to the production
 store, and can be changed by the user. Production input accepts HTTPS only.
 
+A provisioned device can skip sign-in entirely. When root has dropped
+`noBackupFilesDir/device-token.json` (`{"version":1,"server_url":…,"name":…,"token":"lellostore_dev_…"}`,
+owned by the app, mode 600), `CompositeAuthStore` prefers it over the OIDC
+`AuthStoreImpl`: the state is `Authenticated` with the token's name, and the token is
+sent as a plain bearer credential, only to the server named in the file. The file is
+read once per process on an IO thread, and the auth state stays `Loading` until then
+so the splash never races to login. A differing `server_url` is applied through
+`ConfigStore` without `ServerSelection`'s wipe; the catalog cache is replaced on the
+next refresh and an OIDC session stays bound to its own server. Settings and the
+profile sheet show "Device token" and hide logout and server changes. A 401 goes
+through the usual session-expiry path, which marks the token rejected in memory
+(the file is kept), falls back to the OIDC state and shows a notice on the login
+screen; the next process start retries the file. Push is unavailable in this mode:
+the broker only accepts JWTs and records `push.unsupported_credential`, and updates
+rely on periodic checks.
+
 ## Networking and downloads
 
 The remote API resolves the current server URL for every request, so changing a

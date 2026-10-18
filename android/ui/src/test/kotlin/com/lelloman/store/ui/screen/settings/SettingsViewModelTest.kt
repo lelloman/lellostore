@@ -327,6 +327,20 @@ class SettingsViewModelTest {
 
         assertThat(viewModel.state.value.serverUrlInput).isEqualTo("https://initial.example.com")
     }
+
+    @Test
+    fun `device token mode is exposed so logout and server change are hidden`() = runTest {
+        fakeInteractor.mutableUserEmail.value = "Living room TV"
+        createViewModel()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.isDeviceToken).isFalse()
+
+        fakeInteractor.mutableDeviceToken.value = true
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.isDeviceToken).isTrue()
+        assertThat(viewModel.state.value.userEmail).isEqualTo("Living room TV")
+    }
 }
 
 class FakeSettingsInteractor : SettingsViewModel.Interactor {
@@ -338,6 +352,8 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     val mutableInstallationChannels = MutableStateFlow<List<InstallationChannelOption>>(emptyList())
     val mutableUserEmail = MutableStateFlow<String?>(null)
     val mutableServerUrl = MutableStateFlow("")
+    val mutableDeviceToken = MutableStateFlow(false)
+    override fun isDeviceToken(): StateFlow<Boolean> = mutableDeviceToken
     private var _appVersion = "1.0.0"
 
     fun setAppVersion(version: String) {

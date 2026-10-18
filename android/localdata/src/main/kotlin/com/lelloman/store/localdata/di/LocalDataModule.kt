@@ -16,6 +16,9 @@ import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.localdata.apps.AppsRepositoryImpl
 import com.lelloman.store.localdata.apps.InstalledAppsRepositoryImpl
 import com.lelloman.store.localdata.auth.AuthStoreImpl
+import com.lelloman.store.localdata.auth.CompositeAuthStore
+import com.lelloman.store.localdata.auth.DeviceTokenAuthStore
+import com.lelloman.store.localdata.auth.DeviceTokenFile
 import com.lelloman.store.localdata.auth.SessionExpiredHandlerImpl
 import com.lelloman.store.localdata.config.ConfigStoreImpl
 import com.lelloman.store.localdata.db.LellostoreDatabase
@@ -33,6 +36,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 import javax.inject.Singleton
 
 @Module
@@ -105,7 +109,17 @@ object LocalDataModule {
 
     @Provides
     @Singleton
-    fun provideAuthStore(authStoreImpl: AuthStoreImpl): AuthStore = authStoreImpl
+    fun provideAuthStore(
+        @ApplicationContext context: Context,
+        authStoreImpl: AuthStoreImpl,
+        configStore: ConfigStore,
+        @ApplicationScope scope: CoroutineScope,
+        logger: Logger,
+    ): AuthStore = CompositeAuthStore(
+        DeviceTokenAuthStore(File(context.noBackupFilesDir, DeviceTokenFile.FILE_NAME), configStore, scope, logger),
+        authStoreImpl,
+        scope,
+    )
 
     @Provides
     @Singleton

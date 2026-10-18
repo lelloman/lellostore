@@ -117,8 +117,8 @@ internal fun LoginScreenContent(
     state: LoginScreenState,
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
-    onScanQr: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onScanQr: () -> Unit = {},
     onPesceClick: () -> Unit = {},
 ) {
     BoxWithConstraints(
@@ -206,8 +206,8 @@ private fun LoginForm(
     state: LoginScreenState,
     onServerUrlChanged: (String) -> Unit,
     onLoginClick: () -> Unit,
-    onScanQr: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onScanQr: () -> Unit = {},
     onPesceClick: () -> Unit = {},
 ) {
     Surface(
@@ -218,6 +218,14 @@ private fun LoginForm(
         shadowElevation = 1.dp,
     ) {
         Column(modifier = Modifier.padding(LelloStoreSpacing.xLarge)) {
+            if (state.deviceTokenRejected) {
+                Text(
+                    text = stringResource(R.string.login_device_token_rejected),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(LelloStoreSpacing.large))
+            }
             OutlinedTextField(
                 value = state.serverUrl,
                 enabled = !state.isLoading,

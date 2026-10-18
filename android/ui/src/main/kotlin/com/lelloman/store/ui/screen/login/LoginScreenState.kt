@@ -6,4 +6,5 @@ data class LoginScreenState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val serverName: String? = null,
+    val deviceTokenRejected: Boolean = false,
 )

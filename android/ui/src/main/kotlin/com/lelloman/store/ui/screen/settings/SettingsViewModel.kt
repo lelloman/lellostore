@@ -30,6 +30,11 @@ class SettingsViewModel @Inject constructor(
                 mutableState.value = mutableState.value.copy(keepUpdateConnection = enabled)
             }
         }
+        viewModelScope.launch {
+            interactor.isDeviceToken().collect { deviceToken ->
+                mutableState.value = mutableState.value.copy(isDeviceToken = deviceToken)
+            }
+        }
         observeSettings()
         observeUpdatePolicy()
     }
@@ -232,6 +237,8 @@ class SettingsViewModel @Inject constructor(
         fun releaseChannelDefault(): StateFlow<ReleaseChannelOption>
         fun installationChannels(): StateFlow<List<InstallationChannelOption>>
         fun userEmail(): StateFlow<String?>
+        /** Provisioned device-token mode: no logout, the server is pinned by the token file. */
+        fun isDeviceToken(): StateFlow<Boolean> = MutableStateFlow(false)
         fun serverUrl(): StateFlow<String>
         fun getAppVersion(): String
         suspend fun setThemeMode(mode: ThemeModeOption)
@@ -265,6 +272,7 @@ data class SettingsScreenState(
     val wirelessDebugging: AdbConnectionState = AdbConnectionState.NotTested,
     val legacyAdb: AdbConnectionState = AdbConnectionState.NotTested,
     val userEmail: String? = null,
+    val isDeviceToken: Boolean = false,
     val serverUrl: String = "",
     val serverUrlInput: String = "",
     val serverUrlError: ServerUrlError? = null,

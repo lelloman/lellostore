@@ -54,6 +54,9 @@ fn authenticated_access(auth: AuthState) -> AsyncAccess<Parts, User, AuthError> 
             if token.starts_with(crate::db::publish_tokens::SECRET_PREFIX) {
                 return authenticate_publish_token(&auth, token, path).await;
             }
+            if token.starts_with(crate::db::device_tokens::SECRET_PREFIX) {
+                return authenticate_device_token(&auth, token, path).await;
+            }
             let claims = auth.validator.validate(token).await.map_err(|error| {
                 warn!(path = %path, error = %error, "Authentication failed: token validation error");
                 error
@@ -90,6 +93,29 @@ async fn authenticate_publish_token(
         })?;
     debug!(token_id = %resolved.id, package = %resolved.package_name, path = %path, "Publish token authenticated");
     Ok(User::publisher(resolved.id, resolved.package_name))
+}
+
+/// Resolve a device token secret against the store database. The secret is
+/// never logged; only the token id of a resolved token is. The principal's
+/// known-user row exists from creation, so it is not observed here.
+async fn authenticate_device_token(
+    auth: &AuthState,
+    secret: &str,
+    path: &str,
+) -> Result<User, AuthError> {
+    let Some(pool) = &auth.user_registry else {
+        warn!(path = %path, "Authentication failed: device tokens require the store database");
+        return Err(AuthError::TokenInvalid("device token".into()));
+    };
+    let resolved = crate::db::device_tokens::authenticate(pool, secret)
+        .await
+        .map_err(|error| AuthError::UserRegistryUnavailable(error.to_string()))?
+        .ok_or_else(|| {
+            warn!(path = %path, "Authentication failed: unknown, revoked or expired device token");
+            AuthError::TokenInvalid("device token".into())
+        })?;
+    debug!(token_id = %resolved.id, path = %path, "Device token authenticated");
+    Ok(User::device(resolved.id))
 }
 
 /// Authentication middleware that validates tokens and attaches User to request
