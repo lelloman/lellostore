@@ -3,6 +3,7 @@ package com.lelloman.store.interactor
 import com.google.common.truth.Truth.assertThat
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.model.InstalledApp
@@ -15,6 +16,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -123,20 +125,31 @@ class UpdatesInteractorImplTest {
         )
         updatesFlow.value = listOf(update)
 
-        coEvery { downloadManager.downloadAndInstall(any(), any()) } returns mockk()
+        coEvery { downloadManager.downloadAndInstall(any(), any()) } returns DownloadResult.AwaitingConfirmation
 
-        interactor.downloadAndInstall("com.test.app")
+        val result = interactor.downloadAndInstall("com.test.app")
 
         coVerify { downloadManager.downloadAndInstall("com.test.app", 2) }
+        assertThat(result).isEqualTo(DownloadResult.AwaitingConfirmation)
     }
 
     @Test
-    fun `downloadAndInstall does nothing when package not found`() = runTest {
+    fun `downloadAndInstall fails without downloading when package not found`() = runTest {
         updatesFlow.value = emptyList()
 
-        interactor.downloadAndInstall("com.nonexistent.app")
+        val result = interactor.downloadAndInstall("com.nonexistent.app")
 
         coVerify(exactly = 0) { downloadManager.downloadAndInstall(any(), any()) }
+        assertThat(result).isInstanceOf(DownloadResult.Failed::class.java)
+    }
+
+    @Test
+    fun `openInstallPermissionSettings delegates to downloadManager`() {
+        every { downloadManager.openInstallPermissionSettings() } returns Unit
+
+        interactor.openInstallPermissionSettings()
+
+        verify { downloadManager.openInstallPermissionSettings() }
     }
 
     @Test

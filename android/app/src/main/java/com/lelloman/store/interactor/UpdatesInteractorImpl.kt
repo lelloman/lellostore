@@ -3,6 +3,7 @@ package com.lelloman.store.interactor
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.apps.InstalledAppsRepository
 import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.model.AvailableUpdate
 import com.lelloman.store.domain.updates.UpdateChecker
 import com.lelloman.store.ui.screen.updates.UpdateUiModel
@@ -40,14 +41,17 @@ class UpdatesInteractorImpl @Inject constructor(
         return updateChecker.checkForUpdates().map { }
     }
 
-    override suspend fun downloadAndInstall(packageName: String) {
+    override suspend fun downloadAndInstall(packageName: String): DownloadResult {
         val update = updateChecker.availableUpdates.value.find { it.app.packageName == packageName }
-        if (update != null) {
-            downloadManager.downloadAndInstall(
-                packageName = packageName,
-                versionCode = update.app.latestVersion.versionCode,
-            )
-        }
+            ?: return DownloadResult.Failed("No available update found for $packageName")
+        return downloadManager.downloadAndInstall(
+            packageName = packageName,
+            versionCode = update.app.latestVersion.versionCode,
+        )
+    }
+
+    override fun openInstallPermissionSettings() {
+        downloadManager.openInstallPermissionSettings()
     }
 
     private fun AvailableUpdate.toUiModel(progress: DownloadProgress?): UpdateUiModel {

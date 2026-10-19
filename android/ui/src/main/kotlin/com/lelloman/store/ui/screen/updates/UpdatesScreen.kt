@@ -24,17 +24,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.domain.preferences.ReleaseChannel
+import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.ui.R
 import com.lelloman.store.ui.components.LelloStoreAppIcon
 import com.lelloman.store.ui.components.LelloStoreStateContent
@@ -92,6 +98,7 @@ fun UpdatesScreen(
                     state = state,
                     onAppClick = onAppClick,
                     onUpdateClick = viewModel::onUpdateClick,
+                    onGrantPermissionClick = viewModel::onGrantPermissionClick,
                     onRefresh = viewModel::refreshUpdates,
                 )
             }
@@ -104,6 +111,7 @@ private fun UpdatesList(
     state: UpdatesScreenState,
     onAppClick: (String) -> Unit,
     onUpdateClick: (String) -> Unit,
+    onGrantPermissionClick: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -180,8 +188,10 @@ private fun UpdatesList(
             items(state.updates, key = { it.packageName }) { update ->
                 UpdateRow(
                     update = update,
+                    outcome = state.outcomes[update.packageName],
                     onClick = { onAppClick(update.packageName) },
                     onUpdateClick = { onUpdateClick(update.packageName) },
+                    onGrantPermissionClick = onGrantPermissionClick,
                 )
             }
         }
@@ -191,16 +201,14 @@ private fun UpdatesList(
 @Composable
 private fun UpdateRow(
     update: UpdateUiModel,
+    outcome: UpdateOutcome?,
     onClick: () -> Unit,
     onUpdateClick: () -> Unit,
+    onGrantPermissionClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isUpdating = update.downloadState != null && update.downloadState !in setOf(
-        DownloadState.COMPLETED,
-        DownloadState.FAILED,
-        DownloadState.CANCELLED,
-        DownloadState.PERMISSION_REQUIRED,
-    )
+    val downloadState = update.downloadState
+    val isUpdating = downloadState?.isInProgress == true
     val channel = stringResource(
         when (update.releaseChannel) {
             ReleaseChannel.Stable -> R.string.release_channel_stable
@@ -255,16 +263,94 @@ private fun UpdateRow(
                 colors = lelloStoreButtonColors(),
             ) {
                 if (isUpdating) {
-                    CircularProgressIndicator(
-                        progress = { update.downloadProgress },
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
+                    if (downloadState == DownloadState.DOWNLOADING) {
+                        CircularProgressIndicator(
+                            progress = { update.downloadProgress },
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
                     Spacer(Modifier.width(LelloStoreSpacing.small))
-                    Text(stringResource(R.string.updating))
+                    Text(downloadPhaseLabel(downloadState, update.downloadProgress))
                 } else {
                     Text(stringResource(R.string.update))
                 }
+            }
+            if (!isUpdating && outcome != null) {
+                Spacer(Modifier.height(LelloStoreSpacing.small))
+                UpdateOutcomeMessage(
+                    outcome = outcome,
+                    onGrantPermissionClick = onGrantPermissionClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun downloadPhaseLabel(state: DownloadState?, progress: Float): String = when (state) {
+    DownloadState.PENDING -> stringResource(R.string.download_preparing)
+    DownloadState.DOWNLOADING -> stringResource(R.string.download_downloading, (progress * 100).toInt())
+    DownloadState.VERIFYING -> stringResource(R.string.download_verifying)
+    DownloadState.INSTALLING -> stringResource(R.string.download_installing)
+    else -> stringResource(R.string.updating)
+}
+
+@Composable
+private fun UpdateOutcomeMessage(
+    outcome: UpdateOutcome,
+    onGrantPermissionClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        when (outcome) {
+            is UpdateOutcome.Failed -> {
+                val incompatible = outcome.kind == DownloadFailureKind.INCOMPATIBLE_SIGNATURE
+                Text(
+                    text = stringResource(
+                        if (incompatible) R.string.incompatible_signature_title else R.string.download_failed,
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    text = if (incompatible) {
+                        stringResource(R.string.incompatible_signature_message)
+                    } else {
+                        outcome.reason
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            UpdateOutcome.PermissionRequired -> {
+                Text(
+                    text = stringResource(R.string.permission_required_message),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onGrantPermissionClick) {
+                    Text(stringResource(R.string.grant_permission))
+                }
+            }
+            UpdateOutcome.AwaitingConfirmation -> {
+                Text(
+                    text = stringResource(R.string.download_awaiting_confirmation),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = stringResource(R.string.download_awaiting_confirmation_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
