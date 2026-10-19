@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.lelloman.store.domain.updates.UpdateChecker
+import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadManager
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.InstallationMode
@@ -44,9 +45,9 @@ class UpdateCheckWorker @AssistedInject constructor(
                     val remainingUpdates = updates.filterNot { it.autoUpdateEnabled }.toMutableList()
                     // Deferred updates stay visible in the Updates screen; the queued
                     // unmetered check installs them, so no notification is posted.
-                    val automaticUpdates = updates.filter { it.autoUpdateEnabled }
-                        .takeUnless { it.isNotEmpty() && automaticDownloadGate.deferUntilUnmetered() }
-                        .orEmpty()
+                    val enabledUpdates = updates.filter { it.autoUpdateEnabled }
+                    val deferred = enabledUpdates.isNotEmpty() && automaticDownloadGate.deferUntilUnmetered()
+                    val automaticUpdates = if (deferred) emptyList() else enabledUpdates
                     val progressObserver = if (automaticUpdates.isNotEmpty()) {
                         workerForegroundController.setForeground(
                             this@UpdateCheckWorker,
@@ -57,7 +58,10 @@ class UpdateCheckWorker @AssistedInject constructor(
                         )
                         launch {
                             downloadManager.activeDownloads.collectLatest { downloads ->
-                                val active = downloads.values.filter { it.state.isInProgress }
+                                // User-started operations are rendered by the download service.
+                                val active = downloads.values.filter {
+                                    it.mode == InstallationMode.BACKGROUND && it.state.isInProgress
+                                }
                                 if (active.isNotEmpty()) {
                                     notificationHelper.showOperationNotification(
                                         NotificationHelper.BACKGROUND_UPDATE_NOTIFICATION_ID,
@@ -69,17 +73,23 @@ class UpdateCheckWorker @AssistedInject constructor(
                     } else null
                     try {
                         automaticUpdates.forEach { update ->
-                            when (downloadManager.downloadAndInstall(
+                            when (val outcome = downloadManager.downloadAndInstall(
                                 packageName = update.app.packageName,
                                 versionCode = update.app.latestVersion.versionCode,
                                 installationMode = InstallationMode.BACKGROUND,
                             )) {
-                                DownloadResult.Success,
-                                DownloadResult.AwaitingConfirmation -> Unit
+                                DownloadResult.Success -> Unit
+                                // Not expected in BACKGROUND mode; the user still has to act.
+                                DownloadResult.AwaitingConfirmation,
                                 DownloadResult.UserActionRequired,
                                 DownloadResult.PermissionRequired -> remainingUpdates += update
-                                DownloadResult.Cancelled,
-                                is DownloadResult.Failed -> retryNeeded = true
+                                DownloadResult.Cancelled -> retryNeeded = true
+                                is DownloadResult.Failed -> {
+                                    // Surface the update so a failure is never silent.
+                                    remainingUpdates += update
+                                    // A signature mismatch cannot succeed on retry.
+                                    if (outcome.kind == DownloadFailureKind.GENERIC) retryNeeded = true
+                                }
                             }
                         }
                     } finally {
@@ -92,6 +102,10 @@ class UpdateCheckWorker @AssistedInject constructor(
                         notificationHelper.showUpdatesAvailableNotification(
                             remainingUpdates.map { it.effectiveReleaseChannel },
                         )
+                    } else if (!deferred) {
+                        // Nothing is left to act on. Deferred updates are still pending, so a
+                        // notification posted earlier is left alone.
+                        notificationHelper.cancelUpdatesNotification()
                     }
                     when {
                         !retryNeeded -> Result.success()
