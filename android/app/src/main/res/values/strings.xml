@@ -59,4 +59,7 @@
         <item quantity="other">%1$d stable and beta updates available</item>
     </plurals>
     <string name="notification_updates_available_text">Tap to view and install updates</string>
+    <string name="notification_operation_outcome_installed">Installed</string>
+    <string name="notification_operation_outcome_failed">Installation failed: %1$s</string>
+    <string name="notification_operation_outcome_failed_no_reason">Installation failed</string>
 </resources>

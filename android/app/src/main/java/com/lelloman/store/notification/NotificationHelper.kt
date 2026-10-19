@@ -105,6 +105,46 @@ class NotificationHelper @Inject constructor(
         notificationManager.cancel(UPDATES_NOTIFICATION_ID)
     }
 
+    /**
+     * Reports the outcome of a user-started operation that finished while the app was not
+     * visible. One notification per package so concurrent operations do not overwrite each other.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked via hasNotificationPermission()
+    fun showOperationOutcomeNotification(progress: DownloadProgress) {
+        if (!hasNotificationPermission()) return
+        val failed = progress.state == DownloadState.FAILED
+        val text = if (failed) {
+            progress.reason?.takeIf { it.isNotBlank() }
+                ?.let { context.getString(R.string.notification_operation_outcome_failed, it) }
+                ?: context.getString(R.string.notification_operation_outcome_failed_no_reason)
+        } else {
+            context.getString(R.string.notification_operation_outcome_installed)
+        }
+        val id = operationOutcomeNotificationId(progress.packageName)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, UPDATES_CHANNEL_ID)
+            .setSmallIcon(
+                if (failed) android.R.drawable.stat_notify_error
+                else android.R.drawable.stat_sys_download_done
+            )
+            .setContentTitle(appName(progress.packageName))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        notificationManager.notify(id, notification)
+    }
+
     @SuppressLint("MissingPermission", "BatteryLife") // Permission checked; shared push needs Doze access.
     fun showPushConnectionReminder(batteryExemptionRequired: Boolean) {
         if (!hasNotificationPermission()) return
@@ -247,7 +287,8 @@ class NotificationHelper @Inject constructor(
         return builder.build()
     }
 
-    private fun appName(packageName: String): String {
+    /** User-visible label of [packageName], falling back to the package name itself. */
+    fun appName(packageName: String): String {
         appNames.get(packageName)?.let { return it }
         val name = try {
             val packageManager = context.packageManager
@@ -327,6 +368,12 @@ class NotificationHelper @Inject constructor(
         const val EXTRA_NAVIGATE_TO_UPDATES = "navigate_to_updates"
         private const val OPERATION_REQUEST_CODE = 1002
         private const val PROGRESS_MAX = 100
+
+        private const val OPERATION_OUTCOME_ID_BASE = 0x10000000
+
+        /** Stable per-package ID kept well above the fixed notification IDs. */
+        internal fun operationOutcomeNotificationId(packageName: String): Int =
+            OPERATION_OUTCOME_ID_BASE or (packageName.hashCode() and 0x0FFFFFFF)
 
         internal fun formatUpdateTitle(resources: Resources, channels: List<ReleaseChannel>): String {
             val count = channels.size

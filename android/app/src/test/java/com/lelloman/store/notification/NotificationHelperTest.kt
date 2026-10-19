@@ -40,4 +40,12 @@ class NotificationHelperTest {
         ).isEqualTo("2 stable and beta updates available")
     }
 
+    @Test
+    fun `operation outcome ids are per package and avoid fixed ids`() {
+        val first = NotificationHelper.operationOutcomeNotificationId("com.example.one")
+        val second = NotificationHelper.operationOutcomeNotificationId("com.example.two")
+        assertThat(first).isNotEqualTo(second)
+        assertThat(first).isEqualTo(NotificationHelper.operationOutcomeNotificationId("com.example.one"))
+        assertThat(first).isGreaterThan(NotificationHelper.DOWNLOAD_SERVICE_NOTIFICATION_ID)
+    }
 }
