@@ -91,6 +91,7 @@
     <string name="hide_technical_details">Hide technical details</string>
     <string name="download_cancelled_hint">The installation was cancelled. You can restart it when ready.</string>
     <string name="download_permission_required">Permission required</string>
+    <string name="download_awaiting_confirmation">Waiting for confirmation</string>
     <string name="content_description_cancel_download">Cancel download</string>
 
     <!-- Permission Required Section -->

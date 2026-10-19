@@ -74,7 +74,8 @@ class UpdateCheckWorker @AssistedInject constructor(
                                 versionCode = update.app.latestVersion.versionCode,
                                 installationMode = InstallationMode.BACKGROUND,
                             )) {
-                                DownloadResult.Success -> Unit
+                                DownloadResult.Success,
+                                DownloadResult.AwaitingConfirmation -> Unit
                                 DownloadResult.UserActionRequired,
                                 DownloadResult.PermissionRequired -> remainingUpdates += update
                                 DownloadResult.Cancelled,

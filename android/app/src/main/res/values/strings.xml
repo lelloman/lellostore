@@ -15,6 +15,7 @@
     <string name="operation_failed">Failed</string>
     <string name="operation_cancelled">Cancelled</string>
     <string name="operation_permission_required">Permission required</string>
+    <string name="operation_awaiting_confirmation">Waiting for confirmation</string>
     <plurals name="operation_updating_apps">
         <item quantity="one">Updating %1$d app</item>
         <item quantity="other">Updating %1$d apps</item>

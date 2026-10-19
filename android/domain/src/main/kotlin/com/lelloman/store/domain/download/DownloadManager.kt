@@ -26,6 +26,10 @@ data class DownloadProgress(
     val bytesDownloaded: Long,
     val totalBytes: Long,
     val state: DownloadState,
+    /** Who started the operation: a user tap or the scheduled worker. */
+    val mode: InstallationMode = InstallationMode.FOREGROUND,
+    /** Human-readable failure reason, set only for [DownloadState.FAILED]. */
+    val reason: String? = null,
 )
 
 enum class DownloadState {
@@ -36,19 +40,24 @@ enum class DownloadState {
     COMPLETED,
     FAILED,
     CANCELLED,
-    PERMISSION_REQUIRED
+    PERMISSION_REQUIRED,
+    /** Android's interactive installer was opened; the user has not confirmed yet. */
+    AWAITING_CONFIRMATION,
 }
 
 val DownloadState.isInProgress: Boolean
     get() = this != DownloadState.COMPLETED &&
         this != DownloadState.FAILED &&
         this != DownloadState.CANCELLED &&
-        this != DownloadState.PERMISSION_REQUIRED
+        this != DownloadState.PERMISSION_REQUIRED &&
+        this != DownloadState.AWAITING_CONFIRMATION
 
 sealed interface DownloadResult {
     data object Success : DownloadResult
     data object Cancelled : DownloadResult
     data object PermissionRequired : DownloadResult
+    /** Android's interactive installer was opened; the outcome depends on the user. */
+    data object AwaitingConfirmation : DownloadResult
     /** The verified APK is retained for a later foreground installation. */
     data object UserActionRequired : DownloadResult
     data class Failed(

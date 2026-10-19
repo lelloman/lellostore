@@ -17,7 +17,8 @@ class DownloadStateTest {
             DownloadState.COMPLETED,
             DownloadState.FAILED,
             DownloadState.CANCELLED,
-            DownloadState.PERMISSION_REQUIRED
+            DownloadState.PERMISSION_REQUIRED,
+            DownloadState.AWAITING_CONFIRMATION,
         )
     }
 

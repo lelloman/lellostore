@@ -710,6 +710,7 @@ private fun DownloadProgressSection(
                         DownloadState.FAILED -> stringResource(R.string.download_failed)
                         DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
                         DownloadState.PERMISSION_REQUIRED -> stringResource(R.string.download_permission_required)
+                        DownloadState.AWAITING_CONFIRMATION -> stringResource(R.string.download_awaiting_confirmation)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )

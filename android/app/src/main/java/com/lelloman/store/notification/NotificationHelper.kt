@@ -297,6 +297,7 @@ class NotificationHelper @Inject constructor(
         DownloadState.FAILED -> context.getString(R.string.operation_failed)
         DownloadState.CANCELLED -> context.getString(R.string.operation_cancelled)
         DownloadState.PERMISSION_REQUIRED -> context.getString(R.string.operation_permission_required)
+        DownloadState.AWAITING_CONFIRMATION -> context.getString(R.string.operation_awaiting_confirmation)
     }
 
     private fun hasNotificationPermission(): Boolean {
