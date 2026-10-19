@@ -12,8 +12,13 @@
     <v-alert v-if="secret" type="warning" class="mb-6" data-test="secret">
       <p class="mb-2"><strong>Provision this token on the device now, it is shown only once</strong> and cannot be recovered. For a PezzotTV box run <code>LELLOSTORE_DEVICE_TOKEN=&lt;token&gt; setup-tv-box.sh</code>.</p>
       <code class="d-block mb-3" style="overflow-wrap: anywhere">{{ secret }}</code>
+      <div class="mb-3" data-test="device-token-qr">
+        <img v-if="qr" :src="qr" alt="QR code with the device token for PezzotTV Companion" width="240" height="240" class="d-block" style="background: #fff">
+        <p v-else-if="qrError" class="text-body-2">{{ qrError }}</p>
+        <p class="text-caption mt-1">Scan with PezzotTV Companion</p>
+      </div>
       <v-btn :disabled="busy" prepend-icon="mdi-content-copy" @click="copySecret">Copy token</v-btn>
-      <v-btn class="ml-2" variant="text" @click="secret = ''">I provisioned it</v-btn>
+      <v-btn class="ml-2" variant="text" @click="dismissSecret">I provisioned it</v-btn>
     </v-alert>
     <v-card class="pa-5 mb-6">
       <h2 class="text-h6 mb-3">Create a token</h2>
@@ -71,6 +76,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import QRCode from 'qrcode'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { api, request, type AppGroup } from '@/services/api'
 type TokenGroup = { id: number; name: string }
@@ -80,6 +86,9 @@ const tokens = ref<Token[]>([])
 const groups = ref<AppGroup[]>([])
 const name = ref(''), expiresAt = ref(''), secret = ref('')
 const groupIds = ref<number[]>([])
+// The QR encodes the secret, so it lives only in memory beside it and goes away with it.
+const qr = ref(''), qrError = ref('')
+let qrGeneration = 0
 const revokeCandidate = ref<Token | null>(null)
 const busy = ref(false), error = ref(''), notice = ref('')
 const canCreate = computed(() => !!name.value.trim())
@@ -104,10 +113,24 @@ async function create() { if (!canCreate.value) return; await perform(async () =
   if (expiresAt.value) body.expires_at = new Date(`${expiresAt.value}T23:59:59`).toISOString()
   if (groupIds.value.length) body.group_ids = [...groupIds.value]
   const created = await request<Token & { secret: string }>(base, { method: 'POST', body: JSON.stringify(body) })
-  secret.value = created.secret
+  showSecret(created.name, created.secret)
   name.value = ''; expiresAt.value = ''; groupIds.value = []
   await refresh(); notice.value = 'Token created'
 }) }
+function deviceTokenPayload(tokenName: string, token: string) {
+  const serverUrl = window.location.origin.replace(/\/+$/, '')
+  return JSON.stringify({ version: 1, server_url: serverUrl, name: tokenName, token })
+}
+function showSecret(tokenName: string, token: string) {
+  secret.value = token; qr.value = ''; qrError.value = ''
+  const generation = ++qrGeneration
+  QRCode.toDataURL(deviceTokenPayload(tokenName, token), { width: 240, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } })
+    .then(url => { if (generation === qrGeneration) qr.value = url })
+    .catch(() => { if (generation === qrGeneration) qrError.value = 'Could not create the QR code; copy the token instead' })
+}
+function dismissSecret() {
+  qrGeneration++; secret.value = ''; qr.value = ''; qrError.value = ''
+}
 async function copySecret() {
   try { await navigator.clipboard.writeText(secret.value); notice.value = 'Token copied' } catch { error.value = 'Copy failed; select the token and copy it manually' }
 }

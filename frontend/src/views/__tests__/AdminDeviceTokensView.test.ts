@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import AdminDeviceTokensView from '../AdminDeviceTokensView.vue'
 import { api, request } from '@/services/api'
+import QRCode from 'qrcode'
 
 vi.mock('@/services/api', () => ({ request: vi.fn(), api: { getAppGroups: vi.fn() } }))
+vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn() } }))
 
 const SECRET = 'lellostore_dev_' + 'ab'.repeat(32)
 
@@ -55,6 +57,7 @@ describe('AdminDeviceTokensView', () => {
     vi.clearAllMocks()
     vi.mocked(request).mockResolvedValue(tokens())
     vi.mocked(api.getAppGroups).mockResolvedValue({ groups: groups() })
+    vi.mocked(QRCode.toDataURL).mockResolvedValue('data:image/png;base64,QR' as never)
   })
 
   it('lists tokens with their groups and use but no secrets', async () => {
@@ -90,6 +93,27 @@ describe('AdminDeviceTokensView', () => {
     expect(writeText).toHaveBeenCalledWith(SECRET)
     await wrapper.findAll('button').find(b => b.text() === 'I provisioned it')!.trigger('click')
     expect(wrapper.text()).not.toContain(SECRET)
+  })
+
+  it('renders a device-token QR for PezzotTV Companion and drops it on dismiss', async () => {
+    const wrapper = mountView(); await flushPromises()
+    expect(QRCode.toDataURL).not.toHaveBeenCalled()
+    vi.mocked(request).mockResolvedValueOnce({ ...tokens()[0], secret: SECRET }).mockResolvedValueOnce(tokens())
+    await wrapper.find('input[aria-label="Token name"]').setValue('Living room TV')
+    await wrapper.find('form').trigger('submit'); await flushPromises()
+    const expected = JSON.stringify({ version: 1, server_url: window.location.origin, name: 'Living room TV', token: SECRET })
+    expect(QRCode.toDataURL).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(QRCode.toDataURL).mock.calls[0]![0]).toBe(expected)
+    expect(Object.keys(JSON.parse(expected))).toEqual(['version', 'server_url', 'name', 'token'])
+    expect(vi.mocked(QRCode.toDataURL).mock.calls[0]![1]).toMatchObject({ errorCorrectionLevel: 'M', width: 240 })
+    const qr = wrapper.find('[data-test="secret"] [data-test="device-token-qr"] img')
+    expect(qr.exists()).toBe(true); expect(qr.attributes('src')).toBe('data:image/png;base64,QR')
+    expect(wrapper.find('[data-test="device-token-qr"]').text()).toContain('Scan with PezzotTV Companion')
+    await wrapper.findAll('button').find(b => b.text() === 'I provisioned it')!.trigger('click')
+    expect(wrapper.find('[data-test="device-token-qr"]').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(window.location.href).not.toContain(SECRET)
+    expect(JSON.stringify({ ...localStorage })).not.toContain(SECRET)
   })
 
   it('create sends selected group ids', async () => {
