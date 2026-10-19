@@ -84,19 +84,33 @@ access token and reports an expired session through the shared handler.
 The application owns active download jobs and a shared operation-state flow by
 package name. Catalog, updates, and detail surfaces observe that flow rather
 than maintaining local installation flags. A download streams to cache, reports
-progress, verifies its SHA-256 digest, and launches Android's package installer
-through a FileProvider URI. Foreground user operations run in application scope
-and are protected by a `dataSync` foreground service whose notification observes
-the same state flow. Navigating away therefore does not cancel an update.
-Scheduled automatic updates use WorkManager's foreground execution support and
-the same notification renderer. Cancelling a download cancels the underlying
-coroutine and removes partial state instead of merely changing the UI.
+progress (published at most on every whole percent or 250 ms), verifies its
+SHA-256 digest, and hands the file to an installation channel. Each operation
+carries its `InstallationMode` and, on failure, a user-readable reason in the
+shared state flow; the user-facing reason of a channel failure is the channel
+that actually attempted the install, while the full channel list goes to the
+audit log. An interactive installer handoff ends in `AWAITING_CONFIRMATION`,
+not `COMPLETED`: the APK is kept for Android's installer and the package
+snapshot is what later proves installation. Terminal states stay visible for
+three seconds; the delayed removal only clears the entry if no newer operation
+for the same package owns it. Foreground user operations run in application
+scope and are protected by a `dataSync` foreground service that renders only
+foreground-mode entries and stops as soon as none is in progress. Navigating
+away therefore does not cancel an update, and when such an operation completes
+or fails while the app is not visible, `OperationOutcomeNotifier` posts a
+per-package result notification. Scheduled automatic updates use WorkManager's
+foreground execution support and render only background-mode entries.
+Cancelling a download cancels the underlying coroutine and removes partial
+state instead of merely changing the UI.
 
 Installed-package state is a persistent Room snapshot of Android's authoritative
 package-manager state. Silent installation success and package add, replace, or
 remove broadcasts refresh that snapshot; its Room flows push the resulting
-version change to every observing screen. Detail resume remains a reconciliation
-fallback for an interrupted or missed broadcast.
+version change to every observing screen. Android 8+ no longer delivers those
+implicit broadcasts to manifest receivers, so `PackageChangeMonitor` registers
+the same handling at runtime from the Application; the manifest receiver covers
+older versions. Detail resume and the foreground-return update check remain
+reconciliation fallbacks for an interrupted or missed broadcast.
 
 ## Local logs
 
@@ -129,9 +143,14 @@ pairing codes, URLs and raw ADB output are excluded.
 
 The update checker compares cached catalog version codes with installed package
 versions. WorkManager schedules periodic checks according to user preferences,
-including the Wi-Fi constraint, and posts local notifications when updates are
-available. The updates screen observes the same state and can start the normal
-authenticated download path.
+including the Wi-Fi constraint, and posts a local notification when updates are
+available. That notification alerts only once, opens the Updates tab, and is
+cancelled by the next check that finds nothing left to act on. Automatic updates
+that fail are listed in it rather than retried silently, and a signature
+mismatch is never retried. The updates screen observes the same state, can start
+the normal authenticated download path, and shows each row's phase and outcome
+(failure reason, missing install permission with a shortcut to grant it, or a
+pending installer confirmation) inline.
 
 While the authenticated app is foregrounded it keeps an authenticated WebSocket
 to `/api/events`; catalog invalidations enqueue a serialized update check. Moving
@@ -149,6 +168,8 @@ requests may fall back to Android's interactive Package Installer:
 
 1. Local legacy ADB at `127.0.0.1:5555`, when provisioned.
 2. Android Wireless Debugging using mDNS endpoint discovery and authenticated TLS.
+   On Android 11+ the channel reports itself unavailable immediately when the
+   `adb_wifi_enabled` global setting is off, instead of waiting out discovery.
 3. Silent Package Installer updates (Android 12+). A `PackageInstaller` session with
    `USER_ACTION_NOT_REQUIRED` and `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. Android only skips
    the prompt for updates of LelloStore itself or of packages whose installer of record (or
