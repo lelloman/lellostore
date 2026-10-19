@@ -76,11 +76,13 @@ class MainActivity : ComponentActivity() {
     private val _sessionExpiredNavigation = MutableStateFlow(false)
     private val sessionExpiredNavigation = _sessionExpiredNavigation.asStateFlow()
     private val openPesce = MutableStateFlow(false)
+    private val openUpdates = MutableStateFlow(false)
     private var openedBatterySettings = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openPesce.value = intent.getBooleanExtra("open_pesce", false)
+        openUpdates.value = intent.getBooleanExtra(NotificationHelper.EXTRA_NAVIGATE_TO_UPDATES, false)
         enableEdgeToEdge()
         observeSessionExpiredEvents()
         handleBatterySettingsIntent()
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
             val domainAuthState by authStore.authState.collectAsState()
             val shouldNavigateToLogin by sessionExpiredNavigation.collectAsState()
             val shouldOpenPesce by openPesce.collectAsState()
+            val shouldOpenUpdates by openUpdates.collectAsState()
 
             val themeMode = domainThemeMode.toUiModel()
             val useDarkSystemBars = when (domainThemeMode) {
@@ -138,6 +141,11 @@ class MainActivity : ComponentActivity() {
                     onForceNavigateToLoginHandled = { _sessionExpiredNavigation.value = false },
                     openPesce = shouldOpenPesce,
                     onOpenPesceHandled = { openPesce.value = false; intent.removeExtra("open_pesce") },
+                    openUpdates = shouldOpenUpdates,
+                    onOpenUpdatesHandled = {
+                        openUpdates.value = false
+                        intent.removeExtra(NotificationHelper.EXTRA_NAVIGATE_TO_UPDATES)
+                    },
                 )
                 SnackbarHost(batterySnackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             }
@@ -169,6 +177,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleBatterySettingsIntent()
         openPesce.value = intent.getBooleanExtra("open_pesce", false)
+        openUpdates.value = intent.getBooleanExtra(NotificationHelper.EXTRA_NAVIGATE_TO_UPDATES, false)
     }
 
     private fun handleBatterySettingsIntent() {

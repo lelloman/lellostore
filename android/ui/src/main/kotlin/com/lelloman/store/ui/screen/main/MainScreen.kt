@@ -39,6 +39,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lelloman.store.ui.navigation.MainTab
+import com.lelloman.store.ui.navigation.selectMainTab
 import com.lelloman.store.ui.components.LelloStoreBrandMark
 import com.lelloman.store.ui.components.PesceIcon
 import com.lelloman.store.ui.screen.pesce.PesceScreen
@@ -56,9 +57,19 @@ fun MainScreen(
     modifier: Modifier = Modifier,
     onPesceSelected: (Boolean) -> Unit = {},
     onPesceSignIn: () -> Unit = {},
+    openUpdatesTab: Boolean = false,
+    onOpenUpdatesTabHandled: () -> Unit = {},
 ) {
     val tabNavController = rememberNavController()
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
+    // The tab graph is set inside the Scaffold's subcomposition; wait for it before navigating.
+    val tabGraphReady = navBackStackEntry != null
+    LaunchedEffect(openUpdatesTab, tabGraphReady) {
+        if (openUpdatesTab && tabGraphReady) {
+            tabNavController.selectMainTab(MainTab.Updates)
+            onOpenUpdatesTabHandled()
+        }
+    }
     val currentDestination = navBackStackEntry?.destination
     val currentItem = BottomNavItem.entries.firstOrNull {
         currentDestination?.hasRoute(it.route::class) == true
@@ -158,15 +169,7 @@ internal fun LellostoreBottomNav(navController: NavController) {
                 icon = { Icon(item.icon, contentDescription = label) },
                 label = { Text(label, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                 selected = currentDestination?.hasRoute(item.route::class) == true,
-                onClick = {
-                    navController.navigate(item.route) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onClick = { navController.selectMainTab(item.route) },
                 colors = lelloStoreNavigationBarItemColors(),
             )
         }

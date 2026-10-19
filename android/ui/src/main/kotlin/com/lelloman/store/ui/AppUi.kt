@@ -33,6 +33,7 @@ import com.lelloman.store.ui.navigation.fromSplashToLogin
 import com.lelloman.store.ui.navigation.fromSplashToMain
 import com.lelloman.store.ui.navigation.logout
 import com.lelloman.store.ui.navigation.toAppDetail
+import com.lelloman.store.ui.navigation.toMainForTab
 import com.lelloman.store.ui.screen.detail.AppDetailScreen
 import com.lelloman.store.ui.screen.login.LoginScreen
 import com.lelloman.store.ui.screen.pesce.PesceScreen
@@ -58,17 +59,30 @@ fun AppUi(
     onForceNavigateToLoginHandled: () -> Unit = {},
     openPesce: Boolean = false,
     onOpenPesceHandled: () -> Unit = {},
+    openUpdates: Boolean = false,
+    onOpenUpdatesHandled: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     // Resolve cold notification entry before the splash's delayed auth redirect can run.
     val initialDestination = remember { if (openPesce) Screen.Pesce else Screen.Splash }
     var showProfileSheet by rememberSaveable { mutableStateOf(false) }
     var pesceSelected by rememberSaveable { mutableStateOf(false) }
+    // Survives the splash/login detour so the tab is selected once Main is shown.
+    var pendingUpdatesTab by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(openPesce) {
         if (openPesce) {
             navController.navigate(Screen.Pesce) { popUpTo(0); launchSingleTop = true }
             onOpenPesceHandled()
+        }
+    }
+
+    LaunchedEffect(openUpdates) {
+        if (openUpdates) {
+            pendingUpdatesTab = true
+            showProfileSheet = false
+            navController.toMainForTab(isLoggedIn)
+            onOpenUpdatesHandled()
         }
     }
 
@@ -145,6 +159,8 @@ fun AppUi(
                         },
                         onPesceSelected = { pesceSelected = it },
                         onPesceSignIn = { navController.navigate(Screen.PesceLogin) },
+                        openUpdatesTab = pendingUpdatesTab,
+                        onOpenUpdatesTabHandled = { pendingUpdatesTab = false },
                     )
                 }
 
