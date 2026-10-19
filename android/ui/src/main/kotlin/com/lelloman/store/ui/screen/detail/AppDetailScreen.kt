@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.domain.download.DownloadState
 import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadResult
+import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
 import com.lelloman.store.domain.preferences.ReleaseChannel
 import com.lelloman.store.domain.preferences.ReleaseChannelOverride
@@ -186,11 +187,7 @@ private fun AppDetailContent(
     var showRepairDialog by rememberSaveable { mutableStateOf(false) }
     var showAutoUpdateDialog by rememberSaveable { mutableStateOf(false) }
     var showReleaseChannelDialog by rememberSaveable { mutableStateOf(false) }
-    val isDownloading = downloadState != null &&
-            downloadState != DownloadState.COMPLETED &&
-            downloadState != DownloadState.FAILED &&
-            downloadState != DownloadState.CANCELLED &&
-            downloadState != DownloadState.PERMISSION_REQUIRED
+    val isDownloading = downloadState?.isInProgress == true
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -210,7 +207,8 @@ private fun AppDetailContent(
 
             if (installationFailure != null || downloadState == DownloadState.COMPLETED ||
                 downloadState == DownloadState.FAILED ||
-                downloadState == DownloadState.CANCELLED
+                downloadState == DownloadState.CANCELLED ||
+                downloadState == DownloadState.AWAITING_CONFIRMATION
             ) {
                 Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
                 InstallationResultSection(
@@ -575,6 +573,7 @@ private fun InstallationResultSection(
                         }
                     )
                     DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
+                    DownloadState.AWAITING_CONFIRMATION -> stringResource(R.string.download_awaiting_confirmation)
                     else -> return@Surface
                 },
                 style = MaterialTheme.typography.titleMedium,
@@ -591,6 +590,7 @@ private fun InstallationResultSection(
                         }
                     )
                     DownloadState.CANCELLED -> stringResource(R.string.download_cancelled_hint)
+                    DownloadState.AWAITING_CONFIRMATION -> stringResource(R.string.download_awaiting_confirmation_hint)
                     else -> return@Surface
                 },
                 style = MaterialTheme.typography.bodyMedium,

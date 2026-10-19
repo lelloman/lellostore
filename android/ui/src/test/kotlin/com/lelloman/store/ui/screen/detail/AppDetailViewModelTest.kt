@@ -486,6 +486,51 @@ class AppDetailViewModelTest {
     }
 
     @Test
+    fun `retry from PERMISSION_REQUIRED starts a download instead of cancelling`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        createViewModel()
+        advanceUntilIdle()
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 0f,
+            bytesDownloaded = 0L,
+            totalBytes = 0L,
+            state = DownloadState.PERMISSION_REQUIRED,
+        )
+        advanceUntilIdle()
+
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.cancelDownloadCalled).isFalse()
+        assertThat(fakeInteractor.downloadAndInstallCalled).isTrue()
+    }
+
+    @Test
+    fun `download state AWAITING_CONFIRMATION is reflected and install can be restarted`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        fakeInteractor.downloadAndInstallResult = DownloadResult.AwaitingConfirmation
+        createViewModel()
+        advanceUntilIdle()
+        fakeInteractor.mutableDownloadProgress.value = DownloadProgress(
+            packageName = "com.test.app",
+            progress = 1f,
+            bytesDownloaded = 0L,
+            totalBytes = 0L,
+            state = DownloadState.AWAITING_CONFIRMATION,
+        )
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.downloadState).isEqualTo(DownloadState.AWAITING_CONFIRMATION)
+
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+
+        assertThat(fakeInteractor.cancelDownloadCalled).isFalse()
+        assertThat(fakeInteractor.downloadAndInstallCalled).isTrue()
+        assertThat(viewModel.state.value.installationFailure).isNull()
+    }
+
+    @Test
     fun `onCancelDownload calls interactor cancelDownload`() = runTest {
         fakeInteractor.mutableApp.value = createAppDetail()
         createViewModel()

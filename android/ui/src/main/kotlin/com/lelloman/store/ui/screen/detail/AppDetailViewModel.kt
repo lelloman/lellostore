@@ -11,7 +11,7 @@ import com.lelloman.store.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadResult
-import com.lelloman.store.domain.download.DownloadState
+import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.domain.preferences.AppAccessLevel
 import com.lelloman.store.domain.preferences.AppUpdatePolicyResolver
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
@@ -190,9 +190,9 @@ class AppDetailViewModel @Inject constructor(
         val latestVersion = app.latestVersion ?: return
         val currentDownloadState = mutableState.value.downloadState
 
-        // If download is in progress, cancel it
-        if (currentDownloadState != null && currentDownloadState != DownloadState.COMPLETED &&
-            currentDownloadState != DownloadState.FAILED && currentDownloadState != DownloadState.CANCELLED) {
+        // If an operation is actively running, the button acts as cancel. Terminal states
+        // (including PERMISSION_REQUIRED and AWAITING_CONFIRMATION) start a new attempt.
+        if (currentDownloadState?.isInProgress == true) {
             interactor.cancelDownload(packageName)
             return
         }
