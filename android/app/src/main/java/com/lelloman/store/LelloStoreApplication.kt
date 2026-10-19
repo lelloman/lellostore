@@ -53,6 +53,8 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
 
     @Inject lateinit var notificationBroker: com.lelloman.store.notification.NotificationBrokerRuntime
 
+    @Inject lateinit var packageChangeMonitor: com.lelloman.store.installation.PackageChangeMonitor
+
     override fun onCreate() {
         super.onCreate()
         auditLog.record("process.started", mapOf("version" to BuildConfig.VERSION_NAME, "version_code" to BuildConfig.VERSION_CODE))
@@ -61,6 +63,7 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
         workManagerInitializer.initialize()
         warmUpdateLifecycleObserver.initialize()
         foregroundUpdateLifecycleObserver.initialize()
+        packageChangeMonitor.start()
         applicationScope.launch {
             val recovery = RecoveryCompanionClient(this@LelloStoreApplication)
             recovery.restoreIdentityIfNeeded()
