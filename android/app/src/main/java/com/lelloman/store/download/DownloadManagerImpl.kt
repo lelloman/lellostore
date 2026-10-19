@@ -58,6 +58,13 @@ class DownloadManagerImpl @Inject constructor(
     override val activeDownloads: StateFlow<Map<String, DownloadProgress>> = mutableActiveDownloads.asStateFlow()
 
     private val downloadJobs = mutableMapOf<String, Deferred<DownloadResult>>()
+
+    /**
+     * The operation that currently owns each package's [activeDownloads] entry. A finished
+     * operation's delayed UI cleanup only removes the entry while it still owns it, so a retry
+     * started within the cleanup delay keeps its state.
+     */
+    private val entryOwners = mutableMapOf<String, String>()
     private val apksDir: File by lazy {
         File(context.cacheDir, "apks").also { it.mkdirs() }
     }
@@ -111,13 +118,21 @@ class DownloadManagerImpl @Inject constructor(
             ))
         }
         audit("operation.started")
+        synchronized(entryOwners) { entryOwners[packageName] = operationId }
+        fun publish(
+            state: DownloadState,
+            progress: Float,
+            bytesDownloaded: Long,
+            totalBytes: Long,
+            reason: String? = null,
+        ) = updateProgress(packageName, state, progress, bytesDownloaded, totalBytes, installationMode, reason)
         var destination: File? = null
         var finalState = DownloadState.FAILED
         var retainVerifiedApk = false
         var failure: DownloadResult.Failed? = null
 
         try {
-            updateProgress(packageName, DownloadState.PENDING, 0f, 0, 0)
+            publish(DownloadState.PENDING, 0f, 0, 0)
             if (installationMode == InstallationMode.FOREGROUND) {
                 runCatching { foregroundServiceStarter.start() }
                     .onFailure { logger.w(tag, "Could not start download foreground service: ${it.message}") }
@@ -135,14 +150,17 @@ class DownloadManagerImpl @Inject constructor(
 
             var expectedSize = versionInfo.size
             destination = File(apksDir, "$packageName-$versionCode.apk")
-            updateProgress(packageName, DownloadState.DOWNLOADING, 0f, 0, expectedSize)
+            publish(DownloadState.DOWNLOADING, 0f, 0, expectedSize)
             audit("download.started", mapOf("expected_bytes" to expectedSize))
             var lastSample = System.nanoTime()
+            val throttle = ProgressThrottle()
             apkProvider.prepare(packageName, versionInfo, destination,
                 onMetadata = { expectedSize = it },
                 purpose = purpose,
                 onProgress = { bytes ->
-                    updateProgress(packageName, DownloadState.DOWNLOADING, bytes.toFloat() / expectedSize, bytes, expectedSize)
+                    if (throttle.shouldPublish(bytes, expectedSize)) {
+                        publish(DownloadState.DOWNLOADING, bytes.toFloat() / expectedSize, bytes, expectedSize)
+                    }
                     if (System.nanoTime() - lastSample >= 5_000_000_000L) {
                         audit("download.progress", mapOf("bytes" to bytes, "expected_bytes" to expectedSize))
                         lastSample = System.nanoTime()
@@ -150,12 +168,12 @@ class DownloadManagerImpl @Inject constructor(
                 },
                 onVerifying = {
                     audit("download.completed", mapOf("bytes" to destination.length()))
-                    updateProgress(packageName, DownloadState.VERIFYING, 1f, destination.length(), destination.length())
+                    publish(DownloadState.VERIFYING, 1f, destination.length(), destination.length())
                 },
             )
             audit("verification.completed")
             // Install APK
-            updateProgress(packageName, DownloadState.INSTALLING, 1f, destination.length(), destination.length())
+            publish(DownloadState.INSTALLING, 1f, destination.length(), destination.length())
             audit("installation.started")
             val recovery = RecoveryCompanionClient(context)
             val protection = if (packageName == context.packageName) {
@@ -185,13 +203,17 @@ class DownloadManagerImpl @Inject constructor(
                     installedAppsRepository.refreshInstalledApp(packageName)
                     audit("installed_snapshot.completed")
                     finalState = DownloadState.COMPLETED
-                    updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
+                    val installedBytes = destination.length()
+                    publish(DownloadState.COMPLETED, 1f, installedBytes, installedBytes)
+                    // Installed silently: nothing reads the verified APK anymore.
+                    destination.delete()
                 }
                 is InstallationResult.UserActionStarted -> {
                     // The package-change receiver refreshes persistent installed state after the
                     // user confirms Android's installer. Until then this only means it was opened.
-                    finalState = DownloadState.COMPLETED
-                    updateProgress(packageName, DownloadState.COMPLETED, 1f, destination.length(), destination.length())
+                    // The APK is kept: the installer reads it through the FileProvider URI.
+                    finalState = DownloadState.AWAITING_CONFIRMATION
+                    publish(DownloadState.AWAITING_CONFIRMATION, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.PermissionRequired -> {
                     recoveryAttemptId?.let {
@@ -199,7 +221,7 @@ class DownloadManagerImpl @Inject constructor(
                     }
                     // Permission needed - keep the APK for retry after permission is granted
                     finalState = DownloadState.PERMISSION_REQUIRED
-                    updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
+                    publish(DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.UserActionRequired -> {
                     recoveryAttemptId?.let {
@@ -207,15 +229,19 @@ class DownloadManagerImpl @Inject constructor(
                     }
                     retainVerifiedApk = true
                     finalState = DownloadState.PERMISSION_REQUIRED
-                    updateProgress(packageName, DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
+                    publish(DownloadState.PERMISSION_REQUIRED, 1f, destination.length(), destination.length())
                 }
                 is InstallationResult.Failed -> {
-                    val reason = installResult.reasons.joinToString("; ")
-                        .ifEmpty { "Installation failed" }
-                    recoveryAttemptId?.let { recovery.cancelUnreplacedAttempt(it, reason) }
+                    val allReasons = installResult.reasons.joinToString("; ")
+                    audit("installation.failed", mapOf("reasons" to allReasons))
+                    // Earlier entries are channels that were merely unavailable; the last one is
+                    // the channel that actually attempted and failed the installation.
+                    val reason = installResult.reasons.lastOrNull()?.takeIf { it.isNotBlank() }
+                        ?: "Installation failed"
+                    recoveryAttemptId?.let { recovery.cancelUnreplacedAttempt(it, allReasons.ifEmpty { reason }) }
                     failure = DownloadResult.Failed(
                         reason = reason,
-                        kind = if (reason.contains(INCOMPATIBLE_UPDATE_ERROR, ignoreCase = true)) {
+                        kind = if (allReasons.contains(INCOMPATIBLE_UPDATE_ERROR, ignoreCase = true)) {
                             DownloadFailureKind.INCOMPATIBLE_SIGNATURE
                         } else {
                             DownloadFailureKind.GENERIC
@@ -227,28 +253,42 @@ class DownloadManagerImpl @Inject constructor(
 
         } catch (e: CancellationException) {
             finalState = DownloadState.CANCELLED
-            updateProgress(packageName, DownloadState.CANCELLED, 0f, 0, 0)
+            publish(DownloadState.CANCELLED, 0f, 0, 0)
             if (!retainVerifiedApk) destination?.delete()
             throw e
         } catch (e: Exception) {
             finalState = DownloadState.FAILED
             audit("operation.error", mapOf("error_type" to e.javaClass.simpleName))
             logger.e(tag, "Download failed for $packageName: ${e.message}", e)
-            updateProgress(packageName, DownloadState.FAILED, 0f, 0, 0)
+            val failed = failure
+                ?: DownloadResult.Failed(e.message?.takeIf { it.isNotBlank() } ?: "Download failed")
+            failure = failed
+            publish(DownloadState.FAILED, 0f, 0, 0, reason = failed.reason)
             destination?.delete()
         } finally {
             audit("operation.finished", mapOf("state" to finalState.name))
             // Clear progress after delay to allow UI to show final state
             scope.launch {
-                delay(3000)
-                mutableActiveDownloads.update { it - packageName }
-                audit("operation.ui_cleared")
+                delay(UI_CLEAR_DELAY_MS)
+                val owned = synchronized(entryOwners) {
+                    if (entryOwners[packageName] == operationId) {
+                        entryOwners.remove(packageName)
+                        // Removed under the same lock so a new operation cannot claim the
+                        // package between the ownership check and the removal.
+                        mutableActiveDownloads.update { it - packageName }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if (owned) audit("operation.ui_cleared")
             }
         }
 
         return when (finalState) {
             DownloadState.COMPLETED -> DownloadResult.Success
             DownloadState.CANCELLED -> DownloadResult.Cancelled
+            DownloadState.AWAITING_CONFIRMATION -> DownloadResult.AwaitingConfirmation
             DownloadState.PERMISSION_REQUIRED -> if (retainVerifiedApk) {
                 DownloadResult.UserActionRequired
             } else {
@@ -291,6 +331,8 @@ class DownloadManagerImpl @Inject constructor(
         progress: Float,
         bytesDownloaded: Long,
         totalBytes: Long,
+        mode: InstallationMode,
+        reason: String?,
     ) {
         mutableActiveDownloads.update { current ->
             current + (packageName to DownloadProgress(
@@ -299,6 +341,8 @@ class DownloadManagerImpl @Inject constructor(
                 bytesDownloaded = bytesDownloaded,
                 totalBytes = totalBytes,
                 state = state,
+                mode = mode,
+                reason = reason,
             ))
         }
     }
@@ -307,5 +351,36 @@ class DownloadManagerImpl @Inject constructor(
 
     private companion object {
         const val INCOMPATIBLE_UPDATE_ERROR = "INSTALL_FAILED_UPDATE_INCOMPATIBLE"
+        const val UI_CLEAR_DELAY_MS = 3000L
+    }
+}
+
+/**
+ * Limits download progress publications: the APK stream reports every 8 KiB chunk, while
+ * observers (and the notification that renders them) only need visible changes. Publishes when
+ * the integer percent changes, when [intervalNanos] passed since the last publication, and
+ * always for the final byte count.
+ */
+internal class ProgressThrottle(
+    private val intervalNanos: Long = 250_000_000L,
+    private val clock: () -> Long = System::nanoTime,
+) {
+    private var lastPercent = -1L
+    private var lastPublishedAt = 0L
+    private var published = false
+
+    fun shouldPublish(bytes: Long, totalBytes: Long): Boolean {
+        val now = clock()
+        val percent = if (totalBytes > 0) bytes * 100 / totalBytes else -1L
+        val publish = !published ||
+            (totalBytes > 0 && bytes >= totalBytes) ||
+            percent != lastPercent ||
+            now - lastPublishedAt >= intervalNanos
+        if (publish) {
+            published = true
+            lastPercent = percent
+            lastPublishedAt = now
+        }
+        return publish
     }
 }

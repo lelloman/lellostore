@@ -31,6 +31,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -140,7 +142,11 @@ class DownloadManagerImplTest {
 
         val result = downloadManager.downloadAndInstall("com.test.app", 1)
 
-        assertThat(result).isEqualTo(DownloadResult.Failed("Download failed"))
+        assertThat(result).isEqualTo(DownloadResult.Failed("Network error"))
+        val progress = downloadManager.activeDownloads.value.getValue("com.test.app")
+        assertThat(progress.state).isEqualTo(DownloadState.FAILED)
+        assertThat(progress.reason).isEqualTo("Network error")
+        assertThat(progress.mode).isEqualTo(InstallationMode.FOREGROUND)
         verify { logger.e(any(), any(), any()) }
         // Verify the failure can be correlated with its start without relying on log messages.
         val starts = mutableListOf<Map<String, Any?>>()
@@ -257,9 +263,152 @@ class DownloadManagerImplTest {
         val foregroundResult = downloadManager.downloadAndInstall("com.test.app", 1)
 
         assertThat(backgroundResult).isEqualTo(DownloadResult.UserActionRequired)
-        assertThat(foregroundResult).isEqualTo(DownloadResult.Success)
+        assertThat(foregroundResult).isEqualTo(DownloadResult.AwaitingConfirmation)
         coVerify(exactly = 1) { remoteApiClient.downloadApk("com.test.app", 1) }
     }
+
+    @Test
+    fun `failure reason without message falls back to generic text`() = runTest {
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.failure(RuntimeException())
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(DownloadResult.Failed("Download failed"))
+        assertThat(downloadManager.activeDownloads.value.getValue("com.test.app").reason)
+            .isEqualTo("Download failed")
+    }
+
+    @Test
+    fun `missing version reason is surfaced`() = runTest {
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(createAppDetail())
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 7)
+
+        assertThat(result).isEqualTo(DownloadResult.Failed("Version 7 not found for com.test.app"))
+        assertThat(downloadManager.activeDownloads.value.getValue("com.test.app").reason)
+            .isEqualTo("Version 7 not found for com.test.app")
+    }
+
+    @Test
+    fun `installation failure reports the channel that failed and keeps all reasons in the audit`() = runTest {
+        stubVerifiedDownload()
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Failed(
+            listOf(
+                "Legacy ADB: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]",
+                "Package installer: aborted",
+            )
+        )
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(
+            DownloadResult.Failed(
+                reason = "Package installer: aborted",
+                kind = DownloadFailureKind.INCOMPATIBLE_SIGNATURE,
+            )
+        )
+        val progress = downloadManager.activeDownloads.value.getValue("com.test.app")
+        assertThat(progress.state).isEqualTo(DownloadState.FAILED)
+        assertThat(progress.reason).isEqualTo("Package installer: aborted")
+        val audits = mutableListOf<Map<String, Any?>>()
+        verify(exactly = 1) { logger.audit("installation.failed", capture(audits)) }
+        assertThat(audits.single()["reasons"] as String).contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE")
+        assertThat(audits.single()["reasons"] as String).contains("Package installer: aborted")
+    }
+
+    @Test
+    fun `interactive installer awaits confirmation and keeps the apk`() = runTest {
+        stubVerifiedDownload()
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.UserActionStarted(
+            InstallationChannelMetadata("package-installer", "Package installer", true, 100)
+        )
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(DownloadResult.AwaitingConfirmation)
+        assertThat(downloadManager.activeDownloads.value.getValue("com.test.app").state)
+            .isEqualTo(DownloadState.AWAITING_CONFIRMATION)
+        assertThat(apkFile().exists()).isTrue()
+    }
+
+    @Test
+    fun `silent installation deletes the verified apk`() = runTest {
+        stubVerifiedDownload()
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Installed(
+            InstallationChannelMetadata("legacy-adb", "ADB", false, 10)
+        )
+
+        val result = downloadManager.downloadAndInstall("com.test.app", 1)
+
+        assertThat(result).isEqualTo(DownloadResult.Success)
+        assertThat(downloadManager.activeDownloads.value.getValue("com.test.app").state)
+            .isEqualTo(DownloadState.COMPLETED)
+        assertThat(apkFile().exists()).isFalse()
+    }
+
+    @Test
+    fun `retained apk survives a background user action requirement`() = runTest {
+        stubVerifiedDownload()
+        coEvery { installationCoordinator.install(any()) } returns
+            InstallationResult.UserActionRequired(listOf("No silent channel"))
+
+        downloadManager.downloadAndInstall("com.test.app", 1, InstallationMode.BACKGROUND)
+
+        assertThat(apkFile().exists()).isTrue()
+        assertThat(downloadManager.activeDownloads.value.getValue("com.test.app").mode)
+            .isEqualTo(InstallationMode.BACKGROUND)
+    }
+
+    @Test
+    fun `delayed cleanup of a finished operation keeps a newer operation's state`() = runTest {
+        val manager = DownloadManagerImpl(
+            context = context,
+            remoteApiClient = remoteApiClient,
+            appsRepository = appsRepository,
+            installedAppsRepository = installedAppsRepository,
+            logger = logger,
+            installationCoordinator = installationCoordinator,
+            foregroundServiceStarter = foregroundServiceStarter,
+            notificationHelper = notificationHelper,
+            scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+        )
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.failure(Exception("offline"))
+        assertThat(manager.downloadAndInstall("com.test.app", 1)).isEqualTo(DownloadResult.Failed("offline"))
+
+        val retryStarted = CompletableDeferred<Unit>()
+        coEvery { appsRepository.refreshApp("com.test.app") } coAnswers {
+            retryStarted.complete(Unit)
+            awaitCancellation()
+        }
+        val retry = launch { manager.downloadAndInstall("com.test.app", 1) }
+        retryStarted.await()
+
+        // The first operation's cleanup becomes due while the retry is still running.
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertThat(manager.activeDownloads.value["com.test.app"]?.state).isEqualTo(DownloadState.PENDING)
+
+        manager.cancelDownload("com.test.app")
+        retry.join()
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertThat(manager.activeDownloads.value).isEmpty()
+    }
+
+    private fun stubVerifiedDownload() {
+        val bytes = "apk".toByteArray()
+        val detail = createAppDetail(
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong(),
+        )
+        coEvery { appsRepository.refreshApp("com.test.app") } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk("com.test.app", 1) } answers {
+            Result.success(ByteArrayInputStream(bytes))
+        }
+    }
+
+    private fun apkFile() = java.io.File(context.cacheDir, "apks/com.test.app-1.apk")
 
     @Test
     fun `successful silent installation refreshes persistent installed state`() = runTest {

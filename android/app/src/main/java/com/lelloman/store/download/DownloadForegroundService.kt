@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import com.lelloman.store.domain.download.DownloadManager
+import com.lelloman.store.domain.download.DownloadProgress
+import com.lelloman.store.domain.download.InstallationMode
 import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.notification.NotificationHelper
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,7 +32,6 @@ class DownloadForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observationJob: Job? = null
-    private var observedAnOperation = false
 
     override fun onCreate() {
         super.onCreate()
@@ -46,14 +47,16 @@ class DownloadForegroundService : Service() {
         )
         observationJob = serviceScope.launch {
             downloadManager.activeDownloads.collectLatest { downloads ->
-                val active = downloads.values.filter { it.state.isInProgress }
+                // PENDING is published before this service is started, so an empty first
+                // emission means the operation already finished (e.g. an offline failure).
+                // Background operations are rendered by the WorkManager worker instead.
+                val active = activeForegroundOperations(downloads.values)
                 if (active.isNotEmpty()) {
-                    observedAnOperation = true
                     notificationHelper.showOperationNotification(
                         NotificationHelper.DOWNLOAD_SERVICE_NOTIFICATION_ID,
                         active,
                     )
-                } else if (observedAnOperation) {
+                } else {
                     ServiceCompat.stopForeground(
                         this@DownloadForegroundService,
                         ServiceCompat.STOP_FOREGROUND_REMOVE,
@@ -69,10 +72,15 @@ class DownloadForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        downloadManager.activeDownloads.value.keys.forEach(downloadManager::cancelDownload)
+        // Only the user-started operations this service protects; WorkManager owns the rest.
+        activeForegroundOperations(downloadManager.activeDownloads.value.values)
+            .forEach { downloadManager.cancelDownload(it.packageName) }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf(startId)
     }
+
+    private fun activeForegroundOperations(downloads: Collection<DownloadProgress>) =
+        downloads.filter { it.mode == InstallationMode.FOREGROUND && it.state.isInProgress }
 
     override fun onDestroy() {
         observationJob?.cancel()
