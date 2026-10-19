@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Resources
 import android.os.Build
 import android.util.LruCache
 import androidx.core.app.NotificationCompat
@@ -84,13 +85,15 @@ class NotificationHelper @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val title = formatUpdateTitle(channels)
+        val title = formatUpdateTitle(context.resources, channels)
 
         val notification = NotificationCompat.Builder(context, UPDATES_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(title)
-            .setContentText("Tap to view and install updates")
+            .setContentText(context.getString(R.string.notification_updates_available_text))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            // Checks run on every interval, alarm and foreground return; only the first post alerts.
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .build()
@@ -325,15 +328,14 @@ class NotificationHelper @Inject constructor(
         private const val OPERATION_REQUEST_CODE = 1002
         private const val PROGRESS_MAX = 100
 
-        internal fun formatUpdateTitle(channels: List<ReleaseChannel>): String {
+        internal fun formatUpdateTitle(resources: Resources, channels: List<ReleaseChannel>): String {
             val count = channels.size
-            val channelLabel = when (channels.toSet()) {
-                setOf(ReleaseChannel.Stable) -> "stable"
-                setOf(ReleaseChannel.Beta) -> "beta"
-                else -> "stable and beta"
+            val plural = when (channels.toSet()) {
+                setOf(ReleaseChannel.Stable) -> R.plurals.notification_updates_available_stable
+                setOf(ReleaseChannel.Beta) -> R.plurals.notification_updates_available_beta
+                else -> R.plurals.notification_updates_available_mixed
             }
-            val updateLabel = if (count == 1) "update" else "updates"
-            return "$count $channelLabel $updateLabel available"
+            return resources.getQuantityString(plural, count, count)
         }
     }
 }
