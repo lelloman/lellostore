@@ -10,11 +10,19 @@ import com.lelloman.authenticator.localdata.PhoneKey
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 
 /** Isolated emulator with a screen lock. Credentials persist encrypted; wrong callbacks are refused. */
 class AccountStoreDeviceTest {
-    @org.junit.Before fun configureBroker() { EmbeddedSignInBroker.initialize() }
-    @get:Rule val compose = createAndroidComposeRule<BrokerAccountsActivity>()
+    // HiltTestApplication does not run LelloStoreApplication initialization. This
+    // outer rule must configure the broker before the inner activity rule launches.
+    @get:Rule(order = 0) val broker = object : ExternalResource() {
+        override fun before() {
+            EmbeddedSignInBroker.initialize()
+            check(LelloAuthBroker.isConfigured) { "Run with -PbrokerEnabled=true and a development issuer" }
+        }
+    }
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<BrokerAccountsActivity>()
 
     @Test fun accountCredentialsAndPendingEnrollmentSurviveRecreationWithoutAcceptingWrongCallbacks() {
         val keys = PhoneKey()

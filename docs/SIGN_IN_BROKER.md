@@ -102,6 +102,17 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.lelloman.store.auth.PhoneKeyDeviceTest,com.lelloman.store.auth.AccountStoreDeviceTest
 ```
 
+To check account storage independently in a fresh instrumentation process, run
+this class alone (the initialization rule runs before the Accounts activity is
+launched, including with `HiltTestApplication`):
+
+```sh
+cd android
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest \
+  -PbrokerEnabled=true -PbrokerDevIssuer=https://localhost:19443 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.lelloman.store.auth.AccountStoreDeviceTest
+```
+
 Rebuild ordinary debug afterward to disable the feature and remove the fixture
 CA. Manual release qualification still needs a discovered development store,
 hosted store login and phone connection, a separately configured Pezzottify
