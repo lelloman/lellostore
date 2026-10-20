@@ -38,6 +38,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LelloStore"
         tools:targetApi="31">
+        <activity android:name=".auth.BrokerAccountsActivity" android:exported="false"
+            android:enabled="${brokerEnabled}" />
+        <activity android:name="com.lelloman.authenticator.broker.BrokerActivity"
+            android:enabled="${brokerEnabled}" />
         <!-- Each Binder request captures UID/package/current certificate; apps have distinct signing keys. -->
         <!-- UnifiedPush accepts independent apps; the receiver validates caller identity and token ownership. -->
         <receiver android:name=".notification.UnifiedPushReceiver" android:enabled="false" android:exported="true" tools:ignore="ExportedReceiver">

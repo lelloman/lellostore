@@ -1,0 +1,3 @@
+[submodule "vendor/lello-auth"]
+	path = vendor/lello-auth
+	url = https://fucina.homelab/lelloman/lello-auth.git

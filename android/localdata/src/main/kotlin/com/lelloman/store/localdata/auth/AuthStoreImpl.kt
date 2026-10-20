@@ -50,7 +50,7 @@ class AuthStoreImpl(
     private var generation = 0L
     private var boundServer: String? = null
     private var pendingLogin: PendingLogin? = null
-    private data class PendingLogin(val state: String?, val server: String, val generation: Long)
+    private data class PendingLogin(val request: String, val state: String?, val server: String, val generation: Long, var exchanging: Boolean = false)
 
     @Volatile private var appAuthState: net.openid.appauth.AuthState? = null
     private val tokenRefreshMutex = Mutex()
@@ -195,7 +195,9 @@ class AuthStoreImpl(
         }
     }
 
-    suspend fun createAuthIntent(): Intent {
+    suspend fun createAuthIntent(
+        authorizationIntent: suspend (AuthorizationRequest) -> Intent? = { null },
+    ): Intent {
         val epoch = synchronized(stateLock) { generation }
         val server = configStore?.readServerUrl().orEmpty()
         val oidcConfig = if (serverDiscovery != null) serverDiscovery.discover(server).oidc
@@ -213,10 +215,10 @@ class AuthStoreImpl(
 
         synchronized(stateLock) {
             check(generation == epoch) { "Server changed during sign-in. Try again." }
-            pendingLogin = PendingLogin(authRequest.state, server, epoch)
+            pendingLogin = PendingLogin(authRequest.jsonSerializeString(), authRequest.state, server, epoch)
         }
         logger.audit("ipc.authorization_requested")
-        return authService.getAuthorizationRequestIntent(authRequest)
+        return authorizationIntent(authRequest) ?: authService.getAuthorizationRequestIntent(authRequest)
     }
 
     private suspend fun discoverServiceConfiguration(oidcConfig: OidcConfig): AuthorizationServiceConfiguration =
@@ -244,20 +246,27 @@ class AuthStoreImpl(
     ) {
         logger.audit("ipc.authorization_response", mapOf("success" to (response != null && exception == null), "error_code" to exception?.code))
         if (exception != null) {
+            synchronized(stateLock) { pendingLogin = null }
             logger.e(TAG, "Authorization failed", exception)
             onResult(AuthResult.Error(exception.message ?: "Authorization failed"))
             return
         }
 
         if (response == null) {
+            synchronized(stateLock) { pendingLogin = null }
             onResult(AuthResult.Cancelled)
             return
         }
 
-        val pending = synchronized(stateLock) { pendingLogin }
-        if (pending == null || pending.state != response.request.state ||
-            (configStore != null && pending.server != configStore.serverUrl.value)) {
-            onResult(AuthResult.Error("Sign-in belongs to an old server selection. Try again."))
+        val pending = synchronized(stateLock) {
+            pendingLogin?.takeIf {
+                !it.exchanging && matchesLoginResponse(it.request, it.state, response) &&
+                    (configStore == null || it.server == configStore.serverUrl.value)
+            }?.also { it.exchanging = true }
+        }
+        if (pending == null) {
+            logger.w(TAG, "Rejected stale or mismatched authorization response")
+            onResult(AuthResult.Error("Sign-in expired or did not match. Try again."))
             return
         }
         // Create AuthState from the authorization response
@@ -321,3 +330,8 @@ class AuthStoreImpl(
         private const val KEY_SERVER = "server_origin"
     }
 }
+
+/** Bind the returned state AND the complete original request (including PKCE and redirect). */
+internal fun matchesLoginResponse(request: String, state: String?, response: AuthorizationResponse): Boolean =
+    !response.authorizationCode.isNullOrBlank() && state != null && state == response.state && state == response.request.state &&
+        request == response.request.jsonSerializeString()

@@ -59,6 +59,7 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
 
     override fun onCreate() {
         super.onCreate()
+        com.lelloman.store.auth.EmbeddedSignInBroker.initialize()
         auditLog.record("process.started", mapOf("version" to BuildConfig.VERSION_NAME, "version_code" to BuildConfig.VERSION_CODE))
         connectivityLog.start()
         com.lelloman.store.diagnostics.StoreDiagnostics.init(this, auditLog, notificationBroker)

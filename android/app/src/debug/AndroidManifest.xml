@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Instrumented E2E tests use an on-host MockWebServer over HTTP. -->
-    <application android:usesCleartextTraffic="true" />
+    <application android:usesCleartextTraffic="true" android:networkSecurityConfig="${brokerNetworkConfig}">
+        <activity android:name=".auth.SyntheticCallbackActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lelloauth-fixture" />
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>

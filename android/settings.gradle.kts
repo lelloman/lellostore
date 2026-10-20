@@ -34,3 +34,13 @@ include(":paravoid-update-ipc")
 
 
 include(":notification-fixture")
+
+// Pinned by the vendor/lello-auth gitlink; initialize with git submodule update --init.
+includeBuild("../vendor/lello-auth/android") {
+    dependencySubstitution {
+        substitute(module("com.lelloman.auth:broker")).using(project(":broker"))
+        substitute(module("com.lelloman.auth:localdata")).using(project(":localdata"))
+        substitute(module("com.lelloman.auth:remoteapi")).using(project(":remoteapi"))
+        substitute(module("com.lelloman.auth:domain")).using(project(":domain"))
+    }
+}

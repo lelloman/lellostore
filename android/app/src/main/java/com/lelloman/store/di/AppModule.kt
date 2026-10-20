@@ -52,9 +52,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuthIntentProvider(authStoreImpl: AuthStoreImpl): AuthIntentProvider {
+    fun provideAuthIntentProvider(authStoreImpl: AuthStoreImpl, @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context): AuthIntentProvider {
         return object : AuthIntentProvider {
-            override suspend fun createAuthIntent() = authStoreImpl.createAuthIntent()
+            override suspend fun createAuthIntent() = authStoreImpl.createAuthIntent { request ->
+                com.lelloman.store.auth.EmbeddedSignInBroker.authorizationIntent(context, request)
+            }
         }
     }
 

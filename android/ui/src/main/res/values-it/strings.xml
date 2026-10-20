@@ -222,4 +222,13 @@
     <string name="settings_server_unreachable">Impossibile usare questo server: %1$s</string>
     <string name="installation_channel_silent_installer">Aggiornamenti silenziosi</string>
     <string name="installation_channel_silent_installer_status">Android 12+ · aggiorna le app installate da LelloStore senza conferma</string>
+    <string name="broker_accounts">Account</string>
+    <string name="broker_manage_accounts">Account collegati</string>
+    <string name="broker_accounts_description">Collega questo telefono, seleziona un account o scollegalo</string>
+    <string name="broker_require_authentication">Richiedi impronta o PIN per approvare gli accessi</string>
+    <string name="broker_setting_failed">Impossibile salvare l’impostazione. Sblocca il telefono e riprova.</string>
+    <string name="broker_offer_title">Usare questo telefono per approvare gli accessi?</string>
+    <string name="broker_offer_body">Collega il tuo account una volta, poi approva gli accessi con un tocco in LelloStore. Puoi collegarlo anche da Impostazioni → Account.</string>
+    <string name="broker_connect">Collega telefono</string>
+    <string name="broker_later">Più tardi</string>
 </resources>

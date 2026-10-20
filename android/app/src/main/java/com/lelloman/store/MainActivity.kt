@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private val openPesce = MutableStateFlow(false)
     private val openUpdates = MutableStateFlow(false)
     private var openedBatterySettings = false
+    private val offerPhoneConnection = androidx.compose.runtime.mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,6 +120,24 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            if (offerPhoneConnection.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { offerPhoneConnection.value = false },
+                    title = { androidx.compose.material3.Text(getString(com.lelloman.store.ui.R.string.broker_offer_title)) },
+                    text = { androidx.compose.material3.Text(getString(com.lelloman.store.ui.R.string.broker_offer_body)) },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            offerPhoneConnection.value = false
+                            startActivity(Intent(this@MainActivity, com.lelloman.store.auth.BrokerAccountsActivity::class.java))
+                        }) { androidx.compose.material3.Text(getString(com.lelloman.store.ui.R.string.broker_connect)) }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { offerPhoneConnection.value = false }) {
+                            androidx.compose.material3.Text(getString(com.lelloman.store.ui.R.string.broker_later))
+                        }
+                    },
+                )
+            }
             val batterySnackbar = remember { SnackbarHostState() }
             Box(Modifier.fillMaxSize()) {
                 AppUi(
@@ -129,6 +148,17 @@ class MainActivity : ComponentActivity() {
                     isDeviceToken = isDeviceToken,
                     onAuthResponse = { response, exception, onResult ->
                         authStoreImpl.handleAuthResponse(response, exception) { domainResult ->
+                            if (domainResult is DomainAuthResult.Success) {
+                                val issuer = response?.request?.configuration?.discoveryDoc?.issuer?.toString()
+                                if (issuer != null && com.lelloman.store.auth.EmbeddedSignInBroker.acceptsIssuer(issuer)) {
+                                    lifecycleScope.launch {
+                                        val connected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            com.lelloman.store.auth.EmbeddedSignInBroker.hasAccount(this@MainActivity, issuer)
+                                        }
+                                        offerPhoneConnection.value = !connected
+                                    }
+                                }
+                            }
                             onResult(domainResult.toUiModel())
                         }
                     },

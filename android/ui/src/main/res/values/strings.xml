@@ -223,4 +223,13 @@
     <string name="settings_server_unreachable">Cannot use this server: %1$s</string>
     <string name="installation_channel_silent_installer">Silent updates</string>
     <string name="installation_channel_silent_installer_status">Android 12+ · updates apps LelloStore installed, without confirmation</string>
+    <string name="broker_accounts">Accounts</string>
+    <string name="broker_manage_accounts">Connected accounts</string>
+    <string name="broker_accounts_description">Connect this phone, select an account, or disconnect</string>
+    <string name="broker_require_authentication">Require fingerprint or PIN to approve sign-ins</string>
+    <string name="broker_setting_failed">Could not save the setting. Unlock your phone and try again.</string>
+    <string name="broker_offer_title">Use this phone to approve sign-ins?</string>
+    <string name="broker_offer_body">Connect your account once, then approve sign-ins with a tap in LelloStore. You can also connect later from Settings → Accounts.</string>
+    <string name="broker_connect">Connect phone</string>
+    <string name="broker_later">Later</string>
 </resources>

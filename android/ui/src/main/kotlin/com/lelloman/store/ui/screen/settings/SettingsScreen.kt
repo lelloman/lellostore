@@ -177,6 +177,17 @@ internal fun SettingsContent(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Column(modifier = Modifier.fillMaxWidth().widthIn(max = 840.dp)) {
+            val context = LocalContext.current
+            val accounts = Intent().setClassName(context.packageName, "com.lelloman.store.auth.BrokerAccountsActivity")
+            if (context.packageManager.resolveActivity(accounts, 0) != null) {
+                SettingsSection(title = stringResource(R.string.broker_accounts)) {
+                    SettingsClickableItem(
+                        title = stringResource(R.string.broker_manage_accounts),
+                        subtitle = stringResource(R.string.broker_accounts_description),
+                        onClick = { context.startActivity(accounts) },
+                    )
+                }
+            }
             SettingsSection(title = stringResource(R.string.settings_appearance)) {
                 SettingsClickableItem(
                     title = stringResource(R.string.settings_theme),

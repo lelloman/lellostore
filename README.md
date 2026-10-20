@@ -117,6 +117,8 @@ deployment-specific frontend build is needed.
 
 ## Android
 
+Phone sign-in broker embedding and emulator qualification: [SIGN_IN_BROKER.md](docs/SIGN_IN_BROKER.md).
+
 Create `android/local.properties` with your SDK path:
 
 ```properties
