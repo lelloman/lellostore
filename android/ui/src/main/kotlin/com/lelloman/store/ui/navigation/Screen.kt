@@ -15,6 +15,10 @@ sealed interface Screen {
     @Serializable
     data object PesceLogin : Screen
 
+    /** Device-code enrollment of this device, from the login screen. */
+    @Serializable
+    data object Enrollment : Screen
+
     @Serializable
     data object Main : Screen
 

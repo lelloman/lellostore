@@ -21,6 +21,13 @@ fun NavController.fromLoginToMain() {
     }
 }
 
+/** An enrolled device starts afresh in Main: nothing behind it leads back to setup. */
+fun NavController.fromEnrollmentToMain() {
+    navigate(Screen.Main) {
+        popUpTo(0) { inclusive = true }
+    }
+}
+
 fun NavController.toAppDetail(packageName: String) {
     navigate(Screen.AppDetail(packageName))
 }

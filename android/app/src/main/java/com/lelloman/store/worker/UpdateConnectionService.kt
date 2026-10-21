@@ -62,6 +62,7 @@ class UpdateConnectionService : Service() {
     private var statusJob: kotlinx.coroutines.Job? = null
     private lateinit var notificationBuilder: NotificationCompat.Builder
     @Inject lateinit var preferences: UserPreferencesStore
+    @Inject lateinit var authStore: com.lelloman.store.domain.auth.AuthStore
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
 
     override fun onCreate() {
@@ -90,9 +91,13 @@ class UpdateConnectionService : Service() {
         notificationBuilder = builder
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
-        statusJob = scope.launch { broker.status.collect { status ->
-            manager.notify(NOTIFICATION_ID, builder.setContentText(status).build())
-        } }
+        // A device token keeps the catalog connection rather than the push broker (whose status
+        // would read "Disabled"), so it shows the generic text.
+        statusJob = scope.launch {
+            kotlinx.coroutines.flow.combine(broker.status, authStore.authState) { status, auth -> statusText(status, auth) }.collect { text ->
+                manager.notify(NOTIFICATION_ID, builder.setContentText(text).build())
+            }
+        }
         controller.onStarted()
     }
 
@@ -104,11 +109,16 @@ class UpdateConnectionService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             if (manager.activeNotifications.none { it.id == NOTIFICATION_ID }) {
                 manager.notify(NOTIFICATION_ID,
-                    notificationBuilder.setContentText(broker.status.value).build())
+                    notificationBuilder.setContentText(statusText(broker.status.value, authStore.authState.value)).build())
             }
         }
         return START_STICKY
     }
+
+    private fun statusText(status: String, auth: com.lelloman.store.domain.auth.AuthState): String =
+        if ((auth as? com.lelloman.store.domain.auth.AuthState.Authenticated)?.deviceToken == true) {
+            getString(R.string.notification_connection_text)
+        } else status
 
     override fun onBind(intent: Intent?): IBinder? = null
 

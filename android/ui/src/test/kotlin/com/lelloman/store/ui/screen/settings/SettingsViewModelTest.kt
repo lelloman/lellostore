@@ -341,6 +341,36 @@ class SettingsViewModelTest {
         assertThat(viewModel.state.value.isDeviceToken).isTrue()
         assertThat(viewModel.state.value.userEmail).isEqualTo("Living room TV")
     }
+
+    @Test
+    fun `forgetting the device deletes its credential and returns to login`() = runTest {
+        fakeInteractor.mutableDeviceToken.value = true
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.events.test {
+            viewModel.onForgetDeviceClick()
+            advanceUntilIdle()
+
+            assertThat(fakeInteractor.forgetDeviceCalled).isTrue()
+            assertThat(fakeInteractor.logoutCalled).isFalse()
+            assertThat(awaitItem()).isEqualTo(SettingsScreenEvent.NavigateToLogin)
+        }
+    }
+
+    @Test
+    fun `an OIDC session cannot forget a device`() = runTest {
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.events.test {
+            viewModel.onForgetDeviceClick()
+            advanceUntilIdle()
+
+            assertThat(fakeInteractor.forgetDeviceCalled).isFalse()
+            expectNoEvents()
+        }
+    }
 }
 
 class FakeSettingsInteractor : SettingsViewModel.Interactor {
@@ -447,5 +477,10 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
 
     override suspend fun logout() {
         logoutCalled = true
+    }
+
+    var forgetDeviceCalled = false
+    override suspend fun forgetDevice() {
+        forgetDeviceCalled = true
     }
 }

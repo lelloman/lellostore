@@ -179,7 +179,8 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
         preferences.keepUpdateConnection.first { it == persisted }
         combine(foreground, authStore.authState, configStore.serverUrl,
             preferences.keepUpdateConnection, service.running) { visible, auth, url, keep, running ->
-            if (auth is AuthState.Loading) null else ConnectionState(visible, auth is AuthState.Authenticated, url, keep, running)
+            if (auth is AuthState.Loading) null else ConnectionState(visible, auth is AuthState.Authenticated, url, keep, running,
+                deviceToken = (auth as? AuthState.Authenticated)?.deviceToken == true)
         }
             .filterNotNull()
             .distinctUntilChanged()
@@ -200,7 +201,9 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
                     state.keep, state.serviceRunning)
                 if (active) {
                     warmUpdateScheduler.cancel()
-                    if (state.keep && state.serviceRunning) {
+                    // The push broker only accepts OIDC sessions: a device token keeps the catalog
+                    // WebSocket open under the foreground service instead.
+                    if (state.keep && state.serviceRunning && !state.deviceToken) {
                         connection.stop()
                         broker.start(state.serverUrl)
                     } else {
@@ -236,6 +239,7 @@ class ForegroundUpdateLifecycleObserver @Inject constructor(
         val serverUrl: String,
         val keep: Boolean,
         val serviceRunning: Boolean,
+        val deviceToken: Boolean,
     )
 }
 

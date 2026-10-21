@@ -236,6 +236,78 @@ class LoginViewModelTest {
         assertThat(viewModel.state.value.isLoading).isFalse()
         assertThat(viewModel.state.value.error).isNull()
     }
+
+    @Test
+    fun `enrollment is offered only by a confirmed store that supports it`() = runTest {
+        viewModel.onServerUrlChanged("https://store.example.com")
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.serverName).isEqualTo("Test Store")
+        assertThat(viewModel.state.value.deviceEnrollmentAvailable).isFalse()
+
+        fakeInteractor.deviceEnrollment = true
+        viewModel.onServerUrlChanged("https://store.example.com")
+        assertThat(viewModel.state.value.deviceEnrollmentAvailable).isFalse()
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.deviceEnrollmentAvailable).isTrue()
+
+        // Editing the address hides it until the new store is confirmed.
+        viewModel.onServerUrlChanged("https://other.example.com")
+        assertThat(viewModel.state.value.deviceEnrollmentAvailable).isFalse()
+    }
+
+    @Test
+    fun `enrolling selects the confirmed store and opens enrollment without signing in`() = runTest {
+        fakeInteractor.deviceEnrollment = true
+        viewModel.onServerUrlChanged("https://store.example.com")
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+
+        viewModel.events.test {
+            viewModel.onEnrollDeviceClick()
+            advanceUntilIdle()
+
+            assertThat(awaitItem()).isEqualTo(LoginScreenEvent.NavigateToEnrollment)
+        }
+        assertThat(fakeInteractor.selectedServers).containsExactly("https://store.example.com")
+        assertThat(fakeInteractor.authIntentsCreated).isEqualTo(0)
+        assertThat(viewModel.state.value.isLoading).isFalse()
+    }
+
+    @Test
+    fun `enrolling reports a store that cannot be selected`() = runTest {
+        fakeInteractor.deviceEnrollment = true
+        viewModel.onServerUrlChanged("https://store.example.com")
+        viewModel.onLoginClick()
+        advanceUntilIdle()
+        fakeInteractor.setServerUrlResult = SetServerUrlResult.Error("Busy")
+
+        viewModel.events.test {
+            viewModel.onEnrollDeviceClick()
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertThat(viewModel.state.value.error).isEqualTo("Busy")
+    }
+
+    @Test
+    fun `a TV checks the preset store at once but still waits for a choice`() = runTest {
+        fakeInteractor.television = true
+        fakeInteractor.deviceEnrollment = true
+        fakeInteractor._initialServerUrl = "https://store.example.com"
+
+        viewModel = LoginViewModel(fakeInteractor)
+        viewModel.events.test {
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+
+        assertThat(viewModel.state.value.isTelevision).isTrue()
+        assertThat(viewModel.state.value.serverName).isEqualTo("Test Store")
+        assertThat(viewModel.state.value.deviceEnrollmentAvailable).isTrue()
+        assertThat(fakeInteractor.selectedServers).isEmpty()
+    }
 }
 
 class FakeLoginInteractor : LoginViewModel.Interactor {
@@ -253,11 +325,22 @@ class FakeLoginInteractor : LoginViewModel.Interactor {
 
     override fun getInitialServerUrl() = _initialServerUrl
 
-    override suspend fun setServerUrl(url: String) = setServerUrlResult
+    var deviceEnrollment = false
+    var television = false
+    val selectedServers = mutableListOf<String>()
+    var authIntentsCreated = 0
+    override val isTelevision: Boolean get() = television
+
+    override suspend fun setServerUrl(url: String): SetServerUrlResult {
+        selectedServers += url
+        return setServerUrlResult
+    }
     override suspend fun discoverServer(url: String) = com.lelloman.store.domain.config.ServerMetadata(
-        "Test Store", com.lelloman.store.domain.auth.OidcConfig("https://id.example", "client", "com.lelloman.store:/oauth2redirect"), false, false)
+        "Test Store", com.lelloman.store.domain.auth.OidcConfig("https://id.example", "client", "com.lelloman.store:/oauth2redirect"), false, false,
+        deviceEnrollment = deviceEnrollment)
 
     override suspend fun createAuthIntent(): Intent {
+        authIntentsCreated++
         authIntentError?.let { throw it }
         return authIntent
     }

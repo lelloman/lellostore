@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -59,6 +63,7 @@ fun LoginScreen(
     modifier: Modifier = Modifier,
     viewModel: LoginViewModel = hiltViewModel(),
     onPesceClick: () -> Unit = {},
+    onNavigateToEnrollment: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val qrLauncher = rememberLauncherForActivityResult(com.journeyapps.barcodescanner.ScanContract()) { result ->
@@ -95,6 +100,7 @@ fun LoginScreen(
                 is LoginScreenEvent.NavigateToMain -> {
                     onNavigateToMain()
                 }
+                LoginScreenEvent.NavigateToEnrollment -> onNavigateToEnrollment()
             }
         }
     }
@@ -108,6 +114,7 @@ fun LoginScreen(
             .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE)
             .setPrompt(qrPrompt).setBeepEnabled(false)) },
         onPesceClick = onPesceClick,
+        onEnrollDeviceClick = viewModel::onEnrollDeviceClick,
         modifier = modifier,
     )
 }
@@ -120,6 +127,7 @@ internal fun LoginScreenContent(
     modifier: Modifier = Modifier,
     onScanQr: () -> Unit = {},
     onPesceClick: () -> Unit = {},
+    onEnrollDeviceClick: () -> Unit = {},
 ) {
     BoxWithConstraints(
         modifier = modifier
@@ -147,6 +155,7 @@ internal fun LoginScreenContent(
                     onLoginClick = onLoginClick,
                     onScanQr = onScanQr,
                     onPesceClick = onPesceClick,
+                    onEnrollDeviceClick = onEnrollDeviceClick,
                     modifier = Modifier.weight(1f).widthIn(max = 480.dp),
                 )
             }
@@ -170,6 +179,7 @@ internal fun LoginScreenContent(
                     onLoginClick = onLoginClick,
                     onScanQr = onScanQr,
                     onPesceClick = onPesceClick,
+                    onEnrollDeviceClick = onEnrollDeviceClick,
                     modifier = Modifier.widthIn(max = 480.dp),
                 )
             }
@@ -209,7 +219,14 @@ private fun LoginForm(
     modifier: Modifier = Modifier,
     onScanQr: () -> Unit = {},
     onPesceClick: () -> Unit = {},
+    onEnrollDeviceClick: () -> Unit = {},
 ) {
+    // On a TV the D-pad starts on the main action, not in the address field.
+    val primaryAction = remember { FocusRequester() }
+    val enrollFirst = state.isTelevision && state.deviceEnrollmentAvailable
+    LaunchedEffect(state.isTelevision, enrollFirst, state.serverName != null) {
+        if (state.isTelevision) runCatching { primaryAction.requestFocus() }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -256,20 +273,36 @@ private fun LoginForm(
                 Spacer(Modifier.height(LelloStoreSpacing.large))
             }
 
-            Button(
-                onClick = onLoginClick,
-                enabled = !state.isLoading && state.serverUrl.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                colors = lelloStoreButtonColors(),
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Green20,
-                        strokeWidth = 3.dp,
-                    )
-                } else {
-                    Text(stringResource(if (state.serverName == null) R.string.login_check_server else R.string.login_confirm_sign_in))
+            if (enrollFirst) {
+                EnrollDeviceButton(state, onEnrollDeviceClick, primary = true, modifier = Modifier.focusRequester(primaryAction))
+                Spacer(Modifier.height(LelloStoreSpacing.medium))
+                OutlinedButton(
+                    onClick = onLoginClick,
+                    enabled = !state.isLoading && state.serverUrl.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                ) {
+                    Text(stringResource(R.string.login_confirm_sign_in))
+                }
+            } else {
+                Button(
+                    onClick = onLoginClick,
+                    enabled = !state.isLoading && state.serverUrl.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).focusRequester(primaryAction),
+                    colors = lelloStoreButtonColors(),
+                ) {
+                    if (state.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Green20,
+                            strokeWidth = 3.dp,
+                        )
+                    } else {
+                        Text(stringResource(if (state.serverName == null) R.string.login_check_server else R.string.login_confirm_sign_in))
+                    }
+                }
+                if (state.serverName != null && state.deviceEnrollmentAvailable) {
+                    Spacer(Modifier.height(LelloStoreSpacing.small))
+                    EnrollDeviceButton(state, onEnrollDeviceClick, primary = false)
                 }
             }
             TextButton(onClick = onPesceClick, modifier = Modifier.fillMaxWidth()) {
@@ -277,6 +310,36 @@ private fun LoginForm(
             }
         }
     }
+}
+
+/** Device-code enrollment: no account on this device, an administrator approves it. */
+@Composable
+private fun EnrollDeviceButton(
+    state: LoginScreenState,
+    onClick: () -> Unit,
+    primary: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val buttonModifier = modifier.fillMaxWidth().heightIn(min = 52.dp)
+    if (primary) {
+        Button(onClick = onClick, enabled = !state.isLoading, modifier = buttonModifier, colors = lelloStoreButtonColors()) {
+            if (state.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Green20, strokeWidth = 3.dp)
+            } else {
+                Text(stringResource(R.string.login_enroll_device))
+            }
+        }
+    } else {
+        OutlinedButton(onClick = onClick, enabled = !state.isLoading, modifier = buttonModifier) {
+            Text(stringResource(R.string.login_enroll_device))
+        }
+    }
+    Text(
+        text = stringResource(R.string.login_enroll_device_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = LelloStoreSpacing.xSmall),
+    )
 }
 
 @Preview(name = "Login · light", showBackground = true, widthDp = 390, heightDp = 844)

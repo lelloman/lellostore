@@ -35,11 +35,15 @@ class LoginViewModel @Inject constructor(
 
     init {
         mutableState.value = mutableState.value.copy(
-            serverUrl = interactor.getInitialServerUrl()
+            serverUrl = interactor.getInitialServerUrl(),
+            isTelevision = interactor.isTelevision,
         )
         observeAuthState()
         observeServerUrl()
         observeDeviceTokenRejection()
+        // Typing an address with a remote is slow: on a TV, check the preset store right away.
+        // Signing in or enrolling still needs an explicit choice.
+        if (interactor.isTelevision && mutableState.value.serverUrl.isNotBlank()) onLoginClick()
     }
 
     private fun observeDeviceTokenRejection() {
@@ -81,6 +85,7 @@ class LoginViewModel @Inject constructor(
             serverUrlError = null,
             error = null,
             serverName = null,
+            deviceEnrollmentAvailable = false,
         )
     }
 
@@ -96,7 +101,12 @@ class LoginViewModel @Inject constructor(
                     url to interactor.discoverServer(url)
                 }.onSuccess { (url, server) ->
                     if (mutableState.value.serverUrl == input) {
-                        mutableState.value = mutableState.value.copy(serverUrl = url, serverName = server.name, isLoading = false)
+                        mutableState.value = mutableState.value.copy(
+                            serverUrl = url,
+                            serverName = server.name,
+                            deviceEnrollmentAvailable = server.deviceEnrollment,
+                            isLoading = false,
+                        )
                     }
                 }.onFailure { error ->
                     mutableState.value = mutableState.value.copy(isLoading = false, error = error.message ?: "Unable to reach this store")
@@ -130,6 +140,29 @@ class LoginViewModel @Inject constructor(
                         error = error.message ?: "OIDC discovery failed",
                     )
                 }
+        }
+    }
+
+    /** Selects the confirmed store and continues to device-code enrollment instead of sign-in. */
+    fun onEnrollDeviceClick() {
+        val current = mutableState.value
+        if (current.isLoading || current.serverName == null || !current.deviceEnrollmentAvailable) return
+        mutableState.value = current.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            when (val result = interactor.setServerUrl(current.serverUrl)) {
+                SetServerUrlResult.Success -> {
+                    mutableState.value = mutableState.value.copy(isLoading = false)
+                    mutableEvents.emit(LoginScreenEvent.NavigateToEnrollment)
+                }
+                SetServerUrlResult.InvalidUrl -> mutableState.value = mutableState.value.copy(
+                    isLoading = false,
+                    serverUrlError = "Invalid URL",
+                )
+                is SetServerUrlResult.Error -> mutableState.value = mutableState.value.copy(
+                    isLoading = false,
+                    error = result.message,
+                )
+            }
         }
     }
 
@@ -181,6 +214,8 @@ class LoginViewModel @Inject constructor(
         val serverUrl: StateFlow<String>
         /** The server rejected the provisioned device token; OIDC sign-in remains the fallback. */
         val deviceTokenRejected: StateFlow<Boolean> get() = NoDeviceTokenRejection
+        /** A leanback (TV) device. */
+        val isTelevision: Boolean get() = false
         fun getInitialServerUrl(): String
         suspend fun setServerUrl(url: String): SetServerUrlResult
         suspend fun createAuthIntent(): Intent

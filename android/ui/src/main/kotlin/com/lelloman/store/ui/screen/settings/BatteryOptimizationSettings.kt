@@ -25,3 +25,13 @@ fun Context.openPushBatterySettings() {
         } catch (_: android.content.ActivityNotFoundException) { }
     }
 }
+
+private fun Context.batteryExemptionRequest() =
+    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:$packageName".toUri())
+
+/**
+ * Whether Android offers the direct "allow unrestricted battery use" prompt here. Many TV builds
+ * don't; there [openPushBatterySettings] would only land on a settings list.
+ */
+fun Context.canRequestPushBatteryExemption(): Boolean =
+    packageManager.resolveActivity(batteryExemptionRequest(), 0) != null

@@ -29,6 +29,7 @@ class ServerQrTest {
             every { getInitialServerUrl() } returns ""
             every { serverUrl } returns MutableStateFlow("")
             every { authState } returns MutableStateFlow(AuthState.NotAuthenticated)
+            every { isTelevision } returns false
         }
         viewModel = LoginViewModel(interactor)
     }

@@ -5,4 +5,5 @@ import android.content.Intent
 sealed interface LoginScreenEvent {
     data class LaunchAuth(val intent: Intent) : LoginScreenEvent
     data object NavigateToMain : LoginScreenEvent
+    data object NavigateToEnrollment : LoginScreenEvent
 }

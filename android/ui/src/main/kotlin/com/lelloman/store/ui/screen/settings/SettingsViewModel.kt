@@ -205,6 +205,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Signs a device-token device out for good: its stored credential is deleted. */
+    fun onForgetDeviceClick() {
+        if (!mutableState.value.isDeviceToken) return
+        viewModelScope.launch {
+            interactor.forgetDevice()
+            mutableEvents.emit(SettingsScreenEvent.NavigateToLogin)
+        }
+    }
+
     fun onServerUrlInputChanged(input: String) {
         mutableState.value = mutableState.value.copy(
             serverUrlInput = input,
@@ -239,6 +248,9 @@ class SettingsViewModel @Inject constructor(
         fun userEmail(): StateFlow<String?>
         /** Provisioned device-token mode: no logout, the server is pinned by the token file. */
         fun isDeviceToken(): StateFlow<Boolean> = MutableStateFlow(false)
+
+        /** Deletes the device credential (enrolled or provisioned); the device returns to login. */
+        suspend fun forgetDevice() {}
         fun serverUrl(): StateFlow<String>
         fun getAppVersion(): String
         suspend fun setThemeMode(mode: ThemeModeOption)

@@ -128,6 +128,7 @@ fun SettingsScreen(
         onServerUrlInputChanged = viewModel::onServerUrlInputChanged,
         onServerUrlSave = viewModel::onServerUrlSave,
         onLogoutClick = viewModel::onLogoutClick,
+        onForgetDeviceClick = viewModel::onForgetDeviceClick,
         modifier = modifier,
     )
 }
@@ -159,6 +160,7 @@ internal fun SettingsContent(
     onServerUrlSave: () -> Unit,
     onLogoutClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onForgetDeviceClick: () -> Unit = {},
 ) {
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showIntervalDialog by rememberSaveable { mutableStateOf(false) }
@@ -168,6 +170,7 @@ internal fun SettingsContent(
     var showWirelessDialog by rememberSaveable { mutableStateOf(false) }
     var showServerDialog by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showForgetDeviceConfirmation by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -290,10 +293,24 @@ internal fun SettingsContent(
                     SettingsDivider()
                 }
                 if (state.isDeviceToken) {
-                    // The provisioned token file pins the server; changing it would drop the token.
+                    // The device credential pins the server; changing it would drop the credential.
                     SettingsInfoItem(
                         title = stringResource(R.string.settings_server),
                         value = state.serverUrl,
+                    )
+                    SettingsDivider()
+                    SettingsClickableItem(
+                        title = stringResource(R.string.settings_forget_device),
+                        subtitle = stringResource(R.string.settings_forget_device_subtitle),
+                        onClick = { showForgetDeviceConfirmation = true },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        textColor = MaterialTheme.colorScheme.error,
                     )
                 } else {
                     SettingsClickableItem(
@@ -421,6 +438,29 @@ internal fun SettingsContent(
             onValueChange = onServerUrlInputChanged,
             onSave = onServerUrlSave,
             onDismiss = { showServerDialog = false },
+        )
+    }
+
+    if (showForgetDeviceConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showForgetDeviceConfirmation = false },
+            title = { Text(stringResource(R.string.settings_forget_device)) },
+            text = { Text(stringResource(R.string.settings_forget_device_confirmation)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showForgetDeviceConfirmation = false
+                        onForgetDeviceClick()
+                    },
+                ) {
+                    Text(stringResource(R.string.settings_forget_device_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgetDeviceConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 

@@ -3,6 +3,7 @@ package com.lelloman.store.interactor
 import android.content.Intent
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.config.ConfigStore
+import com.lelloman.store.ui.components.isTelevision
 import com.lelloman.store.ui.model.AuthState
 import com.lelloman.store.ui.model.SetServerUrlResult
 import com.lelloman.store.ui.screen.login.AuthIntentProvider
@@ -18,6 +19,7 @@ import javax.inject.Inject
 import com.lelloman.store.domain.auth.AuthState as DomainAuthState
 
 class LoginInteractorImpl @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val configStore: ConfigStore,
     private val domainAuthStore: AuthStore,
     private val authIntentProvider: AuthIntentProvider,
@@ -42,6 +44,9 @@ class LoginInteractorImpl @Inject constructor(
 
     override val deviceTokenRejected: StateFlow<Boolean>
         get() = domainAuthStore.deviceTokenRejected
+
+    override val isTelevision: Boolean
+        get() = context.isTelevision()
 
     override fun getInitialServerUrl(): String {
         return configStore.serverUrl.value

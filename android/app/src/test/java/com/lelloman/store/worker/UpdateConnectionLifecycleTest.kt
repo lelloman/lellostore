@@ -130,4 +130,38 @@ class UpdateConnectionLifecycleTest {
         verify { broker.start("https://store.example") }
         verify(exactly = 0) { service.stop() }
     }
+
+    @Test
+    fun `a device token keeps the catalog connection under the service instead of push`() = runTest {
+        val auth = MutableStateFlow<AuthState>(AuthState.Authenticated("Mi Box", deviceToken = true))
+        val running = MutableStateFlow(false)
+        val url = MutableStateFlow("https://store.example")
+        val authStore = mockk<AuthStore> { every { authState } returns auth }
+        val config = mockk<ConfigStore> { every { serverUrl } returns url }
+        val preferences = mockk<UserPreferencesStore> {
+            every { keepUpdateConnection } returns MutableStateFlow(true)
+            coEvery { readKeepUpdateConnection() } returns true
+        }
+        val service = mockk<UpdateConnectionServiceController>(relaxed = true) { every { this@mockk.running } returns running }
+        val connection = mockk<ForegroundCatalogEventConnection>(relaxed = true)
+        val broker = mockk<com.lelloman.store.notification.NotificationBrokerRuntime>(relaxed = true)
+        val warm = mockk<WarmUpdateScheduler>(relaxed = true)
+        val observer = ForegroundUpdateLifecycleObserver(authStore, config, preferences, service,
+            mockk(relaxed = true), warm, connection, broker, mockk(relaxed = true), backgroundScope)
+        val owner = mockk<LifecycleOwner>()
+        observer.observeConnection()
+        observer.onStart(owner)
+        runCurrent()
+        verify { service.start() }
+        running.value = true
+        runCurrent()
+        clearMocks(connection, answers = false)
+        observer.onStop(owner)
+        runCurrent()
+
+        verify { connection.start("https://store.example") }
+        verify(exactly = 0) { connection.stop() }
+        verify(exactly = 0) { broker.start(any()) }
+        verify(exactly = 0) { warm.start() }
+    }
 }

@@ -37,6 +37,7 @@ class SettingsInteractorImpl @Inject constructor(
     installationCoordinator: InstallationCoordinator,
     @ApplicationScope private val scope: CoroutineScope,
     private val selection: com.lelloman.store.setup.ServerSelection,
+    private val deviceToken: com.lelloman.store.localdata.auth.DeviceTokenAuthStore,
 ) : SettingsViewModel.Interactor {
 
     private val channelMetadata = installationCoordinator.channelMetadata
@@ -162,6 +163,11 @@ class SettingsInteractorImpl @Inject constructor(
     override suspend fun logout() {
         broker.signedOut()
         authStore.logout()
+    }
+
+    override suspend fun forgetDevice() {
+        broker.signedOut()
+        deviceToken.forget()
     }
 
     private fun installationChannelOptions(

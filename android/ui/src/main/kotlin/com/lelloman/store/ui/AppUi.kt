@@ -28,6 +28,7 @@ import androidx.navigation.toRoute
 import com.lelloman.store.ui.model.AuthResult
 import com.lelloman.store.ui.model.ThemeMode
 import com.lelloman.store.ui.navigation.Screen
+import com.lelloman.store.ui.navigation.fromEnrollmentToMain
 import com.lelloman.store.ui.navigation.fromLoginToMain
 import com.lelloman.store.ui.navigation.fromSplashToLogin
 import com.lelloman.store.ui.navigation.fromSplashToMain
@@ -35,6 +36,7 @@ import com.lelloman.store.ui.navigation.logout
 import com.lelloman.store.ui.navigation.toAppDetail
 import com.lelloman.store.ui.navigation.toMainForTab
 import com.lelloman.store.ui.screen.detail.AppDetailScreen
+import com.lelloman.store.ui.screen.enrollment.EnrollmentScreen
 import com.lelloman.store.ui.screen.login.LoginScreen
 import com.lelloman.store.ui.screen.pesce.PesceScreen
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -124,6 +126,7 @@ fun AppUi(
                         onNavigateToMain = { navController.fromLoginToMain() },
                         onAuthResponse = onAuthResponse,
                         onPesceClick = { navController.navigate(Screen.Pesce) },
+                        onNavigateToEnrollment = { navController.navigate(Screen.Enrollment) { launchSingleTop = true } },
                     )
                 }
 
@@ -132,6 +135,14 @@ fun AppUi(
                         onNavigateToMain = { navController.popBackStack() },
                         onAuthResponse = onAuthResponse,
                         onPesceClick = { navController.popBackStack() },
+                        onNavigateToEnrollment = { navController.navigate(Screen.Enrollment) { launchSingleTop = true } },
+                    )
+                }
+
+                composable<Screen.Enrollment> {
+                    EnrollmentScreen(
+                        onNavigateToMain = { navController.fromEnrollmentToMain() },
+                        onBack = { navController.popBackStack() },
                     )
                 }
 
