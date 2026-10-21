@@ -232,4 +232,11 @@
     <string name="broker_offer_body">Connect your account once, then approve sign-ins with a tap in LelloStore. You can also connect later from Settings → Accounts.</string>
     <string name="broker_connect">Connect phone</string>
     <string name="broker_later">Later</string>
+
+    <!-- Credential requests from other apps -->
+    <string name="credential_confirm">Confirm</string>
+    <string name="credential_issued_by">Created with your account %1$s</string>
+    <string name="credential_login_title">Sign in to LelloStore first</string>
+    <string name="credential_login_message">%1$s asked LelloStore for a credential, but LelloStore is not signed in. Sign in to LelloStore, then try again.</string>
+    <string name="credential_open_store">Open LelloStore</string>
 </resources>

@@ -231,4 +231,11 @@
     <string name="broker_offer_body">Collega il tuo account una volta, poi approva gli accessi con un tocco in LelloStore. Puoi collegarlo anche da Impostazioni → Account.</string>
     <string name="broker_connect">Collega telefono</string>
     <string name="broker_later">Più tardi</string>
+
+    <!-- Credential requests from other apps -->
+    <string name="credential_confirm">Conferma</string>
+    <string name="credential_issued_by">Creato con il tuo account %1$s</string>
+    <string name="credential_login_title">Prima accedi a LelloStore</string>
+    <string name="credential_login_message">%1$s ha chiesto una credenziale a LelloStore, ma LelloStore non ha un accesso attivo. Accedi a LelloStore e poi riprova.</string>
+    <string name="credential_open_store">Apri LelloStore</string>
 </resources>
