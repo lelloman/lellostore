@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="com.lelloman.store.recovery.permission.RECOVERY_CONTROL" />
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <queries>
         <intent>
@@ -68,6 +69,20 @@
             </intent-filter>
         </receiver>
         <activity android:name=".diagnostics.AuditActivity" android:exported="false" />
+        <!-- Credential broker for other apps: started for result, the caller is identified by
+             getCallingActivity(), and the user confirms every request. Own task affinity and no
+             recents entry so it never joins LelloStore's task or outlives the request. -->
+        <activity
+            android:name=".credential.IssueCredentialActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.LelloStore">
+            <intent-filter>
+                <action android:name="com.lelloman.store.action.ISSUE_CREDENTIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity android:name=".recovery.RecoverySetupActivity" android:exported="false" />
         <service
             android:name=".remote.RemoteDeviceService"

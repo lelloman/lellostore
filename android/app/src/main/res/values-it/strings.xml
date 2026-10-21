@@ -45,4 +45,8 @@
     <string name="recovery_setup_not_bundled">Questa versione non include l’app di recupero. Per usare il recupero, installa una versione compatibile firmata dallo stesso sviluppatore.</string>
     <string name="notification_unprotected_self_update_title">LelloStore aggiornato senza protezione di ripristino</string>
     <string name="notification_unprotected_self_update_text">Il companion di recupero non ha potuto preparare un ripristino (%1$s). Se questa versione non funziona, non potrà essere ripristinata automaticamente. Tocca per controllare la configurazione del recupero.</string>
+    <!-- Credential type lellostore.device_token -->
+    <string name="credential_device_token_title">Creare un token dispositivo?</string>
+    <string name="credential_device_token_message">%1$s chiede un token dispositivo LelloStore per “%2$s”. Il dispositivo potrà installare e aggiornare le app del tuo store.</string>
+    <string name="credential_device_token_replace">I token dispositivo precedenti chiamati “%1$s” verranno revocati.</string>
 </resources>

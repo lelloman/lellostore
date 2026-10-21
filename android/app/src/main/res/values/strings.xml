@@ -62,4 +62,8 @@
     <string name="notification_operation_outcome_installed">Installed</string>
     <string name="notification_operation_outcome_failed">Installation failed: %1$s</string>
     <string name="notification_operation_outcome_failed_no_reason">Installation failed</string>
+    <!-- Credential type lellostore.device_token -->
+    <string name="credential_device_token_title">Create a device token?</string>
+    <string name="credential_device_token_message">%1$s wants a LelloStore device token for “%2$s”. The device will be able to install and update apps from your store.</string>
+    <string name="credential_device_token_replace">Older device tokens named “%1$s” will be revoked.</string>
 </resources>
