@@ -118,6 +118,17 @@ foreground execution support and render only background-mode entries.
 Cancelling a download cancels the underlying coroutine and removes partial
 state instead of merely changing the UI.
 
+A self-update kills the process that runs it, so its operation never reports an
+outcome. `SelfUpdateTracker` writes a marker synchronously just before the APK goes
+to the installer and keeps it after a reported installation or an installer handoff.
+Every process start (including the one `MY_PACKAGE_REPLACED` causes) consumes the
+marker: if the running version reached the target it refreshes the installed snapshot
+of LelloStore, clears leftover operation notifications and announces "LelloStore
+updated to X" once (a notification, and a snackbar when the UI shows it first).
+The detail screen's result card is derived from the operation state and the last
+failure; it is hidden while an operation runs, and a request that only joined an
+operation already running is not a failure.
+
 Installed-package state is a persistent Room snapshot of Android's authoritative
 package-manager state. Silent installation success and package add, replace, or
 remove broadcasts refresh that snapshot; its Room flows push the resulting

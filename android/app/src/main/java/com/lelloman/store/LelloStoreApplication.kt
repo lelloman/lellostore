@@ -57,6 +57,8 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
 
     @Inject lateinit var packageChangeMonitor: com.lelloman.store.installation.PackageChangeMonitor
 
+    @Inject lateinit var selfUpdateTracker: com.lelloman.store.installation.SelfUpdateTracker
+
     override fun onCreate() {
         super.onCreate()
         com.lelloman.store.auth.EmbeddedSignInBroker.initialize()
@@ -68,6 +70,7 @@ class LelloStoreApplication : Application(), Configuration.Provider, SingletonIm
         foregroundUpdateLifecycleObserver.initialize()
         operationOutcomeNotifier.start()
         packageChangeMonitor.start()
+        selfUpdateTracker.onProcessStart(BuildConfig.VERSION_CODE.toLong(), BuildConfig.VERSION_NAME)
         applicationScope.launch {
             val recovery = RecoveryCompanionClient(this@LelloStoreApplication)
             recovery.restoreIdentityIfNeeded()

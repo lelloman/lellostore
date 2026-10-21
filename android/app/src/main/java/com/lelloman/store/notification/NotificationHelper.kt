@@ -192,6 +192,32 @@ class NotificationHelper @Inject constructor(
         notificationManager.notify(UNPROTECTED_SELF_UPDATE_NOTIFICATION_ID, notification)
     }
 
+    /** A self-update finished: the old process was killed before it could say so. */
+    @SuppressLint("MissingPermission") // Permission checked.
+    fun showSelfUpdatedNotification(versionName: String) {
+        if (!hasNotificationPermission()) return
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            SELF_UPDATED_NOTIFICATION_ID,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, UPDATES_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(context.getString(R.string.self_update_completed, versionName))
+            .setContentText(context.getString(R.string.notification_self_update_completed_text))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(SELF_UPDATED_NOTIFICATION_ID, notification)
+    }
+
+    fun cancelSelfUpdatedNotification() {
+        notificationManager.cancel(SELF_UPDATED_NOTIFICATION_ID)
+    }
+
     /** Separate ID so background health checks cannot overwrite the startup warning. */
     @SuppressLint("MissingPermission")
     fun showStartupBatteryWarning(): Boolean {
@@ -361,6 +387,7 @@ class NotificationHelper @Inject constructor(
         const val PUSH_REMINDERS_CHANNEL_ID = "push_connection_reminders"
         internal const val STARTUP_BATTERY_NOTIFICATION_ID = 1006
         private const val UNPROTECTED_SELF_UPDATE_NOTIFICATION_ID = 1007
+        private const val SELF_UPDATED_NOTIFICATION_ID = 1008
         private const val PUSH_REMINDER_NOTIFICATION_ID = 1005
         const val UPDATES_NOTIFICATION_ID = 1001
         const val BACKGROUND_UPDATE_NOTIFICATION_ID = 1002

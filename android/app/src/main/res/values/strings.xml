@@ -44,6 +44,8 @@
     <string name="audit_clear_confirm">Delete the retained local logs? New events will continue to be recorded.</string>
     <string name="audit_cancel">Cancel</string>
     <string name="recovery_setup_not_bundled">This build does not include the recovery companion. Install a compatible companion signed by the same publisher to use recovery.</string>
+    <string name="self_update_completed">LelloStore updated to %1$s</string>
+    <string name="notification_self_update_completed_text">The update is installed and running.</string>
     <string name="notification_unprotected_self_update_title">LelloStore is updating without rollback protection</string>
     <string name="notification_unprotected_self_update_text">The recovery companion could not prepare a rollback (%1$s). If the new version misbehaves it cannot be restored automatically. Tap to check recovery setup.</string>
     <plurals name="notification_updates_available_stable">

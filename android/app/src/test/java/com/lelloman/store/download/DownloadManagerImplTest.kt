@@ -16,12 +16,14 @@ import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
 import com.lelloman.store.notification.NotificationHelper
 import com.lelloman.store.installation.InstallationResult
+import com.lelloman.store.installation.SelfUpdateTracker
 import com.lelloman.store.installation.InstallationChannelMetadata
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
@@ -56,6 +58,7 @@ class DownloadManagerImplTest {
     private lateinit var installationCoordinator: InstallationCoordinator
     private lateinit var foregroundServiceStarter: DownloadForegroundServiceStarter
     private lateinit var notificationHelper: NotificationHelper
+    private lateinit var selfUpdateTracker: SelfUpdateTracker
     private lateinit var downloadManager: DownloadManagerImpl
 
     @Before
@@ -68,6 +71,7 @@ class DownloadManagerImplTest {
         installationCoordinator = mockk(relaxed = true)
         foregroundServiceStarter = mockk(relaxed = true)
         notificationHelper = mockk(relaxed = true)
+        selfUpdateTracker = mockk(relaxed = true)
 
         coEvery { remoteApiClient.acquireApk(any(), any(), any(), any()) } coAnswers {
             val packageName = firstArg<String>()
@@ -95,6 +99,7 @@ class DownloadManagerImplTest {
             installationCoordinator = installationCoordinator,
             foregroundServiceStarter = foregroundServiceStarter,
             notificationHelper = notificationHelper,
+            selfUpdateTracker = selfUpdateTracker,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
     }
@@ -372,6 +377,7 @@ class DownloadManagerImplTest {
             installationCoordinator = installationCoordinator,
             foregroundServiceStarter = foregroundServiceStarter,
             notificationHelper = notificationHelper,
+            selfUpdateTracker = selfUpdateTracker,
             scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
         )
         coEvery { appsRepository.refreshApp("com.test.app") } returns Result.failure(Exception("offline"))
@@ -451,6 +457,28 @@ class DownloadManagerImplTest {
         assertThat(result).isEqualTo(DownloadResult.Success)
         verify(exactly = 1) { notificationHelper.showUnprotectedSelfUpdateWarning(any()) }
         coVerify(exactly = 1) { installationCoordinator.install(any()) }
+        // Android may still kill the process after reporting the installation.
+        verify(exactly = 1) { selfUpdateTracker.installing(1) }
+        verify(exactly = 0) { selfUpdateTracker.abandoned() }
+    }
+
+    @Test
+    fun `a failed self installation is not reported as an update on the next start`() = runTest {
+        val bytes = "apk".toByteArray()
+        val store = "com.lelloman.store"
+        val detail = createAppDetail(packageName = store,
+            sha256 = "dd37c2d7274f7ea982cb83390c36918fee9ce8889073c44b68cdc00bdb8c3e04",
+            size = bytes.size.toLong())
+        coEvery { appsRepository.refreshApp(store) } returns Result.success(detail)
+        coEvery { remoteApiClient.downloadApk(store, 1) } answers { Result.success(ByteArrayInputStream(bytes)) }
+        coEvery { installationCoordinator.install(any()) } returns InstallationResult.Failed(listOf("disk full"))
+
+        downloadManager.downloadAndInstall(store, 1, InstallationMode.BACKGROUND)
+
+        verifyOrder {
+            selfUpdateTracker.installing(1)
+            selfUpdateTracker.abandoned()
+        }
     }
 
     @Test
@@ -468,6 +496,7 @@ class DownloadManagerImplTest {
         downloadManager.downloadAndInstall("com.test.app", 1, InstallationMode.BACKGROUND)
 
         verify(exactly = 0) { notificationHelper.showUnprotectedSelfUpdateWarning(any()) }
+        verify(exactly = 0) { selfUpdateTracker.installing(any()) }
     }
 
     private fun createAppDetail(

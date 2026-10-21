@@ -18,6 +18,7 @@ import com.lelloman.store.logger.Logger
 import com.lelloman.store.installation.InstallationCoordinator
 import com.lelloman.store.installation.InstallationRequest
 import com.lelloman.store.installation.InstallationResult
+import com.lelloman.store.installation.SelfUpdateTracker
 import com.lelloman.store.notification.NotificationHelper
 import com.lelloman.store.recovery.RecoveryCompanionClient
 import com.lelloman.store.recovery.SelfUpdateProtection
@@ -48,6 +49,7 @@ class DownloadManagerImpl @Inject constructor(
     private val installationCoordinator: InstallationCoordinator,
     private val foregroundServiceStarter: DownloadForegroundServiceStarter,
     private val notificationHelper: NotificationHelper,
+    private val selfUpdateTracker: SelfUpdateTracker,
     @ApplicationScope private val scope: CoroutineScope,
     private val session: com.lelloman.store.domain.config.StoreSession = com.lelloman.store.domain.config.StoreSession(),
 ) : DownloadManager {
@@ -176,7 +178,8 @@ class DownloadManagerImpl @Inject constructor(
             publish(DownloadState.INSTALLING, 1f, destination.length(), destination.length())
             audit("installation.started")
             val recovery = RecoveryCompanionClient(context)
-            val protection = if (packageName == context.packageName) {
+            val isSelfUpdate = packageName == context.packageName
+            val protection = if (isSelfUpdate) {
                 recovery.protectSelfUpdate(versionCode)
             } else null
             val recoveryAttemptId = (protection as? SelfUpdateProtection.Protected)?.attemptId
@@ -186,6 +189,8 @@ class DownloadManagerImpl @Inject constructor(
                 audit("self_update.unprotected", mapOf("reason" to protection.reason))
                 notificationHelper.showUnprotectedSelfUpdateWarning(protection.reason)
             }
+            // Installing ourselves kills this process; the next start reports the outcome.
+            if (isSelfUpdate) selfUpdateTracker.installing(versionCode)
             when (val installResult = installationCoordinator.install(
                 InstallationRequest(
                     apk = destination,
@@ -266,6 +271,14 @@ class DownloadManagerImpl @Inject constructor(
             publish(DownloadState.FAILED, 0f, 0, 0, reason = failed.reason)
             destination?.delete()
         } finally {
+            // Kept while Android may still replace the app: after a reported installation (the
+            // kill can follow it) or while the interactive installer awaits the user.
+            if (packageName == context.packageName &&
+                finalState != DownloadState.COMPLETED &&
+                finalState != DownloadState.AWAITING_CONFIRMATION
+            ) {
+                selfUpdateTracker.abandoned()
+            }
             audit("operation.finished", mapOf("state" to finalState.name))
             // Clear progress after delay to allow UI to show final state
             scope.launch {

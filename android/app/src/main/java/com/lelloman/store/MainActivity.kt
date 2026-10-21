@@ -43,6 +43,7 @@ import com.lelloman.store.ui.model.ThemeMode
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.lelloman.store.domain.auth.AuthResult as DomainAuthResult
@@ -59,6 +60,8 @@ class MainActivity : ComponentActivity() {
     }
 
     @Inject lateinit var notifications: NotificationHelper
+
+    @Inject lateinit var selfUpdateTracker: com.lelloman.store.installation.SelfUpdateTracker
 
     @Inject
     lateinit var userPreferencesStore: UserPreferencesStore
@@ -188,6 +191,17 @@ class MainActivity : ComponentActivity() {
                         duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) openPushBatterySettings()
+                }
+            }
+            LaunchedEffect(Unit) {
+                // One-shot: the old process was killed by the update before it could say so.
+                selfUpdateTracker.announcement.filterNotNull().collect { versionName ->
+                    selfUpdateTracker.announced()
+                    batterySnackbar.showSnackbar(
+                        getString(R.string.self_update_completed, versionName),
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Long,
+                    )
                 }
             }
             LaunchedEffect(isLoggedIn) {
