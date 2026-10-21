@@ -1,7 +1,8 @@
 # LelloStore as the device's credential provider (design)
 
-Status: proposal. Phase 1 (backend enrollment and web admin approval) is implemented;
-see [DEVICE_ENROLLMENT.md](DEVICE_ENROLLMENT.md) and §12. Builds on the credential broker
+Status: proposal. Phases 1–3 are implemented: backend enrollment and web admin approval,
+enrollment in the Android client, and approval from LelloStore on the phone; see
+[DEVICE_ENROLLMENT.md](DEVICE_ENROLLMENT.md) and §12. Builds on the credential broker
 ([CREDENTIAL_BROKER.md](CREDENTIAL_BROKER.md)) and device tokens
 ([SPEC.md § Device tokens](../SPEC.md#device-tokens)).
 
@@ -413,7 +414,8 @@ why short TTLs make server-side revocation lists unnecessary.
   `DeviceCredentialStore` first and the legacy file second. When it finds a legacy file (and the
   server accepts it on the next request) it imports the token into the encrypted store, and from
   then on uses the import. The file is left in place for one release, so a downgrade still works,
-  and is deleted in the release after. A box that has no file and isn't signed in shows the
+  and is deleted in the release after. (As built, the import happens on start without waiting
+  for the server; see §12.) A box that has no file and isn't signed in shows the
   enrollment screen.
 - **`ISSUE_CREDENTIAL` broker**: keep it, and keep its contract strings. It stays for
   **one-shot, interactive minting of a new long-lived credential**, where per-request
@@ -538,8 +540,8 @@ Each phase ships and is useful on its own.
 | # | Phase | Ships | Unblocks |
 | --- | --- | --- | --- |
 | 1 | **Backend enrollment** (done): `device_enrollments`, the five endpoints, device-token rekey, web admin "Approve a device", audit, capability flag | Server deploy | Any client can enroll |
-| 2 | **TV enrollment in LelloStore**: login-screen entry, code/QR screen, polling, `DeviceCredentialStore` (Keystore), legacy file import | LelloStore release | New boxes need no root write. Approve on the web |
-| 3 | **Phone approval**: QR/code entry in the admin area, `APPROVE_DEVICE` action, replace-device choice | LelloStore release | Approve from the phone |
+| 2 | **TV enrollment in LelloStore** (done): login-screen entry, code/QR screen, polling, `DeviceCredentialStore` (Keystore), legacy file import | LelloStore release | New boxes need no root write. Approve on the web |
+| 3 | **Phone approval** (done): QR/code entry in the admin area, `APPROVE_DEVICE` action, replace-device choice | LelloStore release | Approve from the phone |
 | 4 | **Provider skeleton**: `CredentialProvider` with `v1.describe` and `v1.beginEnrollment` only, `CallerIdentity`, and the SDK artifact with `status()` / `beginEnrollment()` | LelloStore release + SDK 0.1 | PezzotTV can read real store state |
 | 5 | **PezzotTV switch**: `StartStoreEnrollment`, phone flow through `APPROVE_DEVICE`, `Info` from `status()`, `setup-tv-box.sh` drops the root write, `<queries>` in the next shell | PezzotTV payload (+ shell later) | Removes the fragile path entirely |
 | 6 | **Grants and tokens**: backend credential types, `/api/credentials/token`, JWKS, issuance audit; Android grant store, approval activity, Connected apps, `v1.getToken` / `invalidateToken` / `forgetGrant`; SDK 0.2 + OkHttp helper; a fixture app with a test type | Server + LelloStore + SDK | The provider exists for real |
@@ -566,6 +568,35 @@ details:
 - Unknown or already redeemed device codes answer `invalid_grant`.
 - The publisher's `approve-device` subcommand (decision 6, headless `setup-tv-box.sh --approve`)
   is not built yet.
+
+Phases 2 and 3 as built ([DEVICE_ENROLLMENT.md § Android client](DEVICE_ENROLLMENT.md#android-client))
+differ from §6.6, §6.7 and §8 in these details:
+
+- The TV shows a QR of `verification_uri_complete` (the web admin approval link), not of
+  `verification_payload`, so any phone camera can approve; LelloStore's scanner reads the
+  link, the JSON payload and a bare code. LelloStore does not claim the https approval
+  links (no `assetlinks.json` on the store, run-time store hosts, and it would hijack the
+  web admin page); the reasons are in DEVICE_ENROLLMENT.md.
+- TV detection uses the `television` UI mode. The device name is editable before the code
+  is requested (1–64 characters). LelloStore is now also in the Android TV launcher.
+- `DeviceCredentialStore` is a Keystore AES-GCM sealed file, not encrypted preferences. The
+  legacy file is imported on start rather than after the server accepted it; until the
+  import succeeds the file itself is used, and a recorded fingerprint keeps an already
+  imported file from overwriting a later enrollment. The file is kept for one release
+  (downgrades) and is to be deleted, and no longer read, in the release after that.
+- Added requirement (§14): finishing enrollment turns on automatic updates, periodic checks
+  (24 h when they were off) and the update connection, shows them, and asks for
+  unrestricted battery use and notifications. Since the push broker only accepts OIDC
+  sessions, a device token keeps the catalog WebSocket open under the update connection
+  service instead. Settings shows "Signed in as this device" and **Forget this device**.
+- Approval is Settings → **Approve a device**, shown only to administrators (`/api/me`).
+  New devices keep the server's default groups unless the administrator changes them; a
+  replacement preselects the token with the requested name. Deny's 24 h address block is
+  off by default (decision: the phone and the box share an address).
+- `APPROVE_DEVICE` returns `DEVICE_TOKEN_ID` and `REKEYED` on success and has two errors of
+  its own besides the `CredentialError` codes: `denied` and `unknown_code`.
+- The server's push broker does not accept device tokens, so an enrolled box has the
+  catalog connection but cannot be a UnifiedPush distributor for other apps.
 
 ## 13. Open questions
 

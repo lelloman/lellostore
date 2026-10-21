@@ -59,21 +59,47 @@ The store server and OIDC issuer are separate concerns. The initial server URL
 comes from `default.server.url` in `local.properties`, defaults to the production
 store, and can be changed by the user. Production input accepts HTTPS only.
 
-A provisioned device can skip sign-in entirely. When root has dropped
-`noBackupFilesDir/device-token.json` (`{"version":1,"server_url":…,"name":…,"token":"lellostore_dev_…"}`,
-owned by the app, mode 600), `CompositeAuthStore` prefers it over the OIDC
-`AuthStoreImpl`: the state is `Authenticated` with the token's name, and the token is
-sent as a plain bearer credential, only to the server named in the file. The file is
-read once per process on an IO thread, and the auth state stays `Loading` until then
-so the splash never races to login. A differing `server_url` is applied through
-`ConfigStore` without `ServerSelection`'s wipe; the catalog cache is replaced on the
-next refresh and an OIDC session stays bound to its own server. Settings and the
-profile sheet show "Device token" and hide logout and server changes. A 401 goes
-through the usual session-expiry path, which marks the token rejected in memory
-(the file is kept), falls back to the OIDC state and shows a notice on the login
-screen; the next process start retries the file. Push is unavailable in this mode:
-the broker only accepts JWTs and records `push.unsupported_credential`, and updates
-rely on periodic checks.
+A device can skip sign-in entirely with a **device token**. It gets one by device-code
+enrollment (login screen → **Set up this device without signing in**, the main action on a
+TV), or root provisions it as `noBackupFilesDir/device-token.json`
+(`{"version":1,"server_url":…,"name":…,"token":"lellostore_dev_…"}`). Either way the token
+ends up in `DeviceCredentialStore`: `noBackupFilesDir/device-credential.bin`, AES-256-GCM
+sealed with a non-exportable Android Keystore key and written atomically. A legacy file is
+imported on start; until the import succeeds the file itself is used, and a recorded
+fingerprint keeps an imported file from overwriting a later enrollment (the file stays one
+release for downgrades and is deleted in the release after).
+
+`CompositeAuthStore` prefers the device credential over the OIDC `AuthStoreImpl`: the state is
+`Authenticated` with the token's name, and the token is sent as a plain bearer credential,
+only to the server named in it. It is read once per process on an IO thread, and the auth
+state stays `Loading` until then so the splash never races to login. A differing
+`server_url` is applied through `ConfigStore` without `ServerSelection`'s wipe; the catalog
+cache is replaced on the next refresh and an OIDC session stays bound to its own server.
+Enrollment stores the credential and switches the state at once, without a restart. Settings
+and the profile sheet show "Signed in as this device" and hide logout and server changes;
+Settings → **Forget this device** deletes the credential. A 401 goes through the usual
+session-expiry path, which marks the token rejected in memory (the credential is kept),
+falls back to the OIDC state and shows a notice on the login screen; the next process start
+retries it. The push broker only accepts JWTs (it records `push.unsupported_credential`), so
+with a device token the update connection keeps the catalog WebSocket open instead.
+
+## Device enrollment
+
+`EnrollmentViewModel` (`:ui`) runs the device side of
+[device enrollment](../docs/DEVICE_ENROLLMENT.md#android-client): it asks for the name, starts
+an enrollment through `DeviceEnrollmentApi` (`:remoteapi`, a client without credentials or
+redirects), shows the user code and a QR of the approval link, and polls while the screen is
+started, following `interval`, `slow_down`, expiry (a new code, three at most) and network
+backoff on a monotonic clock. `EnrollmentInteractorImpl` (`:app`) stores the approved
+credential through `DeviceTokenAuthStore.provision` and `EnrolledDeviceSetup` turns on
+automatic updates, periodic checks and the update connection.
+
+The administrator side is `ApproveDeviceActivity`: Settings → **Approve a device** (only for
+administrators, from `GET /api/me`) or the exported `com.lelloman.store.action.APPROVE_DEVICE`
+started for result by another app. `ApproveDeviceViewModel` looks the code up (typed, or
+scanned with the zxing scanner: link, JSON payload or bare code), shows the request, and
+approves it as a new device or as a rekey of an existing token, or denies it, through
+`DeviceEnrollmentAdminApi`. The activity has the hardening of `IssueCredentialActivity`.
 
 ## Credential requests from other apps
 
@@ -268,9 +294,11 @@ the Android Gradle Plugin.
 
 ## Persistent update connection
 
-Settings → Updates → Keep update connection open is off by default. When enabled
-while signed in, a `specialUse` foreground service protects the existing authenticated
-catalog WebSocket while the user switches to other apps. The service starts while
+Settings → Updates → Keep update connection open is off by default (device enrollment turns
+it on). When enabled while signed in, a `specialUse` foreground service protects the existing
+authenticated catalog WebSocket while the user switches to other apps; with an OIDC session
+the push broker takes over that connection, with a device token the catalog WebSocket itself
+stays open. The service starts while
 LelloStore is visible and displays an ongoing notification with a Stop action that
 also clears the preference. Signing out stops it; signing back in while visible
 starts it again if the preference remains enabled. Server changes reconnect the socket.

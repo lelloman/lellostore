@@ -341,7 +341,15 @@ a new device (joining the `all` group unless other groups are chosen) or as a
 replacement for an existing token, which is rekeyed and keeps its grants and
 groups. The device's next poll receives its `device-token.json`, once. See
 [device enrollment](docs/DEVICE_ENROLLMENT.md) for the endpoints, errors and
-limits. The Android client does not use enrollment yet.
+limits.
+
+The Android client does this on its own: on a fresh install (a TV box, or a phone),
+**Set up this device without signing in** on the login screen shows the code and a QR
+code of the approval link, which any phone camera opens. An administrator can also
+approve in LelloStore on the phone (Settings → **Approve a device**, scanning the QR or
+typing the code). The device then signs in, turns on automatic updates and the update
+connection, and keeps its credential encrypted with an Android Keystore key; a
+root-provisioned token file is imported into the same store.
 
 Another app on an administrator's phone (for example a TV-box setup app) can also ask the
 LelloStore Android client to create a token: the client shows one confirmation screen and
@@ -360,8 +368,9 @@ revoked** is on; a revoked token can be deleted for good (**Delete**, or
 `POST /api/admin/device-tokens/{id}/purge`), together with its grants and group
 memberships, and **Remove all revoked**
 (`POST /api/admin/device-tokens/purge-revoked`) deletes them all. Active tokens
-must be revoked before they can be deleted. Device tokens do not register for push notifications; the client
-falls back to its periodic update checks.
+must be revoked before they can be deleted. Device tokens do not register for push notifications;
+the client relies on its periodic update checks and, with the update connection on, keeps the
+catalog event stream open instead.
 
 ## Verification
 

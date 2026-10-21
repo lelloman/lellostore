@@ -11,6 +11,10 @@ Implemented types:
 | --- | --- | --- |
 | `lellostore.device_token` | A new [device token](../README.md#zero-login-devices-with-a-device-token) as `device-token.json` | A LelloStore signed in with an administrator OIDC session |
 
+Approving another device's enrollment (`com.lelloman.store.action.APPROVE_DEVICE`) is a
+separate, confirmation-gated action with the same hardening; see
+[device enrollment](DEVICE_ENROLLMENT.md#approve_device-for-other-apps).
+
 ## Contract
 
 The strings below are a public API; callers are built against them and they are never

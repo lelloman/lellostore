@@ -1,8 +1,9 @@
 # Device enrollment (device code)
 
 Status: implemented on the backend and in the web admin (phase 1 of
-[the credential provider design](CREDENTIAL_PROVIDER_DESIGN.md#12-phased-rollout)).
-The Android client does not use it yet (phase 2).
+[the credential provider design](CREDENTIAL_PROVIDER_DESIGN.md#12-phased-rollout)), and in
+the Android client: a device enrolls itself (phase 2) and an administrator approves from
+LelloStore on the phone (phase 3). See [Android client](#android-client).
 
 A device that has no human login, such as a TV box, gets its own
 [device token](../SPEC.md#device-tokens) without anyone copying a secret to it:
@@ -174,3 +175,154 @@ expires). No device code or token secret is ever logged or audited.
 
 `GET /api/server-config` reports `capabilities.device_enrollment: true` when the
 endpoints are available, which is whenever authentication is configured.
+
+## Android client
+
+### Setting up a device (TV or phone)
+
+The same APK does this on phones and on Android TV boxes, and every step works with the
+D-pad alone. LelloStore is also listed in the Android TV launcher.
+
+1. **Login screen.** When the confirmed store's `/api/server-config` has
+   `capabilities.device_enrollment`, the screen offers **Set up this device without
+   signing in**. On a TV (UI mode `television`) it is the main action, the preset store
+   is checked as soon as the screen opens, and focus starts on the main button; on a
+   phone it sits under the sign-in button. Choosing it selects the store (like signing
+   in would) and opens the enrollment screen.
+2. **Name.** The name the administrator will see, prefilled with the system device name
+   (`Settings.Global.DEVICE_NAME`, else the model); 1–64 characters without control or
+   bidirectional-override characters. **Get a code** has the initial focus.
+3. **Code.** `POST /api/device-enrollments` with the name, `model` (`Build.MODEL`),
+   `android_sdk` and `client_version` (the app's version name). The screen shows the
+   user code in large type, a QR code of `verification_uri_complete` (any phone camera
+   opens the web admin's approval page; LelloStore on an administrator's phone scans it
+   too), the store's `verification_uri` to type by hand, the name, and a countdown.
+4. **Polling.** `POST /api/device-enrollments/poll` every `interval` seconds (the
+   server's value), 5 s more after each `slow_down`. Network errors and unexpected
+   answers are retried after 2, 5, 10, 20, 40 and then 60 s, with "Cannot reach …"
+   on screen. Polling runs only while the screen is visible (started); the code and its
+   expiry are kept meanwhile, and on return the next poll waits out the rest of the
+   interval. `expired_token` (or the countdown reaching zero) gets a new code by itself;
+   after the third expired code it stops with **Try again**. `access_denied` stops with
+   "Request denied"; `invalid_grant` stops with "The code is no longer valid". At the
+   start, `403` is "requests from this network are blocked", `429` is "too many
+   requests", and a missing route is "not supported by this store".
+5. **Approved.** The returned `device-token.json` is stored (below) for the store the
+   device enrolled with, even if the file names another origin, and LelloStore is signed
+   in as the device at once, exactly as with a provisioned token. Storing it is not
+   cancelled when the screen goes away, because the credential is delivered only once.
+
+Enrollment requests use their own HTTP client: no credentials, no session-expiry
+handling, no request logging and no redirects. The local log records only outcomes.
+
+**What enrollment turns on.** So that a new box needs no trip into Settings, finishing
+enrollment turns on **automatic updates** (the global default), periodic update checks
+(every 24 hours if they were off; a chosen interval is kept) and the **update
+connection** (Settings → Keep update connection open). The completion screen lists
+them and then:
+
+- asks once for unrestricted battery use, which keeps the connection open in Doze,
+  when Android offers that prompt (many TV builds don't; a box on mains power does not
+  enter Doze), with an **Allow** button while it is missing;
+- shows the notification permission (Android 13+), which LelloStore asks for when it
+  signs in, with **Allow** while it is missing.
+
+A device token cannot use the push broker (it accepts only OIDC sessions), so with a
+device token the update connection service keeps the catalog WebSocket (`/api/events`)
+open instead; catalog changes then trigger an update check right away. UnifiedPush
+distribution to other apps still needs an OIDC session.
+
+**Signed in as this device.** Settings → Account shows "Signed in as this device" with
+the name, the store (fixed), and **Forget this device**, which deletes the stored
+credential (and a legacy file, below) and returns to the login screen. The device token
+stays valid on the server; revoke it in the web admin if the device is gone.
+
+### Device credential store
+
+`DeviceCredentialStore` (`android/localdata/.../auth/`) keeps the `device-token.json`
+content in `noBackupFilesDir/device-credential.bin`, sealed with AES-256-GCM under a
+non-exportable Android Keystore key (`lellostore.device_credential.v1`, randomized
+encryption, 12-byte nonce stored in front, a format header bound in as associated
+data). It is written atomically and never leaves the device in a backup. A file that
+cannot be opened (a lost key, tampering) is ignored. Root can still use the key on the
+device; see the [threat model](CREDENTIAL_PROVIDER_DESIGN.md#4-threat-model).
+
+`DeviceTokenAuthStore` reads the store once per process, before the auth state leaves
+`Loading`. A `401` marks the credential rejected in memory, as before, and the login
+screen shows a notice; the next start retries it, and enrolling again replaces it.
+
+**Legacy file import.** A root-provisioned `noBackupFilesDir/device-token.json` is
+imported into the store on start. Until an import succeeds the file itself is used, so
+nothing breaks when the Keystore is unavailable. The SHA-256 of the imported content is
+recorded (`device-credential-legacy-import`, no secret), so the same file is not
+imported again over a later enrollment or after **Forget this device**; a different
+file (root provisioned the device again) replaces the stored credential, and an
+unreadable stored credential falls back to the file. The file itself is left in place
+for one release so that a downgrade keeps working; **the release after next deletes it
+after a successful import and stops reading it** (credential provider phase 8).
+
+### Approving a device (administrators)
+
+When LelloStore is signed in with an administrator OIDC session (`GET /api/me`
+`is_admin`), Settings → Account has **Approve a device**. Other accounts and device
+tokens don't see it, and the screen refuses them.
+
+1. **Code.** Type the code (any case, spaces and dashes) or **Scan QR code**. The
+   scanner accepts the `verification_uri_complete` link, the JSON
+   `verification_payload` and a bare code; a code of another store is refused with its
+   host.
+2. **Review.** `GET /api/admin/device-enrollments/{user_code}` shows the code (to
+   compare with the TV), the requested name, model, Android API level, LelloStore
+   version, source address, how long ago it was requested and when it expires, with a
+   warning against approving codes sent by someone else. Lookup errors are explained:
+   unknown (`404`), no longer pending (`409`), too many unknown codes (`429`).
+3. **Approve** as a **New device** (name, default the requested one; groups, with the
+   server's `all` group preselected: untouched groups are not sent, so the server's
+   default applies) or **Replace a device**: pick an existing device token (the one with
+   the requested name is preselected, revoked ones are listed too), which is rekeyed and
+   keeps its subject, groups and grants; a changed name renames it. Or **Deny**, with
+   "Also block new requests from this address for 24 hours" **off** by default because
+   a phone and a box usually share the home network's address.
+
+The activity (`ApproveDeviceActivity`) has the same hardening as the credential broker:
+touches are dropped while another window obscures it, other apps' overlays are hidden
+(Android 12+), and it has no task affinity and no recents entry.
+
+#### `APPROVE_DEVICE` for other apps
+
+Another app (PezzotTV on the phone) can start the same flow **for result**:
+
+- Action `com.lelloman.store.action.APPROVE_DEVICE`, category `DEFAULT`, package
+  `com.lelloman.store` (debug: `com.lelloman.store.debug`).
+- Extras in (both optional): `com.lelloman.store.extra.USER_CODE` (the code the device
+  shows; when given, it is looked up at once) and `com.lelloman.store.extra.DEVICE_NAME`
+  (the suggested name, 1–100 characters).
+- `RESULT_OK` with `com.lelloman.store.extra.DEVICE_TOKEN_ID` (String) and
+  `com.lelloman.store.extra.REKEYED` (Boolean).
+- `RESULT_CANCELED` with `com.lelloman.store.extra.ERROR`: `cancelled`,
+  `not_logged_in`, `not_authorized` (not an administrator), `invalid_request` (bad
+  extras, or the server refused the name, groups or token), `caller_unknown` (not
+  started for result), `network`, `denied` (the administrator denied it) or
+  `unknown_code` (no pending request with that code).
+
+The caller is identified with `getCallingActivity()` and shown above the request.
+Nothing secret goes in or out: the device receives its credential from the store.
+
+#### Links from outside
+
+LelloStore does **not** register an intent filter for the approval links
+(`https://<store>/admin/device-tokens/approve?code=…`):
+
+- Android 12+ opens an https link in an app only when it is a verified App Link, which
+  needs `/.well-known/assetlinks.json` on the store host with LelloStore's signing
+  certificate. The server does not serve one, and stores are chosen at run time while a
+  manifest can only name hosts fixed at build time (the default store, the broker's
+  `auth.lelloman.com` App Links of [SIGN_IN_BROKER.md](SIGN_IN_BROKER.md)). An
+  unverified filter would only add an "Open with" choice on some phones.
+- A verified link would send the web admin's own approval page to LelloStore on every
+  phone that has it installed, including non-administrators and debug builds, and
+  "open in the browser" would come straight back to the app.
+
+So a phone camera opens the web admin page, and LelloStore's own scanner reads the same
+QR code.
+
