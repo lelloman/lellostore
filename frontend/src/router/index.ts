@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 const routes: RouteRecordRaw[] = [
   { path: '/admin/notifications', name: 'notifications-admin', component: () => import('@/views/AdminNotificationsView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/distribution', name: 'distribution-admin', component: () => import('@/views/AdminDistributionView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/admin/device-tokens/approve', name: 'approve-device-admin', component: () => import('@/views/AdminApproveDeviceView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/device-tokens', name: 'device-tokens-admin', component: () => import('@/views/AdminDeviceTokensView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/publish-tokens', name: 'publish-tokens-admin', component: () => import('@/views/AdminPublishTokensView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/uploads', name: 'uploads-admin', component: () => import('@/views/AdminUploadsView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },

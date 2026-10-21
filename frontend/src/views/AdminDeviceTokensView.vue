@@ -5,7 +5,10 @@
         <h1 class="page-title">Device tokens</h1>
         <p>Let an unattended device, such as a TV box, use the Store without a person signing in.</p>
       </div>
-      <v-btn :disabled="busy" @click="perform(refresh)">Refresh</v-btn>
+      <div class="d-flex" style="gap: 8px">
+        <v-btn color="primary" prepend-icon="mdi-television-play" :to="{ name: 'approve-device-admin' }">Approve a device</v-btn>
+        <v-btn :disabled="busy" @click="perform(refresh)">Refresh</v-btn>
+      </div>
     </div>
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <v-alert v-if="notice" type="success" class="mb-4">{{ notice }}</v-alert>
@@ -42,12 +45,19 @@
       </v-form>
     </v-card>
     <v-card class="pa-5">
-      <h2 class="text-h6">Tokens</h2>
+      <div class="d-flex flex-wrap align-center justify-space-between" style="gap: 8px">
+        <h2 class="text-h6">Tokens</h2>
+        <div class="d-flex flex-wrap align-center" style="gap: 8px">
+          <v-switch v-model="showRevoked" :label="`Show revoked (${revokedCount})`" density="compact" hide-details color="primary" />
+          <v-btn v-if="revokedCount" variant="text" color="error" :disabled="busy" @click="purgeAllCandidate = true">Remove all revoked</v-btn>
+        </div>
+      </div>
       <p v-if="!tokens.length">No device tokens yet.</p>
+      <p v-else-if="!visibleTokens.length">No active device tokens. {{ revokedCount }} revoked token(s) are hidden.</p>
       <v-table v-else>
         <thead><tr><th>Name</th><th>Groups</th><th>State</th><th>Last used</th><th>Actions</th></tr></thead>
         <tbody>
-          <tr v-for="token in tokens" :key="token.id">
+          <tr v-for="token in visibleTokens" :key="token.id">
             <td>{{ token.name }}</td>
             <td>
               <span v-if="!token.groups.length">None</span>
@@ -62,6 +72,7 @@
                 :aria-label="`Manage access of ${token.name}`"
               >Manage access</v-btn>
               <v-btn v-if="!token.revoked_at" color="error" :disabled="busy" :aria-label="`Revoke ${token.name}`" @click="revokeCandidate = token">Revoke</v-btn>
+              <v-btn v-else color="error" variant="text" :disabled="busy" :aria-label="`Delete ${token.name}`" @click="deleteCandidate = token">Delete</v-btn>
             </td>
           </tr>
         </tbody>
@@ -71,6 +82,16 @@
       Revoke “{{ revokeCandidate.name }}”? The device loses Store access immediately.
       <v-btn :disabled="busy" @click="revoke">Confirm revocation</v-btn>
       <v-btn :disabled="busy" @click="revokeCandidate = null">Cancel</v-btn>
+    </v-alert>
+    <v-alert v-if="deleteCandidate" type="warning" class="mt-4">
+      Delete “{{ deleteCandidate.name }}” permanently? Its grants and group memberships are removed too.
+      <v-btn :disabled="busy" @click="purge">Confirm deletion</v-btn>
+      <v-btn :disabled="busy" @click="deleteCandidate = null">Cancel</v-btn>
+    </v-alert>
+    <v-alert v-if="purgeAllCandidate" type="warning" class="mt-4">
+      Delete all {{ revokedCount }} revoked token(s) permanently, with their grants and group memberships?
+      <v-btn :disabled="busy" @click="purgeAll">Confirm removal</v-btn>
+      <v-btn :disabled="busy" @click="purgeAllCandidate = false">Cancel</v-btn>
     </v-alert>
   </DefaultLayout>
 </template>
@@ -89,7 +110,12 @@ const groupIds = ref<number[]>([])
 // The QR encodes the secret, so it lives only in memory beside it and goes away with it.
 const qr = ref(''), qrError = ref('')
 let qrGeneration = 0
-const revokeCandidate = ref<Token | null>(null)
+const revokeCandidate = ref<Token | null>(null), deleteCandidate = ref<Token | null>(null)
+const purgeAllCandidate = ref(false)
+// Revoked tokens are kept for the record but hidden unless asked for.
+const showRevoked = ref(false)
+const revokedCount = computed(() => tokens.value.filter(token => token.revoked_at).length)
+const visibleTokens = computed(() => showRevoked.value ? tokens.value : tokens.value.filter(token => !token.revoked_at))
 const busy = ref(false), error = ref(''), notice = ref('')
 const canCreate = computed(() => !!name.value.trim())
 const groupOptions = computed(() => groups.value.map(group => ({ title: group.name, value: group.id })))
@@ -138,6 +164,15 @@ async function revoke() { await perform(async () => {
   const token = revokeCandidate.value!
   await request(`${base}/${encodeURIComponent(token.id)}`, { method: 'DELETE' })
   revokeCandidate.value = null; await refresh(); notice.value = 'Token revoked'
+}) }
+async function purge() { await perform(async () => {
+  const token = deleteCandidate.value!
+  await request(`${base}/${encodeURIComponent(token.id)}/purge`, { method: 'POST' })
+  deleteCandidate.value = null; await refresh(); notice.value = 'Token deleted'
+}) }
+async function purgeAll() { await perform(async () => {
+  const result = await request<{ deleted: number }>(`${base}/purge-revoked`, { method: 'POST' })
+  purgeAllCandidate.value = false; await refresh(); notice.value = `${result.deleted} revoked token(s) deleted`
 }) }
 onMounted(() => perform(refresh))
 </script>
