@@ -17,8 +17,10 @@ import com.lelloman.store.localdata.apps.AppsRepositoryImpl
 import com.lelloman.store.localdata.apps.InstalledAppsRepositoryImpl
 import com.lelloman.store.localdata.auth.AuthStoreImpl
 import com.lelloman.store.localdata.auth.CompositeAuthStore
+import com.lelloman.store.localdata.auth.DeviceCredentialStore
 import com.lelloman.store.localdata.auth.DeviceTokenAuthStore
 import com.lelloman.store.localdata.auth.DeviceTokenFile
+import com.lelloman.store.localdata.auth.KeystoreCredentialCipher
 import com.lelloman.store.localdata.auth.SessionExpiredHandlerImpl
 import com.lelloman.store.localdata.config.ConfigStoreImpl
 import com.lelloman.store.localdata.db.LellostoreDatabase
@@ -109,17 +111,30 @@ object LocalDataModule {
 
     @Provides
     @Singleton
-    fun provideAuthStore(
+    fun provideDeviceTokenAuthStore(
         @ApplicationContext context: Context,
-        authStoreImpl: AuthStoreImpl,
         configStore: ConfigStore,
         @ApplicationScope scope: CoroutineScope,
         logger: Logger,
-    ): AuthStore = CompositeAuthStore(
-        DeviceTokenAuthStore(File(context.noBackupFilesDir, DeviceTokenFile.FILE_NAME), configStore, scope, logger),
-        authStoreImpl,
-        scope,
+    ): DeviceTokenAuthStore = DeviceTokenAuthStore(
+        legacyFile = File(context.noBackupFilesDir, DeviceTokenFile.FILE_NAME),
+        credentials = DeviceCredentialStore(
+            file = File(context.noBackupFilesDir, DeviceCredentialStore.FILE_NAME),
+            legacyMarker = File(context.noBackupFilesDir, DeviceCredentialStore.LEGACY_MARKER_FILE_NAME),
+            cipher = KeystoreCredentialCipher(),
+        ),
+        configStore = configStore,
+        scope = scope,
+        logger = logger,
     )
+
+    @Provides
+    @Singleton
+    fun provideAuthStore(
+        deviceTokenAuthStore: DeviceTokenAuthStore,
+        authStoreImpl: AuthStoreImpl,
+        @ApplicationScope scope: CoroutineScope,
+    ): AuthStore = CompositeAuthStore(deviceTokenAuthStore, authStoreImpl, scope)
 
     @Provides
     @Singleton

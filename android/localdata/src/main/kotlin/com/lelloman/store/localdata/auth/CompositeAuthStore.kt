@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-/** Prefers a provisioned device token over the OIDC session; falls back to OIDC otherwise. */
+/** Prefers the device credential over the OIDC session; falls back to OIDC otherwise. */
 class CompositeAuthStore(
     private val deviceToken: DeviceTokenAuthStore,
     private val oidc: AuthStore,
@@ -38,7 +38,8 @@ class CompositeAuthStore(
         if (provisioned()) deviceToken.getAccessToken() else oidc.getAccessToken(minValiditySeconds)
 
     override suspend fun logout() {
-        // Never delete the provisioned file: the next process start retries it.
+        // Never delete the device credential here: the next process start retries it. Only
+        // DeviceTokenAuthStore.forget() (Settings → Forget this device) removes it.
         if (provisioned()) deviceToken.reject()
         oidc.logout()
     }

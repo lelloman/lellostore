@@ -42,9 +42,17 @@ class CompositeAuthStoreTest {
             )
         }
 
+    private val credentials by lazy {
+        DeviceCredentialStore(
+            folder.root.resolve(DeviceCredentialStore.FILE_NAME),
+            folder.root.resolve(DeviceCredentialStore.LEGACY_MARKER_FILE_NAME),
+            SoftwareCredentialCipher(),
+        )
+    }
+
     private fun TestScope.composite(file: File): CompositeAuthStore {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val device = DeviceTokenAuthStore(file, config, backgroundScope, logger, dispatcher)
+        val device = DeviceTokenAuthStore(file, credentials, config, backgroundScope, logger, dispatcher)
         return CompositeAuthStore(device, oidc, backgroundScope)
     }
 
@@ -63,7 +71,7 @@ class CompositeAuthStoreTest {
     @Test
     fun `stays loading until the file has been checked`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val device = DeviceTokenAuthStore(tokenFile(), config, backgroundScope, logger, dispatcher)
+        val device = DeviceTokenAuthStore(tokenFile(), credentials, config, backgroundScope, logger, dispatcher)
         val store = CompositeAuthStore(device, oidc, backgroundScope)
         oidc.state.value = AuthState.NotAuthenticated
 
