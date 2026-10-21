@@ -151,7 +151,7 @@ private fun NeedsLoginContent(caller: CredentialCaller?, onOpenStore: () -> Unit
 }
 
 @Composable
-private fun CallerHeader(caller: CredentialCaller?) {
+internal fun CallerHeader(caller: CredentialCaller?) {
     if (caller == null) {
         LelloStoreBrandMark(contentDescription = null, size = 72.dp)
         return

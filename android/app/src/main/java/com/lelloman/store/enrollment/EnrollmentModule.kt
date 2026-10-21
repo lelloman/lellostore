@@ -1,5 +1,6 @@
 package com.lelloman.store.enrollment
 
+import com.lelloman.store.ui.screen.approve.ApproveDeviceViewModel
 import com.lelloman.store.ui.screen.enrollment.EnrollmentViewModel
 import dagger.Binds
 import dagger.Module
@@ -13,4 +14,7 @@ abstract class EnrollmentModule {
 
     @Binds
     abstract fun bindEnrollmentInteractor(impl: EnrollmentInteractorImpl): EnrollmentViewModel.Interactor
+
+    @Binds
+    abstract fun bindApproveDeviceInteractor(impl: ApproveDeviceInteractorImpl): ApproveDeviceViewModel.Interactor
 }

@@ -35,6 +35,11 @@ class SettingsViewModel @Inject constructor(
                 mutableState.value = mutableState.value.copy(isDeviceToken = deviceToken)
             }
         }
+        viewModelScope.launch {
+            interactor.isAdmin().collect { admin ->
+                mutableState.value = mutableState.value.copy(isAdmin = admin)
+            }
+        }
         observeSettings()
         observeUpdatePolicy()
     }
@@ -249,6 +254,9 @@ class SettingsViewModel @Inject constructor(
         /** Provisioned device-token mode: no logout, the server is pinned by the token file. */
         fun isDeviceToken(): StateFlow<Boolean> = MutableStateFlow(false)
 
+        /** The signed-in OIDC user is an administrator of the store (never for a device token). */
+        fun isAdmin(): StateFlow<Boolean> = MutableStateFlow(false)
+
         /** Deletes the device credential (enrolled or provisioned); the device returns to login. */
         suspend fun forgetDevice() {}
         fun serverUrl(): StateFlow<String>
@@ -285,6 +293,7 @@ data class SettingsScreenState(
     val legacyAdb: AdbConnectionState = AdbConnectionState.NotTested,
     val userEmail: String? = null,
     val isDeviceToken: Boolean = false,
+    val isAdmin: Boolean = false,
     val serverUrl: String = "",
     val serverUrlInput: String = "",
     val serverUrlError: ServerUrlError? = null,

@@ -359,6 +359,18 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `the approve entry follows the administrator role`() = runTest {
+        createViewModel()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.isAdmin).isFalse()
+
+        fakeInteractor.mutableAdmin.value = true
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.isAdmin).isTrue()
+    }
+
+    @Test
     fun `an OIDC session cannot forget a device`() = runTest {
         createViewModel()
         advanceUntilIdle()
@@ -478,6 +490,9 @@ class FakeSettingsInteractor : SettingsViewModel.Interactor {
     override suspend fun logout() {
         logoutCalled = true
     }
+
+    val mutableAdmin = MutableStateFlow(false)
+    override fun isAdmin(): StateFlow<Boolean> = mutableAdmin
 
     var forgetDeviceCalled = false
     override suspend fun forgetDevice() {

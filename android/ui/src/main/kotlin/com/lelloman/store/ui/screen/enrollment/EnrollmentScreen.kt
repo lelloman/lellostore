@@ -384,7 +384,8 @@ private fun CompletedContent(completion: EnrollmentCompletion, onContinue: () ->
     val canAskBattery = remember { context.canRequestPushBatteryExemption() }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notificationsAllowed = granted
-        if (!granted) {
+        // Asked again after a refusal, Android shows nothing: offer its notification settings.
+        if (!granted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             runCatching {
                 context.startActivity(
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),

@@ -86,6 +86,22 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- Device enrollment approval by an administrator: opened from Settings, or started for
+             result by another app (the caller is identified by getCallingActivity()). Every
+             approval is confirmed on screen; same hardening as IssueCredentialActivity. The
+             web admin's https approval links are deliberately not claimed (see
+             docs/DEVICE_ENROLLMENT.md); the in-app scanner reads them instead. -->
+        <activity
+            android:name=".enrollment.ApproveDeviceActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.LelloStore">
+            <intent-filter>
+                <action android:name="com.lelloman.store.action.APPROVE_DEVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity android:name=".recovery.RecoverySetupActivity" android:exported="false" />
         <service
             android:name=".remote.RemoteDeviceService"

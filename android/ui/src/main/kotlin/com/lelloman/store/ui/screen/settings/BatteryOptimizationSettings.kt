@@ -26,6 +26,7 @@ fun Context.openPushBatterySettings() {
     }
 }
 
+@SuppressLint("BatteryLife")
 private fun Context.batteryExemptionRequest() =
     Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:$packageName".toUri())
 

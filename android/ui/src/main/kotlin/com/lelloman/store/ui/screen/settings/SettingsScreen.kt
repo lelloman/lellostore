@@ -125,6 +125,9 @@ fun SettingsScreen(
         onOpenLocalLogs = {
             context.startAppActivity("com.lelloman.store.diagnostics.AuditActivity")
         },
+        onOpenApproveDevice = {
+            context.startAppActivity("com.lelloman.store.enrollment.ApproveDeviceActivity")
+        },
         onServerUrlInputChanged = viewModel::onServerUrlInputChanged,
         onServerUrlSave = viewModel::onServerUrlSave,
         onLogoutClick = viewModel::onLogoutClick,
@@ -161,6 +164,7 @@ internal fun SettingsContent(
     onLogoutClick: () -> Unit,
     modifier: Modifier = Modifier,
     onForgetDeviceClick: () -> Unit = {},
+    onOpenApproveDevice: () -> Unit = {},
 ) {
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showIntervalDialog by rememberSaveable { mutableStateOf(false) }
@@ -313,6 +317,14 @@ internal fun SettingsContent(
                         textColor = MaterialTheme.colorScheme.error,
                     )
                 } else {
+                    if (state.isAdmin) {
+                        SettingsClickableItem(
+                            title = stringResource(R.string.settings_approve_device),
+                            subtitle = stringResource(R.string.settings_approve_device_subtitle),
+                            onClick = onOpenApproveDevice,
+                        )
+                        SettingsDivider()
+                    }
                     SettingsClickableItem(
                         title = stringResource(R.string.settings_server),
                         subtitle = state.serverUrl,

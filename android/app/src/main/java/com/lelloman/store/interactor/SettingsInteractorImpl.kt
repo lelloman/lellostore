@@ -22,7 +22,9 @@ import com.lelloman.store.installation.mergeChannelOrder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -38,6 +40,7 @@ class SettingsInteractorImpl @Inject constructor(
     @ApplicationScope private val scope: CoroutineScope,
     private val selection: com.lelloman.store.setup.ServerSelection,
     private val deviceToken: com.lelloman.store.localdata.auth.DeviceTokenAuthStore,
+    private val enrollmentAdmin: com.lelloman.store.domain.enrollment.DeviceEnrollmentAdminApi,
 ) : SettingsViewModel.Interactor {
 
     private val channelMetadata = installationCoordinator.channelMetadata
@@ -101,6 +104,18 @@ class SettingsInteractorImpl @Inject constructor(
             .map { state -> state is AuthState.Authenticated && state.deviceToken }
             .stateIn(scope, SharingStarted.Eagerly, false)
     }
+
+    // Asked once per OIDC sign-in; a failure hides the entry until the next one.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val admin: StateFlow<Boolean> by lazy {
+        authStore.authState
+            .map { state -> (state as? AuthState.Authenticated)?.takeIf { !it.deviceToken }?.userEmail }
+            .distinctUntilChanged()
+            .mapLatest { account -> account != null && enrollmentAdmin.isAdmin().getOrDefault(false) }
+            .stateIn(scope, SharingStarted.Eagerly, false)
+    }
+
+    override fun isAdmin(): StateFlow<Boolean> = admin
 
     override fun serverUrl(): StateFlow<String> {
         return configStore.serverUrl
