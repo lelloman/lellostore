@@ -69,4 +69,6 @@ sealed interface DownloadResult {
 enum class DownloadFailureKind {
     GENERIC,
     INCOMPATIBLE_SIGNATURE,
+    /** Another operation for the package is running; its own state reports the outcome. */
+    ALREADY_IN_PROGRESS,
 }

@@ -78,7 +78,7 @@ class DownloadManagerImpl @Inject constructor(
         val epoch = session.epoch
         val task = synchronized(downloadJobs) {
             if (downloadJobs.containsKey(packageName)) {
-                return DownloadResult.Failed("Download already in progress")
+                return DownloadResult.Failed("Download already in progress", DownloadFailureKind.ALREADY_IN_PROGRESS)
             }
             scope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
                 try {
@@ -97,7 +97,7 @@ class DownloadManagerImpl @Inject constructor(
             if (installationMode == InstallationMode.BACKGROUND) task.cancel()
             throw error
         } catch (error: IllegalStateException) {
-            DownloadResult.Failed(error.message ?: "Server changed. Start this operation again.")
+            DownloadResult.Failed(error.message?.takeIf { it.isNotBlank() } ?: "Server changed. Start this operation again.")
         }
     }
 

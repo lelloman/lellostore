@@ -88,7 +88,7 @@ class UpdateCheckWorker @AssistedInject constructor(
                                     // Surface the update so a failure is never silent.
                                     remainingUpdates += update
                                     // A signature mismatch cannot succeed on retry.
-                                    if (outcome.kind == DownloadFailureKind.GENERIC) retryNeeded = true
+                                    if (outcome.kind != DownloadFailureKind.INCOMPATIBLE_SIGNATURE) retryNeeded = true
                                 }
                             }
                         }

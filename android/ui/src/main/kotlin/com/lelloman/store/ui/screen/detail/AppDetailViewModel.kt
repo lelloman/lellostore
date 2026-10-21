@@ -9,6 +9,7 @@ import com.lelloman.store.ui.model.AppVersionModel
 import com.lelloman.store.ui.model.InstalledAppModel
 import com.lelloman.store.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadProgress
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.isInProgress
@@ -88,9 +89,15 @@ class AppDetailViewModel @Inject constructor(
     private fun observeDownloadProgress() {
         viewModelScope.launch {
             interactor.watchDownloadProgress(packageName).collect { progress ->
-                mutableState.value = mutableState.value.copy(
+                val current = mutableState.value
+                // A new operation started (here, from Updates or by the worker): an earlier
+                // operation's failure no longer describes this package.
+                val startsNewOperation = progress?.state?.isInProgress == true &&
+                    current.downloadState?.isInProgress != true
+                mutableState.value = current.copy(
                     downloadState = progress?.state,
                     downloadProgress = progress?.progress ?: 0f,
+                    installationFailure = if (startsNewOperation) null else current.installationFailure,
                 )
             }
         }
@@ -203,9 +210,7 @@ class AppDetailViewModel @Inject constructor(
                 packageName = app.packageName,
                 versionCode = latestVersion.versionCode,
             )
-            mutableState.value = mutableState.value.copy(
-                installationFailure = result as? DownloadResult.Failed,
-            )
+            mutableState.value = mutableState.value.copy(installationFailure = result.reportedFailure())
         }
     }
 
@@ -220,9 +225,13 @@ class AppDetailViewModel @Inject constructor(
         viewModelScope.launch {
             mutableState.value = mutableState.value.copy(installationFailure = null)
             val result = interactor.repairAccess(packageName, installed.versionCode)
-            mutableState.value = mutableState.value.copy(installationFailure = result as? DownloadResult.Failed)
+            mutableState.value = mutableState.value.copy(installationFailure = result.reportedFailure())
         }
     }
+
+    /** A request that joined an operation already running is not a failure of that operation. */
+    private fun DownloadResult.reportedFailure(): DownloadResult.Failed? =
+        (this as? DownloadResult.Failed)?.takeUnless { it.kind == DownloadFailureKind.ALREADY_IN_PROGRESS }
 
     fun onOpenClick() {
         viewModelScope.launch {

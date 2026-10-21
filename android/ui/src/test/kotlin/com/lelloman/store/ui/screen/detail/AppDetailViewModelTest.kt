@@ -248,6 +248,42 @@ class AppDetailViewModelTest {
     }
 
     @Test
+    fun `joining an operation already running is not reported as a failure`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 1, "1.0.0")
+        fakeInteractor.downloadAndInstallResult = DownloadResult.Failed(
+            "Download already in progress",
+            DownloadFailureKind.ALREADY_IN_PROGRESS,
+        )
+        createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onUpdateClick()
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationFailure).isNull()
+    }
+
+    @Test
+    fun `an operation started elsewhere clears the previous failure`() = runTest {
+        fakeInteractor.mutableApp.value = createAppDetail()
+        fakeInteractor.downloadAndInstallResult = DownloadResult.Failed("first failure")
+        createViewModel()
+        advanceUntilIdle()
+        viewModel.onInstallClick()
+        advanceUntilIdle()
+        assertThat(viewModel.state.value.installationFailure).isNotNull()
+
+        fakeInteractor.mutableDownloadProgress.value =
+            DownloadProgress("com.test.app", 1f, 10, 10, DownloadState.INSTALLING)
+        advanceUntilIdle()
+
+        assertThat(viewModel.state.value.installationFailure).isNull()
+        assertThat(installationResultCard(viewModel.state.value.downloadState, viewModel.state.value.installationFailure))
+            .isNull()
+    }
+
+    @Test
     fun `onOpenClick emits OpenApp event`() = runTest {
         fakeInteractor.mutableApp.value = createAppDetail()
         fakeInteractor.mutableInstalledVersion.value = InstalledAppModel("com.test.app", 2, "2.0.0")

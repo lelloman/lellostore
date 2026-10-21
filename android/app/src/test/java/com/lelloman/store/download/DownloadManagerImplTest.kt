@@ -127,7 +127,9 @@ class DownloadManagerImplTest {
         // Try to start another download for the same package
         val result = downloadManager.downloadAndInstall("com.test.app", 1)
 
-        assertThat(result).isEqualTo(DownloadResult.Failed("Download already in progress"))
+        assertThat(result).isEqualTo(
+            DownloadResult.Failed("Download already in progress", DownloadFailureKind.ALREADY_IN_PROGRESS),
+        )
         downloadManager.cancelDownload("com.test.app")
         firstDownload.cancelAndJoin()
     }

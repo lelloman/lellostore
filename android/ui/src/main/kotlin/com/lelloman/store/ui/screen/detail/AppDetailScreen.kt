@@ -57,7 +57,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lelloman.store.domain.download.DownloadState
-import com.lelloman.store.domain.download.DownloadFailureKind
 import com.lelloman.store.domain.download.DownloadResult
 import com.lelloman.store.domain.download.isInProgress
 import com.lelloman.store.domain.preferences.AutoUpdateOverride
@@ -205,16 +204,9 @@ private fun AppDetailContent(
             Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
             VersionSummary(app = app)
 
-            if (installationFailure != null || downloadState == DownloadState.COMPLETED ||
-                downloadState == DownloadState.FAILED ||
-                downloadState == DownloadState.CANCELLED ||
-                downloadState == DownloadState.AWAITING_CONFIRMATION
-            ) {
+            installationResultCard(downloadState, installationFailure)?.let { card ->
                 Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
-                InstallationResultSection(
-                    downloadState = downloadState,
-                    failure = installationFailure,
-                )
+                InstallationResultSection(card = card)
             }
 
             Spacer(modifier = Modifier.height(LelloStoreSpacing.medium))
@@ -539,23 +531,21 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun InstallationResultSection(
-    downloadState: DownloadState?,
-    failure: DownloadResult.Failed?,
+    card: InstallationResultCard,
     modifier: Modifier = Modifier,
 ) {
     var showTechnicalDetails by rememberSaveable { mutableStateOf(false) }
-    val isError = failure != null || downloadState == DownloadState.FAILED
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .semantics { liveRegion = LiveRegionMode.Polite },
         shape = MaterialTheme.shapes.medium,
-        color = if (isError) {
+        color = if (card.isError) {
             MaterialTheme.colorScheme.errorContainer
         } else {
             MaterialTheme.colorScheme.secondaryContainer
         },
-        contentColor = if (isError) {
+        contentColor = if (card.isError) {
             MaterialTheme.colorScheme.onErrorContainer
         } else {
             MaterialTheme.colorScheme.onSecondaryContainer
@@ -563,39 +553,15 @@ private fun InstallationResultSection(
     ) {
         Column(modifier = Modifier.padding(LelloStoreSpacing.large)) {
             Text(
-                text = when (downloadState) {
-                    DownloadState.COMPLETED -> stringResource(R.string.download_completed)
-                    DownloadState.FAILED, null -> stringResource(
-                        if (failure?.kind == DownloadFailureKind.INCOMPATIBLE_SIGNATURE) {
-                            R.string.incompatible_signature_title
-                        } else {
-                            R.string.download_failed
-                        }
-                    )
-                    DownloadState.CANCELLED -> stringResource(R.string.download_cancelled)
-                    DownloadState.AWAITING_CONFIRMATION -> stringResource(R.string.download_awaiting_confirmation)
-                    else -> return@Surface
-                },
+                text = stringResource(card.title),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(LelloStoreSpacing.xSmall))
             Text(
-                text = when (downloadState) {
-                    DownloadState.COMPLETED -> stringResource(R.string.download_completed_hint)
-                    DownloadState.FAILED, null -> stringResource(
-                        if (failure?.kind == DownloadFailureKind.INCOMPATIBLE_SIGNATURE) {
-                            R.string.incompatible_signature_message
-                        } else {
-                            R.string.download_failed_hint
-                        }
-                    )
-                    DownloadState.CANCELLED -> stringResource(R.string.download_cancelled_hint)
-                    DownloadState.AWAITING_CONFIRMATION -> stringResource(R.string.download_awaiting_confirmation_hint)
-                    else -> return@Surface
-                },
+                text = stringResource(card.message),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (failure != null) {
+            card.technicalDetails?.let { details ->
                 TextButton(onClick = { showTechnicalDetails = !showTechnicalDetails }) {
                     Text(
                         stringResource(
@@ -606,7 +572,7 @@ private fun InstallationResultSection(
                 }
                 if (showTechnicalDetails) {
                     Text(
-                        text = failure.reason,
+                        text = details,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
