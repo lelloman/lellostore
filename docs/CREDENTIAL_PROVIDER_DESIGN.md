@@ -576,3 +576,27 @@ Phases 1–5 fix today's breakage and don't depend on 6–8.
 10. **Grant reporting to the server** (§7.5). Is it wanted? It gives the admin a fleet view, at the
     cost of the server learning which apps each device runs (it largely knows that already from
     acquisitions).
+
+## 14. Decisions (2026-10-21)
+
+Answers to section 13:
+
+1. On the box, whoever holds the remote approves an app's grant; the admin can revoke.
+2. Yes: by default every credential type is limited to packages this store publishes, with the
+   signer it records.
+3. Open, to verify. Today pezzottify signs in with OIDC (AppAuth); on phones it can hand the
+   request to a pinned "trusted authorization broker", TV builds always use the browser, and the
+   server's `POST /v1/auth/login` registers the device. There is no phone-to-TV sign-in yet. The
+   wish: sign pezzottify in on the box from pezzottify on the phone. `pezzottify.identity`
+   (phase 7) should cover that, with the box's own pezzottify device identity rather than a copy
+   of the phone's session.
+4. Only admins approve enrollments.
+5. Mediaset-style service accounts stay out of scope (PezzotTV keeps them).
+6. Yes: headless `setup-tv-box.sh --approve` through the publisher's admin session.
+7. Store-signed JWTs.
+8. The default lifetimes are fine.
+9. A new PezzotTV shell in phase 5 is fine.
+10. Yes, devices report their grants so the admin can revoke remotely (phase 8).
+
+Added requirement: enrolling a box also turns on LelloStore's automatic updates and its push
+connection there, so a new box needs no trip through LelloStore's settings.
