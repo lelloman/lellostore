@@ -1,10 +1,12 @@
 package com.lelloman.store.remoteapi.di
 
 import android.util.Log
+import com.lelloman.store.domain.api.DeviceTokenAdminApi
 import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.SessionExpiredHandler
 import com.lelloman.store.domain.config.ConfigStore
+import com.lelloman.store.remoteapi.DeviceTokenAdminApiImpl
 import com.lelloman.store.remoteapi.RemoteApiClientImpl
 import dagger.Module
 import dagger.Provides
@@ -78,5 +80,15 @@ object RemoteApiModule {
         httpClient = httpClient,
         baseUrlProvider = { configStore.serverUrl.value },
         deviceSdk = android.os.Build.VERSION.SDK_INT,
+    )
+
+    @Provides
+    @Singleton
+    fun provideDeviceTokenAdminApi(
+        httpClient: HttpClient,
+        configStore: ConfigStore,
+    ): DeviceTokenAdminApi = DeviceTokenAdminApiImpl(
+        httpClient = httpClient,
+        baseUrlProvider = { configStore.serverUrl.value },
     )
 }

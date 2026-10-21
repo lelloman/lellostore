@@ -14,6 +14,7 @@ data class DeviceToken(val name: String, val serverUrl: String, val token: Strin
  * Reads `noBackupFilesDir/device-token.json`:
  * `{"version":1,"server_url":"https://…","name":"Living room TV","token":"lellostore_dev_…"}`.
  * The file is written by root (not by the app), so a plain read is enough.
+ * [serialize] produces the same content as the admin web UI's download and QR code.
  */
 object DeviceTokenFile {
     const val FILE_NAME = "device-token.json"
@@ -27,6 +28,38 @@ object DeviceTokenFile {
         data class Valid(val token: DeviceToken) : Result
         /** [reason] is a short code safe to log; it never contains file content. */
         data class Invalid(val reason: String) : Result
+    }
+
+    /**
+     * The `device-token.json` content for [token], byte-identical to the web UI's
+     * `JSON.stringify({version, server_url, name, token})`: same key order, no
+     * whitespace, and `/` left unescaped (unlike Android's `JSONObject`).
+     */
+    fun serialize(token: DeviceToken): String = buildString {
+        append("{\"version\":1,\"server_url\":")
+        appendJsonString(token.serverUrl)
+        append(",\"name\":")
+        appendJsonString(token.name)
+        append(",\"token\":")
+        appendJsonString(token.token)
+        append('}')
+    }
+
+    private fun StringBuilder.appendJsonString(value: String) {
+        append('"')
+        for (char in value) {
+            when (char) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\b' -> append("\\b")
+                '\u000C' -> append("\\f")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> if (char < ' ') append("\\u").append(char.code.toString(16).padStart(4, '0')) else append(char)
+            }
+        }
+        append('"')
     }
 
     fun read(file: File): Result {
