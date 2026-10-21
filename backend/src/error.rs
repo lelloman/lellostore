@@ -36,6 +36,9 @@ pub enum AppError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
+
     #[error("Range not satisfiable")]
     RangeNotSatisfiable,
 
@@ -53,6 +56,7 @@ impl IntoResponse for AppError {
             AppError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, self.to_string()),
             AppError::InvalidFileType => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
+            AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
             AppError::RangeNotSatisfiable => (StatusCode::RANGE_NOT_SATISFIABLE, self.to_string()),
             AppError::Database(_) => {
                 tracing::error!("Database error: {}", self);

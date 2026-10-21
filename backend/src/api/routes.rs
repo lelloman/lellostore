@@ -52,6 +52,23 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
         );
 
     router = router.merge(crate::notifications::api::routes());
+    // Device enrollment is unauthenticated: the device has no credential yet.
+    // Requests are small, and creation is quota-limited per source address.
+    // Without authentication nobody could approve, so it is not offered.
+    if state.auth.is_some() {
+        router = router.merge(
+            Router::new()
+                .route(
+                    "/api/device-enrollments",
+                    post(super::device_enrollments::start),
+                )
+                .route(
+                    "/api/device-enrollments/poll",
+                    post(super::device_enrollments::poll),
+                )
+                .layer(simple_server::body_limit::BodyLimit::max(4096)),
+        );
+    }
 
     // Add protected routes if auth is configured
     if let Some(auth_state) = &state.auth {
@@ -222,7 +239,31 @@ fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState>
             "/device-tokens",
             get(super::device_tokens::list).post(super::device_tokens::create),
         )
+        .route(
+            "/device-tokens/purge-revoked",
+            post(super::device_tokens::purge_revoked),
+        )
         .route("/device-tokens/{id}", delete(super::device_tokens::revoke))
+        .route(
+            "/device-tokens/{id}/rekey",
+            post(super::device_tokens::rekey),
+        )
+        .route(
+            "/device-tokens/{id}/purge",
+            post(super::device_tokens::purge),
+        )
+        .route(
+            "/device-enrollments/{user_code}",
+            get(super::device_enrollments::lookup),
+        )
+        .route(
+            "/device-enrollments/{user_code}/approve",
+            post(super::device_enrollments::approve),
+        )
+        .route(
+            "/device-enrollments/{user_code}/deny",
+            post(super::device_enrollments::deny),
+        )
         .route("/users", get(handlers::list_admin_users))
         .route(
             "/users/{subject}/access",

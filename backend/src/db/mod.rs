@@ -2,6 +2,7 @@ pub mod access;
 pub mod acquisitions;
 pub mod admin;
 pub mod deployment;
+pub mod device_enrollments;
 pub mod device_tokens;
 pub mod dvpk;
 pub mod models;

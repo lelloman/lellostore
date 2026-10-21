@@ -29,7 +29,7 @@ async fn discovery_is_public_during_auth_outage_but_catalog_stays_closed() {
                 "clients": {"android": "independent-android", "web": "independent-web", "publisher": "independent-publisher"},
                 "scopes": ["openid", "profile", "email"]
             },
-            "capabilities": {"push": false, "paravoid": false}
+            "capabilities": {"push": false, "paravoid": false, "device_enrollment": false}
         })
     );
     let catalog = server.get("/api/apps").send().await.unwrap();
