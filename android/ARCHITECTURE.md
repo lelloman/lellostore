@@ -75,6 +75,21 @@ screen; the next process start retries the file. Push is unavailable in this mod
 the broker only accepts JWTs and records `push.unsupported_credential`, and updates
 rely on periodic checks.
 
+## Credential requests from other apps
+
+`IssueCredentialActivity` is an exported, confirmation-gated broker: another app starts
+it for result with `com.lelloman.store.action.ISSUE_CREDENTIAL`, a credential type and a
+subject name, and gets the credential back in the result after the user confirms. The
+caller is identified with `getCallingActivity()`. `IssueCredentialViewModel` (`:ui`)
+validates the generic extras, waits for the auth state, and calls the type's
+`CredentialIssuer` at most once; issuers are a Hilt `@IntoSet` multibinding collected in
+`CredentialIssuerRegistry`. The only type is `lellostore.device_token`, which creates a
+device token through the administrator API with the signed-in session and returns the
+same `device-token.json` the web admin page produces (`DeviceTokenFile.serialize`). The
+credential exists only in memory and the result intent. See
+[the credential broker contract](../docs/CREDENTIAL_BROKER.md) for the extras, errors,
+a caller example and how to add a type.
+
 ## Networking and downloads
 
 The remote API resolves the current server URL for every request, so changing a

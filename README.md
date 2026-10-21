@@ -332,6 +332,10 @@ administrator or publishing routes.
    a provisioned token file and then starts straight into the catalog; see the
    Android client documentation for the file format.
 
+Another app on an administrator's phone (for example a TV-box setup app) can also ask the
+LelloStore Android client to create a token: the client shows one confirmation screen and
+returns the same `device-token.json`. See [credential requests from other apps](docs/CREDENTIAL_BROKER.md).
+
 ```sh
 curl -H "Authorization: Bearer lellostore_dev_..." https://store.example.com/api/apps
 ```
