@@ -94,9 +94,14 @@ routes and token management.
 
 Administrators manage tokens with `POST /api/admin/device-tokens` (`name`,
 optional RFC 3339 `expires_at`, optional `group_ids`; returns the secret once),
-`GET /api/admin/device-tokens` (no secrets) and
+`GET /api/admin/device-tokens` (no secrets),
 `DELETE /api/admin/device-tokens/{id}` (revoke, idempotent; unknown ids are
-`404`). Each token is returned as:
+`404`), `POST /api/admin/device-tokens/{id}/rekey` (a new secret, returned once,
+for the same id, subject, grants and groups; clears `revoked_at`),
+`POST /api/admin/device-tokens/{id}/purge` (permanently delete a **revoked**
+token, `204`; an active token is `409`, revoke it first) and
+`POST /api/admin/device-tokens/purge-revoked` (delete every revoked token,
+`{"deleted": n}`). Each token is returned as:
 
 ```json
 {
@@ -117,6 +122,14 @@ applied in the same transaction as the token: an unknown group fails the request
 (`404`) and creates nothing. Creation, revocation and memberships are written to
 the access audit log; refusals are logged with the token id, never the secret.
 Revocation keeps the principal's known-user row, grants and memberships.
+Deleting a revoked token (`device_token.delete` in the audit log) also deletes
+that known-user row, its direct grants and its group memberships; acquisition
+and audit history are kept.
+
+A device can also obtain a token itself through
+[device-code enrollment](docs/DEVICE_ENROLLMENT.md): it starts an enrollment
+without credentials, an administrator approves its user code as a new token or as
+a rekey of an existing one, and its next poll receives `device-token.json` once.
 
 Push notification registration and Paravoid keyed delivery validate OIDC JWTs
 only and do not accept device tokens; a device-token client relies on its
@@ -140,6 +153,8 @@ return `204 No Content`. APK downloads support one byte range and return either
 | --- | --- | --- | --- |
 | `GET` | `/health` | None | `{"status":"healthy"}` |
 | `GET` | `/api/server-config` | None | Public client setup; schema version 1 |
+| `POST` | `/api/device-enrollments` | None (quota per address, 4 KiB body) | Start a [device enrollment](docs/DEVICE_ENROLLMENT.md): `201` with `device_code`, `user_code`, `verification_payload`, `expires_in`, `interval` |
+| `POST` | `/api/device-enrollments/poll` | None (`device_code` in the body) | `200` with `device-token.json` once, or `400` with an RFC 8628 `error` |
 | `GET` | `/metrics` | Network policy | Prometheus text on the separate metrics listener |
 
 ### User routes
@@ -215,6 +230,12 @@ replaced. The icon endpoint also continues to accept unversioned URLs.
 | `GET` | `/api/admin/device-tokens` | None | Device tokens without secrets, with `subject`, `groups` and `last_used_at` |
 | `POST` | `/api/admin/device-tokens` | JSON `name`, optional `expires_at` and `group_ids` | `201` with the token and its one-time `secret` |
 | `DELETE` | `/api/admin/device-tokens/{id}` | None | Revoke (idempotent); returns the token with `revoked_at` |
+| `POST` | `/api/admin/device-tokens/{id}/rekey` | None | The same token with a new one-time `secret`; `revoked_at` cleared |
+| `POST` | `/api/admin/device-tokens/{id}/purge` | None | Delete a revoked token with its principal (`204`); `409` while active |
+| `POST` | `/api/admin/device-tokens/purge-revoked` | None | Delete every revoked token; `{"deleted": n}` |
+| `GET` | `/api/admin/device-enrollments/{user_code}` | None | A pending enrollment's details, or `404` |
+| `POST` | `/api/admin/device-enrollments/{user_code}/approve` | JSON optional `name`, `group_ids` (default: the `all` group), `replace_device_token_id` | `{"device_token", "rekeyed"}`, no secret |
+| `POST` | `/api/admin/device-enrollments/{user_code}/deny` | Optional query `block_source=false` | `204`; by default blocks the address for 24 h |
 
 Uploads accept exactly one `.apk` or `.aab` file. The backend streams the input
 to a private temporary location while enforcing `MAX_UPLOAD_SIZE`. It extracts
@@ -253,7 +274,7 @@ Metadata update request:
 
 Error responses contain an `error` identifier and a safe human-readable
 `message`. Depending on the failure, routes use `400`, `401`, `403`, `404`,
-`409`, `413`, `415`, `500`, or `503`.
+`409`, `413`, `415`, `429`, `500`, or `503`.
 
 ```json
 {
