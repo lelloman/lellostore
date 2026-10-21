@@ -2050,3 +2050,6 @@ async fn unifiedpush_approval_registration_delivery_and_revocation() {
         .unwrap()
         .assert_status(StatusCode::UNAUTHORIZED);
 }
+
+#[path = "support/device_enrollments.rs"]
+mod device_enrollments;

@@ -1,6 +1,7 @@
 # LelloStore as the device's credential provider (design)
 
-Status: proposal, nothing implemented. Builds on the credential broker
+Status: proposal. Phase 1 (backend enrollment and web admin approval) is implemented;
+see [DEVICE_ENROLLMENT.md](DEVICE_ENROLLMENT.md) and §12. Builds on the credential broker
 ([CREDENTIAL_BROKER.md](CREDENTIAL_BROKER.md)) and device tokens
 ([SPEC.md § Device tokens](../SPEC.md#device-tokens)).
 
@@ -536,7 +537,7 @@ Each phase ships and is useful on its own.
 
 | # | Phase | Ships | Unblocks |
 | --- | --- | --- | --- |
-| 1 | **Backend enrollment**: `device_enrollments`, the five endpoints, device-token rekey, web admin "Approve a device", audit, capability flag | Server deploy | Any client can enroll |
+| 1 | **Backend enrollment** (done): `device_enrollments`, the five endpoints, device-token rekey, web admin "Approve a device", audit, capability flag | Server deploy | Any client can enroll |
 | 2 | **TV enrollment in LelloStore**: login-screen entry, code/QR screen, polling, `DeviceCredentialStore` (Keystore), legacy file import | LelloStore release | New boxes need no root write. Approve on the web |
 | 3 | **Phone approval**: QR/code entry in the admin area, `APPROVE_DEVICE` action, replace-device choice | LelloStore release | Approve from the phone |
 | 4 | **Provider skeleton**: `CredentialProvider` with `v1.describe` and `v1.beginEnrollment` only, `CallerIdentity`, and the SDK artifact with `status()` / `beginEnrollment()` | LelloStore release + SDK 0.1 | PezzotTV can read real store state |
@@ -546,6 +547,25 @@ Each phase ships and is useful on its own.
 | 8 | **Cleanup and hardening**: delete legacy file reading and the `ProvisionDeviceToken` write, deprecate broker `lellostore.device_token`, grant reporting with remote revoke, Keystore-bound device credential | Several releases | — |
 
 Phases 1–5 fix today's breakage and don't depend on 6–8.
+
+Phase 1 as built ([DEVICE_ENROLLMENT.md](DEVICE_ENROLLMENT.md)) differs from §7.2 in a few
+details:
+
+- There is no `secret_sealed` column and no server key. Approval creates or rekeys the token
+  with an unusable random hash, and the redeeming poll generates the secret and stores only its
+  SHA-256, so no secret is ever at rest. An approval not collected within 10 minutes revokes
+  the token it prepared.
+- The start response also carries RFC 8628's `verification_uri` and
+  `verification_uri_complete` (the web admin's `/admin/device-tokens/approve?code=…`).
+  `verification_payload` is the QR's JSON text.
+- Approval without `group_ids` joins the system `all` group. `[]` means no groups.
+- The 24 h denial cooldown applies to enrollments too: a denial refuses new enrollments from
+  the same address for 24 h unless the administrator unticks it (`block_source=false`).
+- Brute force: creation is limited to 10 per address per 10 minutes and 100 pending overall,
+  and unknown user codes to 10 per administrator per 10 minutes.
+- Unknown or already redeemed device codes answer `invalid_grant`.
+- The publisher's `approve-device` subcommand (decision 6, headless `setup-tv-box.sh --approve`)
+  is not built yet.
 
 ## 13. Open questions
 

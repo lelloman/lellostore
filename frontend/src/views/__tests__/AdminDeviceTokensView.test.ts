@@ -43,6 +43,10 @@ function mountView() {
           props: ['modelValue', 'label'], emits: ['update:modelValue'],
           template: '<input :aria-label="label" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
         },
+        VSwitch: {
+          name: 'VSwitch', props: ['modelValue', 'label'], emits: ['update:modelValue'],
+          template: '<input type="checkbox" :aria-label="label" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />',
+        },
         VSelect: {
           name: 'VSelect', props: ['modelValue', 'label', 'items'], emits: ['update:modelValue'],
           template: '<select :aria-label="label" />',
@@ -66,8 +70,13 @@ describe('AdminDeviceTokensView', () => {
     const text = wrapper.text()
     expect(text).toContain('Living room TV'); expect(text).toContain('all')
     expect(text).toContain('Active'); expect(text).toContain('2026-10-17 11:00:00')
-    expect(text).toContain('Revoked 2026-10-02 10:00:00'); expect(text).toContain('Never')
+    // Revoked tokens are hidden until asked for.
+    expect(text).not.toContain('Old box')
+    await wrapper.find('input[aria-label="Show revoked (1)"]').setValue(true)
+    expect(wrapper.text()).toContain('Revoked 2026-10-02 10:00:00'); expect(wrapper.text()).toContain('Never')
     expect(wrapper.find('button[aria-label="Revoke Old box"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="Delete Old box"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Delete Living room TV"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="secret"]').exists()).toBe(false)
     const manage = wrapper.find('button[aria-label="Manage access of Living room TV"]')
     expect(JSON.parse(manage.attributes('data-to')!)).toEqual({ name: 'access-admin', query: { subject: 'device-token:tok-1' } })
@@ -151,6 +160,40 @@ describe('AdminDeviceTokensView', () => {
     await wrapper.findAll('button').find(b => b.text() === 'Confirm revocation')!.trigger('click'); await flushPromises()
     expect(request).toHaveBeenCalledWith('/api/admin/device-tokens/tok-1', { method: 'DELETE' })
     expect(wrapper.text()).toContain('Token revoked')
+  })
+
+  it('links to approving a device', async () => {
+    const wrapper = mountView(); await flushPromises()
+    const link = wrapper.findAll('button').find(b => b.text() === 'Approve a device')!
+    expect(JSON.parse(link.attributes('data-to')!)).toEqual({ name: 'approve-device-admin' })
+  })
+
+  it('deletes a revoked token after confirmation', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.find('input[aria-label="Show revoked (1)"]').setValue(true)
+    await wrapper.find('button[aria-label="Delete Old box"]').trigger('click')
+    expect(request).toHaveBeenCalledTimes(1)
+    vi.mocked(request).mockResolvedValueOnce(undefined).mockResolvedValueOnce([tokens()[0]])
+    await wrapper.findAll('button').find(b => b.text() === 'Confirm deletion')!.trigger('click'); await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/admin/device-tokens/tok-2/purge', { method: 'POST' })
+    expect(wrapper.text()).toContain('Token deleted')
+    expect(wrapper.text()).not.toContain('Remove all revoked')
+  })
+
+  it('removes all revoked tokens after confirmation', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.findAll('button').find(b => b.text() === 'Remove all revoked')!.trigger('click')
+    expect(wrapper.text()).toContain('Delete all 1 revoked token(s)')
+    vi.mocked(request).mockResolvedValueOnce({ deleted: 1 }).mockResolvedValueOnce([tokens()[0]])
+    await wrapper.findAll('button').find(b => b.text() === 'Confirm removal')!.trigger('click'); await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/admin/device-tokens/purge-revoked', { method: 'POST' })
+    expect(wrapper.text()).toContain('1 revoked token(s) deleted')
+  })
+
+  it('says when only revoked tokens exist', async () => {
+    vi.mocked(request).mockResolvedValue([tokens()[1]])
+    const wrapper = mountView(); await flushPromises()
+    expect(wrapper.text()).toContain('No active device tokens. 1 revoked token(s) are hidden.')
   })
 
   it('shows backend errors', async () => {

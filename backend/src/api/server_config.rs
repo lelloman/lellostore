@@ -34,6 +34,8 @@ struct Clients<'a> {
 struct Capabilities {
     push: bool,
     paravoid: bool,
+    /// Store-native device-code enrollment (`/api/device-enrollments`).
+    device_enrollment: bool,
 }
 
 pub async fn get(State(state): State<AppState>) -> Response {
@@ -69,6 +71,8 @@ pub async fn get(State(state): State<AppState>) -> Response {
             capabilities: Capabilities {
                 push: config.notifications_enabled,
                 paravoid: state.paravoid_signing.is_some(),
+                // Approval needs an administrator, so it needs authentication.
+                device_enrollment: state.auth.is_some(),
             },
         }),
     )

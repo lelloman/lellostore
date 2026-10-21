@@ -194,7 +194,8 @@ async fn run() -> Result<(), BoxError> {
     )?;
     lifecycle.service(
         "http",
-        simple_server::web::serve(listener, app, lifecycle.shutdown()),
+        // Device enrollment quotas are keyed on the client address.
+        simple_server::web::serve_with_connect_info(listener, app, lifecycle.shutdown()),
     )?;
     lifecycle.service(
         "metrics-http",

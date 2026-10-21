@@ -105,30 +105,118 @@ pub async fn create(
 ) -> Result<CreatedDeviceToken, AppError> {
     let name = validate_name(name)?;
     let expires_at = normalize_expiry(expires_at)?;
-    let id = uuid::Uuid::new_v4().to_string();
-    let subject = subject(&id);
     let secret = generate_secret(SECRET_PREFIX)?;
     let mut tx = pool.begin().await?;
-    insert(
+    let id = create_in(
         &mut tx,
         actor,
-        &id,
         name,
-        &hash_secret(&secret),
         &expires_at,
+        group_ids,
+        &hash_secret(&secret),
     )
     .await?;
+    tx.commit().await?;
+    Ok(CreatedDeviceToken {
+        token: get(pool, &id).await?,
+        secret,
+    })
+}
+
+/// Insert a token with an already validated name and expiry and the given
+/// secret hash inside the caller's transaction, register its principal and
+/// join `group_ids` (duplicates ignored). Returns the new token id.
+pub(crate) async fn create_in(
+    conn: &mut SqliteConnection,
+    actor: &str,
+    name: &str,
+    expires_at: &Option<String>,
+    group_ids: &[i64],
+    token_hash: &str,
+) -> Result<String, AppError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let subject = subject(&id);
+    insert(conn, actor, &id, name, token_hash, expires_at).await?;
     let mut seen = Vec::with_capacity(group_ids.len());
     for &group_id in group_ids {
         if seen.contains(&group_id) {
             continue;
         }
         seen.push(group_id);
-        super::admin::apply_membership(&mut tx, actor, group_id, &subject, true).await?;
+        super::admin::apply_membership(conn, actor, group_id, &subject, true).await?;
     }
+    Ok(id)
+}
+
+/// A random hash whose preimage nobody knows: a token holding it cannot
+/// authenticate until a rekey or an enrollment's redemption gives it a real one.
+pub(crate) fn placeholder_hash() -> Result<String, AppError> {
+    Ok(hash_secret(&generate_secret("placeholder_")?))
+}
+
+/// Rekey a token inside the caller's transaction: give it `token_hash`,
+/// clear `revoked_at` and optionally rename it. The id, principal, grants and
+/// group memberships stay the same, so the previous secret stops working and
+/// the device holding the new one keeps everything the old one had. An
+/// expired token cannot be rekeyed.
+pub(crate) async fn rekey_in(
+    conn: &mut SqliteConnection,
+    actor: &str,
+    id: &str,
+    name: Option<&str>,
+    token_hash: &str,
+    details: serde_json::Value,
+) -> Result<(), AppError> {
+    let expired: Option<bool> = sqlx::query_scalar(
+        "SELECT expires_at IS NOT NULL AND expires_at <= datetime('now') FROM device_tokens WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    match expired {
+        None => return Err(AppError::NotFound("Device token not found".into())),
+        Some(true) => {
+            return Err(AppError::BadRequest(
+                "An expired device token cannot be rekeyed".into(),
+            ))
+        }
+        Some(false) => {}
+    }
+    sqlx::query(
+        "UPDATE device_tokens SET token_hash = ?, revoked_at = NULL, name = COALESCE(?, name) WHERE id = ?",
+    )
+    .bind(token_hash)
+    .bind(name)
+    .bind(id)
+    .execute(&mut *conn)
+    .await?;
+    let mut details = details;
+    if let (Some(name), Some(map)) = (name, details.as_object_mut()) {
+        map.insert("name".into(), json!(name));
+    }
+    super::admin::audit(
+        conn,
+        actor,
+        "device_token.rekey",
+        "device_token",
+        id,
+        details,
+    )
+    .await
+}
+
+/// Give a token a new secret (see [`rekey_in`]) and return it once.
+pub async fn rekey(
+    pool: &SqlitePool,
+    actor: &str,
+    id: &str,
+) -> Result<CreatedDeviceToken, AppError> {
+    let secret = generate_secret(SECRET_PREFIX)?;
+    let mut tx = pool.begin().await?;
+    rekey_in(&mut tx, actor, id, None, &hash_secret(&secret), json!({})).await?;
     tx.commit().await?;
     Ok(CreatedDeviceToken {
-        token: get(pool, &id).await?,
+        token: get(pool, id).await?,
         secret,
     })
 }
@@ -214,6 +302,77 @@ pub async fn revoke(pool: &SqlitePool, actor: &str, id: &str) -> Result<DeviceTo
     tx.commit().await?;
     // Revoking an already revoked token is idempotent; an unknown id is 404.
     get(pool, id).await
+}
+
+/// Permanently delete a revoked token. An active token is refused with
+/// `409`: revoke it first. Its principal goes with it: the known-user row,
+/// direct grants and group memberships are deleted, and enrollments that
+/// referenced it forget it. Acquisition and audit history are kept.
+pub async fn purge(pool: &SqlitePool, actor: &str, id: &str) -> Result<(), AppError> {
+    let mut tx = pool.begin().await?;
+    let revoked: Option<bool> =
+        sqlx::query_scalar("SELECT revoked_at IS NOT NULL FROM device_tokens WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    match revoked {
+        None => return Err(AppError::NotFound("Device token not found".into())),
+        Some(false) => {
+            return Err(AppError::Conflict(
+                "Only a revoked device token can be deleted; revoke it first".into(),
+            ))
+        }
+        Some(true) => purge_in(&mut tx, actor, id).await?,
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Delete every revoked token as [`purge`] does and return how many.
+pub async fn purge_revoked(pool: &SqlitePool, actor: &str) -> Result<u64, AppError> {
+    let mut tx = pool.begin().await?;
+    let ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM device_tokens WHERE revoked_at IS NOT NULL")
+            .fetch_all(&mut *tx)
+            .await?;
+    for id in &ids {
+        purge_in(&mut tx, actor, id).await?;
+    }
+    tx.commit().await?;
+    Ok(ids.len() as u64)
+}
+
+async fn purge_in(conn: &mut SqliteConnection, actor: &str, id: &str) -> Result<(), AppError> {
+    let subject = subject(id);
+    let name: String = sqlx::query_scalar("DELETE FROM device_tokens WHERE id = ? RETURNING name")
+        .bind(id)
+        .fetch_one(&mut *conn)
+        .await?;
+    for statement in [
+        "DELETE FROM user_app_grants WHERE user_subject = ?",
+        "DELETE FROM user_app_group_memberships WHERE user_subject = ?",
+        "DELETE FROM known_users WHERE subject = ?",
+    ] {
+        sqlx::query(statement)
+            .bind(&subject)
+            .execute(&mut *conn)
+            .await?;
+    }
+    sqlx::query(
+        "UPDATE device_enrollments SET device_token_id = NULL, state = CASE WHEN state = 'approved' THEN 'expired' ELSE state END WHERE device_token_id = ?",
+    )
+    .bind(id)
+    .execute(&mut *conn)
+    .await?;
+    super::admin::audit(
+        conn,
+        actor,
+        "device_token.delete",
+        "device_token",
+        id,
+        json!({"name": name}),
+    )
+    .await
 }
 
 /// Resolve a presented secret. Returns `None` for unknown, revoked or expired
@@ -371,5 +530,121 @@ mod tests {
             .await
             .unwrap();
         assert!(authenticate(&pool, &secret).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn rekey_issues_a_new_secret_for_the_same_principal() {
+        let pool = pool().await;
+        let tv = group(&pool, "TV").await;
+        let created = create(&pool, "admin", "TV", None, &[tv]).await.unwrap();
+        revoke(&pool, "admin", &created.token.id).await.unwrap();
+        let rekeyed = rekey(&pool, "admin", &created.token.id).await.unwrap();
+        assert_ne!(rekeyed.secret, created.secret);
+        assert_eq!(rekeyed.token.id, created.token.id);
+        assert!(rekeyed.token.revoked_at.is_none());
+        assert_eq!(rekeyed.token.groups, created.token.groups);
+        assert!(authenticate(&pool, &created.secret)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(authenticate(&pool, &rekeyed.secret)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(matches!(
+            rekey(&pool, "admin", "missing").await,
+            Err(AppError::NotFound(_))
+        ));
+        sqlx::query("UPDATE device_tokens SET expires_at = datetime('now', '-1 minute')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            rekey(&pool, "admin", &created.token.id).await,
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    async fn principal_rows(pool: &SqlitePool, subject: &str) -> (i64, i64, i64) {
+        let count = |sql: &'static str| async move {
+            sqlx::query_scalar::<_, i64>(sql)
+                .bind(subject)
+                .fetch_one(pool)
+                .await
+                .unwrap()
+        };
+        (
+            count("SELECT COUNT(*) FROM known_users WHERE subject = ?").await,
+            count("SELECT COUNT(*) FROM user_app_grants WHERE user_subject = ?").await,
+            count("SELECT COUNT(*) FROM user_app_group_memberships WHERE user_subject = ?").await,
+        )
+    }
+
+    #[tokio::test]
+    async fn only_revoked_tokens_are_deleted_with_their_principal() {
+        let pool = pool().await;
+        let tv = group(&pool, "TV").await;
+        sqlx::query("INSERT INTO apps (package_name, name) VALUES ('com.example.tv', 'TV')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let created = create(&pool, "admin", "TV", None, &[tv]).await.unwrap();
+        let subject = created.token.subject.clone();
+        crate::db::admin::set_direct_grant(
+            &pool,
+            "admin",
+            &subject,
+            "com.example.tv",
+            crate::db::access::AppAccessLevel::Stable,
+        )
+        .await
+        .unwrap();
+        assert_eq!(principal_rows(&pool, &subject).await, (1, 1, 1));
+        assert!(matches!(
+            purge(&pool, "admin", &created.token.id).await,
+            Err(AppError::Conflict(_))
+        ));
+        assert!(get(&pool, &created.token.id).await.is_ok());
+        revoke(&pool, "admin", &created.token.id).await.unwrap();
+        purge(&pool, "admin", &created.token.id).await.unwrap();
+        assert!(matches!(
+            get(&pool, &created.token.id).await,
+            Err(AppError::NotFound(_))
+        ));
+        assert_eq!(principal_rows(&pool, &subject).await, (0, 0, 0));
+        assert!(matches!(
+            purge(&pool, "admin", &created.token.id).await,
+            Err(AppError::NotFound(_))
+        ));
+        let details: String = sqlx::query_scalar(
+            "SELECT details_json FROM access_audit_log WHERE action = 'device_token.delete'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(details, r#"{"name":"TV"}"#);
+    }
+
+    #[tokio::test]
+    async fn purge_revoked_keeps_active_tokens() {
+        let pool = pool().await;
+        let active = create(&pool, "admin", "Active", None, &[]).await.unwrap();
+        for name in ["Xiaomi TV Box", "Xiaomi TV Box", "Xiaomi TV Box"] {
+            let token = create(&pool, "admin", name, None, &[]).await.unwrap();
+            revoke(&pool, "admin", &token.token.id).await.unwrap();
+        }
+        assert_eq!(purge_revoked(&pool, "admin").await.unwrap(), 3);
+        assert_eq!(purge_revoked(&pool, "admin").await.unwrap(), 0);
+        let remaining = list(&pool).await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, active.token.id);
+        assert!(authenticate(&pool, &active.secret).await.unwrap().is_some());
+        let deletes: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM access_audit_log WHERE action = 'device_token.delete'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(deletes, 3);
     }
 }

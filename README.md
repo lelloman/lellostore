@@ -332,6 +332,17 @@ administrator or publishing routes.
    a provisioned token file and then starts straight into the catalog; see the
    Android client documentation for the file format.
 
+Instead of creating and copying a token, a device can **enroll itself by device
+code**: it calls `POST /api/device-enrollments`, shows the returned user code
+(for example `WDJB-MJHT`) and polls `POST /api/device-enrollments/poll`. An
+administrator opens **Device tokens → Approve a device** (or the
+`verification_uri_complete` link), checks the request, and approves it either as
+a new device (joining the `all` group unless other groups are chosen) or as a
+replacement for an existing token, which is rekeyed and keeps its grants and
+groups. The device's next poll receives its `device-token.json`, once. See
+[device enrollment](docs/DEVICE_ENROLLMENT.md) for the endpoints, errors and
+limits. The Android client does not use enrollment yet.
+
 Another app on an administrator's phone (for example a TV-box setup app) can also ask the
 LelloStore Android client to create a token: the client shows one confirmation screen and
 returns the same `device-token.json`. See [credential requests from other apps](docs/CREDENTIAL_BROKER.md).
@@ -342,7 +353,14 @@ curl -H "Authorization: Bearer lellostore_dev_..." https://store.example.com/api
 
 Revoking the token in the admin UI takes effect immediately (`401`); the
 principal's grants are kept, but a new token is a new principal and needs its
-own grants. Device tokens do not register for push notifications; the client
+own grants. To give a reset device its old principal back, rekey the token
+(`POST /api/admin/device-tokens/{id}/rekey`, or approve its enrollment as a
+replacement). The **Device tokens** page hides revoked tokens unless **Show
+revoked** is on; a revoked token can be deleted for good (**Delete**, or
+`POST /api/admin/device-tokens/{id}/purge`), together with its grants and group
+memberships, and **Remove all revoked**
+(`POST /api/admin/device-tokens/purge-revoked`) deletes them all. Active tokens
+must be revoked before they can be deleted. Device tokens do not register for push notifications; the client
 falls back to its periodic update checks.
 
 ## Verification

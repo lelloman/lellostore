@@ -28,7 +28,8 @@ The proposed first release supports one active Android store and external OIDC a
   },
   "capabilities": {
     "push": false,
-    "paravoid": false
+    "paravoid": false,
+    "device_enrollment": true
   }
 }
 ```
