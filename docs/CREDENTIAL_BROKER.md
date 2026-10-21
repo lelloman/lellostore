@@ -58,7 +58,10 @@ no whitespace (only the token below is fake):
 ```
 
 `server_url` is the store LelloStore is signed in to. The new token's principal is
-`device-token:<id>` with no grants or groups; grant it apps as described in the README.
+`device-token:<id>`. With `REPLACE_EXISTING` it takes over the access of the tokens it
+replaces (see [Behaviour](#behaviour)); otherwise, and when they had no access, it joins the
+server's `all` system group so the device does not start with an empty catalogue. Narrow it
+afterwards as described in the README if the device should see less.
 Treat the result as a secret: do not log it, and store it only where the device needs it.
 
 ### Caller example
@@ -124,9 +127,20 @@ A caller targeting Android 11+ also needs to see LelloStore:
 - **Hardening**: exported but confirmation-gated; `excludeFromRecents`, empty `taskAffinity`;
   touches are dropped while another window obscures it (`filterTouchesWhenObscured`) and
   other apps' overlays are hidden on Android 12+ (`setHideOverlayWindows`).
+- **Access of a new device token.** With `REPLACE_EXISTING`, LelloStore lists the tokens before
+  creating the new one: the new token joins the union of the app groups of the unrevoked tokens
+  with exactly the same name (in the create request, so atomically) and then receives the union
+  of their direct app grants (`beta` wins over `stable` for the same app). When there is
+  nothing to take over (the first token for that name, a request without `REPLACE_EXISTING`,
+  or earlier tokens without groups or grants) it joins the `all` system group, if the server
+  has one. If the earlier access cannot be read completely (listing tokens, one token's grants
+  or the groups fails), the token is still issued with what could be read and never falls back
+  to `all`, so a failed read cannot widen a device's access; an administrator completes it on
+  the web. The caller is not told: the result contract is unchanged and the caller could not
+  fix access anyway. The local log records `credential.device_token.access` with counts only.
 - **Replacing device tokens** is best effort. Older means created no later than the new token
   (server times have one-second resolution); revoked tokens, other names and newer tokens are
-  left alone. If listing or a revocation fails the new token is still returned.
+  left alone. If listing, a revocation or applying a grant fails the new token is still returned.
 
 ## Adding a credential type
 
