@@ -26,7 +26,7 @@ import org.robolectric.annotation.Config
 import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [30], application = Application::class)
 class CommunicationLoggingTest {
     @get:Rule val temporary = TemporaryFolder()
     private fun audit(): AuditLog {

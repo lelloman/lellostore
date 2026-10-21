@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -21,7 +22,7 @@ val localProperties = Properties().apply {
 val brokerDevIssuer = providers.gradleProperty("brokerDevIssuer").orElse(localProperties.getProperty("broker.dev.issuer", "")).get()
 val brokerDebugEnabled = providers.gradleProperty("brokerEnabled").orElse(localProperties.getProperty("broker.enabled", "false")).get().toBooleanStrict()
 require(brokerDevIssuer.isEmpty() || brokerDevIssuer.matches(Regex("https://[A-Za-z0-9.-]+(:[0-9]+)?")))
-check(!brokerDebugEnabled || (java.net.URI(brokerDevIssuer).let {
+check(!brokerDebugEnabled || (URI(brokerDevIssuer).let {
     it.scheme == "https" && !it.host.isNullOrBlank() && !it.host.equals("auth.lelloman.com", ignoreCase = true) && it.rawPath.isNullOrEmpty() &&
         it.rawQuery == null && it.rawFragment == null && it.rawUserInfo == null
 })) { "Broker debug opt-in requires a separate HTTPS broker.dev.issuer" }
@@ -111,7 +112,7 @@ android {
         debug {
             // Keep experimental builds separate from the installed LelloStore app.
             applicationIdSuffix = ".debug"
-            manifestPlaceholders["authHost"] = if (brokerDebugEnabled) java.net.URI(brokerDevIssuer).host else "unconfigured.invalid"
+            manifestPlaceholders["authHost"] = if (brokerDebugEnabled) URI(brokerDevIssuer).host else "unconfigured.invalid"
             manifestPlaceholders["brokerEnabled"] = brokerDebugEnabled.toString()
             buildConfigField("boolean", "SIGN_IN_BROKER_ENABLED", brokerDebugEnabled.toString())
             buildConfigField("String", "SIGN_IN_BROKER_ISSUER", "\"$brokerDevIssuer\"")

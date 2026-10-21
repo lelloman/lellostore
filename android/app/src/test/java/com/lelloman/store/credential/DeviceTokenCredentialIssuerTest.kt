@@ -20,7 +20,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [30], application = Application::class)
 class DeviceTokenCredentialIssuerTest {
 
     private val api = FakeDeviceTokenAdminApi()

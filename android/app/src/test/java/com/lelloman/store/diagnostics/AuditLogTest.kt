@@ -18,7 +18,7 @@ import org.robolectric.annotation.ConscryptMode
 
 @RunWith(RobolectricTestRunner::class)
 @ConscryptMode(ConscryptMode.Mode.OFF)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [30], application = Application::class)
 class AuditLogTest {
     @get:Rule val temporary = TemporaryFolder()
 

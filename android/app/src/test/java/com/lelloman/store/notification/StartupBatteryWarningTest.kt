@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [24, 28])
+@Config(application = Application::class, sdk = [30])
 class StartupBatteryWarningTest {
     private val context get() = RuntimeEnvironment.getApplication()
 

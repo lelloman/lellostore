@@ -9,7 +9,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [28, 34])
+@Config(application = Application::class, sdk = [30, 34])
 class UnifiedPushReceiverTest {
     private fun request(action: String = "REGISTER") = Intent("org.unifiedpush.android.distributor.$action").putExtra("token", "unguessable-token")
     @Test fun missingTokenAndWrongTypesAreIgnored() {
