@@ -6,6 +6,10 @@ import com.lelloman.store.domain.api.RemoteApiClient
 import com.lelloman.store.domain.auth.AuthStore
 import com.lelloman.store.domain.auth.SessionExpiredHandler
 import com.lelloman.store.domain.config.ConfigStore
+import com.lelloman.store.domain.enrollment.DeviceEnrollmentAdminApi
+import com.lelloman.store.domain.enrollment.DeviceEnrollmentApi
+import com.lelloman.store.remoteapi.DeviceEnrollmentAdminApiImpl
+import com.lelloman.store.remoteapi.DeviceEnrollmentApiImpl
 import com.lelloman.store.remoteapi.DeviceTokenAdminApiImpl
 import com.lelloman.store.remoteapi.RemoteApiClientImpl
 import dagger.Module
@@ -21,6 +25,7 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -90,5 +95,41 @@ object RemoteApiModule {
     ): DeviceTokenAdminApi = DeviceTokenAdminApiImpl(
         httpClient = httpClient,
         baseUrlProvider = { configStore.serverUrl.value },
+    )
+
+    @Provides
+    @Singleton
+    fun provideDeviceEnrollmentAdminApi(
+        httpClient: HttpClient,
+        configStore: ConfigStore,
+    ): DeviceEnrollmentAdminApi = DeviceEnrollmentAdminApiImpl(
+        httpClient = httpClient,
+        baseUrlProvider = { configStore.serverUrl.value },
+    )
+
+    /**
+     * Enrollment runs before the device has a credential and must never send one: its client has
+     * no auth or session-expiry interceptor, no request logging (the body carries the device code)
+     * and follows no redirects.
+     */
+    @Provides
+    @Singleton
+    fun provideDeviceEnrollmentApi(
+        json: Json,
+        auditLog: com.lelloman.store.logger.AuditLog,
+    ): DeviceEnrollmentApi = DeviceEnrollmentApiImpl(
+        HttpClient(OkHttp) {
+            engine {
+                preconfigured = OkHttpClient.Builder()
+                    .addInterceptor(com.lelloman.store.remoteapi.AuditHttpInterceptor(auditLog))
+                    .followRedirects(false)
+                    .followSslRedirects(false)
+                    .callTimeout(20, TimeUnit.SECONDS)
+                    .build()
+            }
+            install(ContentNegotiation) {
+                json(json)
+            }
+        },
     )
 }

@@ -8,6 +8,8 @@ data class ServerMetadata(
     val oidc: OidcConfig,
     val push: Boolean,
     val paravoid: Boolean,
+    /** `capabilities.device_enrollment`: a device can enroll itself by device code. */
+    val deviceEnrollment: Boolean = false,
 )
 
 interface ServerDiscovery {

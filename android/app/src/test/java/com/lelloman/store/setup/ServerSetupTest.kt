@@ -64,6 +64,12 @@ class ServerSetupTest {
         assertThat(result.oidc.issuerUrl).isEqualTo("https://identity.example/realm")
         assertThat(result.oidc.clientId).isEqualTo("independent-client")
         assertThat(result.push).isFalse()
+        assertThat(result.deviceEnrollment).isFalse()
+    }
+
+    @Test fun `device enrollment capability is read when advertised`() {
+        val root = metadata().apply { getJSONObject("capabilities").put("device_enrollment", true) }
+        assertThat(HttpServerDiscovery(null).parse(root).deviceEnrollment).isTrue()
     }
 
     @Test fun `unsupported or insecure metadata is rejected`() {

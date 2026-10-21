@@ -75,6 +75,8 @@ class HttpServerDiscovery @Inject constructor(
         }) { "Invalid sign-in scopes" }
         val capabilities = root.getJSONObject("capabilities")
         return ServerMetadata(name, OidcConfig(issuer, clientId, "com.lelloman.store:/oauth2redirect", scopes),
-            capabilities.getBoolean("push"), capabilities.getBoolean("paravoid"))
+            capabilities.getBoolean("push"), capabilities.getBoolean("paravoid"),
+            // Absent before servers that implement device enrollment.
+            capabilities.optBoolean("device_enrollment", false))
     }
 }
