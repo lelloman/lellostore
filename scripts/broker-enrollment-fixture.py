@@ -108,6 +108,8 @@ enabled = false
                         pass
                     def do_GET(self):
                         self.forward()
+                    def do_PATCH(self):
+                        self.forward()
                     def do_POST(self):
                         self.forward()
                     def forward(self):
@@ -142,14 +144,15 @@ enabled = false
                 test_env = os.environ.copy()
                 test_env['ANDROID_SERIAL'] = args.serial
                 subprocess.run([str(STORE_ROOT / 'android/gradlew'), '-p', str(STORE_ROOT / 'android'),
-                                ':app:connectedDebugAndroidTest', '-PbrokerEnabled=true', '-PbrokerDevIssuer=https://localhost:19443',
+                                ':app:connectedDebugAndroidTest', '--max-workers=4', '-PbrokerEnabled=true', '-PbrokerDevIssuer=https://localhost:19443',
                                 f'-PbrokerFixtureCaPath={work}/tls.pem',
                                 '-Pandroid.testInstrumentationRunnerArguments.class=com.lelloman.store.auth.ServerEnrollmentDeviceTest',
                                 '-Pandroid.testInstrumentationRunnerArguments.localEnrollment=true'], env=test_env, check=True)
                 with sqlite3.connect(work / 'auth.db') as db:
                     assert db.execute('SELECT COUNT(*), COUNT(DISTINCT user_id) FROM authenticator_devices').fetchone() == (2, 2)
                     assert db.execute("SELECT COUNT(*) FROM authenticator_transactions WHERE status='approved'").fetchone() == (2,)
-                print('Two accounts enrolled without prompts; one tap-only and one prompt-gated native OAuth approval completed.')
+                    assert db.execute("SELECT COUNT(*) FROM authenticator_devices WHERE revoked_at IS NOT NULL").fetchone() == (1,)
+                print('Two accounts enrolled; approvals completed; PIN-gated rename/self-revoke and local disconnect verified.')
             finally:
                 if reverse:
                     subprocess.run(adb + ['reverse', '--remove', 'tcp:19443'], check=False)

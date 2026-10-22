@@ -18,6 +18,8 @@ import com.lelloman.authenticator.domain.*
 import com.lelloman.authenticator.localdata.AccountStore
 import com.lelloman.authenticator.localdata.PhoneKey
 import com.lelloman.authenticator.remoteapi.EnrollmentApi
+import com.lelloman.authenticator.remoteapi.DevicesApi
+import com.lelloman.authenticator.remoteapi.BrokerCredentialExpired
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -109,6 +111,7 @@ class ServerEnrollmentDeviceTest {
             nativeApproval(requirePrompt = true)
             exchange(checkNotNull(first))
             nativeApproval(requirePrompt = false, expireOnly = true)
+            manageDevices(accounts, store)
         } finally {
             runCatching { settings.setRequireUserAuthenticationForApproval(false) }
             store.update { originalAccounts }
@@ -126,6 +129,51 @@ class ServerEnrollmentDeviceTest {
         return net.openid.appauth.AuthorizationRequest.Builder(configuration, "android-native-fixture", "code",
             android.net.Uri.parse("lelloauth-fixture:/callback")).setScopes("openid", "profile", "email").build()
     }
+    private fun manageDevices(accounts: List<ConnectedAccount>, store: AccountStore) {
+        val account = accounts.first()
+        val other = accounts.last()
+        val api = DevicesApi(account, "lello-authenticator")
+        assertEquals(listOf(account.id), api.list().devices.map { it.id })
+        assertEquals(listOf(other.id), DevicesApi(other, "lello-authenticator").list().devices.map { it.id })
+        assertTrue(runCatching { api.rename(other.id, "Foreign phone") }.isFailure)
+        assertTrue(runCatching { api.challenge(other.id, System.currentTimeMillis()/1000) }.isFailure)
+        settingsOffForManagement()
+        ActivityScenario.launch(BrokerAccountsActivity::class.java).use { scenario ->
+            lateinit var model: AccountsModel
+            scenario.onActivity { model = ViewModelProvider(it)[AccountsModel::class.java]; model.showDevices(account.id) }
+            compose.waitUntil(15000) { !model.state.loading }
+            assertEquals(listOf(account.id), model.state.devices.map { it.id })
+            compose.onNodeWithText("Rename", useUnmergedTree = true).performScrollTo().performClick()
+            compose.onNode(hasSetTextAction()).performTextReplacement("Renamed emulator")
+            compose.onNodeWithText("Confirm device change", useUnmergedTree = true).performClick()
+            assertNotNull("Management requires PIN even with approval biometrics off", pinPrompt())
+            device.pressBack()
+            compose.waitUntil(10000) { !model.authenticationPending }
+            assertNotEquals("Renamed emulator", api.list().devices.single().name)
+            compose.onNodeWithText("Rename", useUnmergedTree = true).performScrollTo().performClick()
+            compose.onNode(hasSetTextAction()).performTextReplacement("Renamed emulator")
+            compose.onNodeWithText("Confirm device change", useUnmergedTree = true).performClick()
+            checkNotNull(pinPrompt()).text = "2468"; device.pressEnter()
+            compose.waitUntil(15000) { !model.state.loading && model.state.devices.singleOrNull()?.name == "Renamed emulator" }
+            assertEquals("Renamed emulator", api.list().devices.single().name)
+            compose.onNodeWithText("Revoke", useUnmergedTree = true).performScrollTo().performClick()
+            compose.onNodeWithText("Confirm device change", useUnmergedTree = true).performClick()
+            checkNotNull(pinPrompt()).text = "2468"; device.pressEnter()
+            compose.waitUntil(15000) { !model.state.loading && model.state.accounts.none { it.id == account.id } }
+            assertNull(model.state.devicesAccount)
+            assertEquals(listOf(other.id), store.load().accounts.map { it.id })
+            assertTrue(runCatching { api.list() }.exceptionOrNull() is BrokerCredentialExpired)
+            assertTrue(runCatching { EnrollmentApi(account.issuer, "lello-authenticator").refresh(account) }.exceptionOrNull() is BrokerCredentialExpired)
+            scenario.onActivity { model.showDevices(other.id) }
+            compose.waitUntil(15000) { !model.state.loading }
+            assertEquals(listOf(other.id), model.state.devices.map { it.id })
+            scenario.onActivity { model.disconnect(other.id) }
+            assertTrue(store.load().accounts.isEmpty())
+            scenario.onActivity { model.foreground() }
+            assertTrue(model.state.accounts.isEmpty())
+        }
+    }
+    private fun settingsOffForManagement() { LelloAuthBroker.settings(context).setRequireUserAuthenticationForApproval(false) }
     private data class Approved(val code: String, val verifier: String)
     private fun nativeApproval(requirePrompt: Boolean, expireOnly: Boolean = false): Approved? {
         val verifier = EnrollmentProtocol.random()
