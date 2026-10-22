@@ -1,7 +1,7 @@
 # Embedded sign-in broker
 
 LelloStore embeds the LelloAuth broker from the `vendor/lello-auth` git submodule,
-pinned to `9c7bd0af084cf194d4c969291b4424ff126e5dc7`. Initialize it with:
+pinned to `2b189d72f412b2f372235724923f0263499c4602`. Initialize it with:
 
 ```sh
 git submodule update --init --recursive
@@ -43,7 +43,13 @@ later under Settings → Accounts. The library provides hosted enrollment,
 connected account selection/disconnect, and an explicit approval screen. The
 fingerprint/PIN toggle reads and writes `LelloAuthBroker.settings`, defaults off,
 and reports a storage failure without pretending the setting was saved. Device
-listing/revocation is deferred to AUTH-17.
+management is available per connected account through its Devices button.
+Rename and revoke require an explicit confirmation and a fresh phone credential
+prompt even with the approval toggle off; with it on, strong biometric or phone
+credential is accepted. Disconnect deletes local credentials and the phone key.
+Successful self-revocation performs the same local cleanup; expired or revoked
+broker credentials require reconnecting. Revoked devices stay visible with
+mutations disabled. Lists clear on account selection and backgrounding.
 
 LelloStore itself sends the unchanged AppAuth request to the explicit embedded
 broker activity. AppAuth's public `createStartForResultIntent` API manages its
@@ -120,3 +126,23 @@ caller (AUTH-25), store logout/re-login through the broker, and token refresh in
 both apps. Verify disabled/no-connected-account browser behavior, cancellation,
 revocation, offline retry and App Links for both signing identities. AUTH-22 owns
 production enablement and real biometric/device evidence.
+
+
+AUTH-17 device-management reproduction (isolated emulator only): run the server
+fixture above against the pinned broker/server source. It now checks per-account
+device isolation, cross-account mutation rejection, cancelled PIN confirmation,
+PIN-confirmed rename and self-revoke in the real LelloStore Accounts activity,
+rejection of the revoked access/refresh credentials, and local disconnect of the
+remaining account. The HTTPS fixture forwards PATCH and asserts exactly one
+server registration was revoked. The test PIN is `2468`.
+
+For manual qualification, open Settings → Accounts with two connected synthetic
+accounts. Open Devices on each and verify only that account's devices appear.
+Rename a phone: cancel the system prompt once (no change), then confirm it.
+Revoke a second registration and refresh to see Revoked; revoke this phone and
+verify its account disappears and is no longer offered for sign-in. Repeat with
+the biometric toggle on and off. Revoke or invalidate a connection from another
+session, then refresh its Devices list: a reconnect message replaces the expired
+connection. Disconnect the other account and verify a new sign-in uses browser
+fallback. Offline rename/revoke must report failure and allow a fresh attempt.
+Production features remain disabled pending AUTH-22.
