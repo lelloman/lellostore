@@ -36,11 +36,19 @@ import androidx.lifecycle.ViewModelProvider
 import com.lelloman.authenticator.broker.AccountsModel
 import com.lelloman.authenticator.broker.BrokerAccountsScreen
 import com.lelloman.authenticator.broker.LelloAuthBroker
+import com.lelloman.store.domain.preferences.UserPreferencesStore
 import com.lelloman.store.ui.R
+import com.lelloman.store.ui.model.ThemeMode
 import com.lelloman.store.ui.theme.LellostoreTheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import com.lelloman.store.domain.preferences.ThemeMode as DomainThemeMode
 
 /** Non-exported settings surface; only the library's validated link activity is exported. */
+@AndroidEntryPoint
 class BrokerAccountsActivity : FragmentActivity() {
+    @Inject lateinit var userPreferencesStore: UserPreferencesStore
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,8 +57,9 @@ class BrokerAccountsActivity : FragmentActivity() {
         val settings = LelloAuthBroker.settings(this)
         setContent {
             val requireAuthentication by settings.requireUserAuthenticationForApproval.collectAsState()
+            val themeMode by userPreferencesStore.themeMode.collectAsState()
             var failed by remember { mutableStateOf(false) }
-            LellostoreTheme {
+            LellostoreTheme(themeMode = themeMode.toUiModel()) {
                 Scaffold(
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
@@ -116,5 +125,11 @@ class BrokerAccountsActivity : FragmentActivity() {
     override fun onStop() {
         if (LelloAuthBroker.isConfigured) ViewModelProvider(this)[AccountsModel::class.java].background()
         super.onStop()
+    }
+
+    private fun DomainThemeMode.toUiModel(): ThemeMode = when (this) {
+        DomainThemeMode.System -> ThemeMode.System
+        DomainThemeMode.Light -> ThemeMode.Light
+        DomainThemeMode.Dark -> ThemeMode.Dark
     }
 }

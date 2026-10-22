@@ -1,7 +1,7 @@
 # Embedded sign-in broker
 
 LelloStore embeds the LelloAuth broker from the `vendor/lello-auth` git submodule,
-pinned to `72cfdcb221cc684f40e49d7f6e4ea3d08093cf73`. Initialize it with:
+pinned to `d89fe69da8880eba58429ab1fea1d34bc921d5a2`. Initialize it with:
 
 ```sh
 git submodule update --init --recursive
