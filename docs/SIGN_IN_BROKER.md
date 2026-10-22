@@ -1,7 +1,7 @@
 # Embedded sign-in broker
 
 LelloStore embeds the LelloAuth broker from the `vendor/lello-auth` git submodule,
-pinned to `2b189d72f412b2f372235724923f0263499c4602`. Initialize it with:
+pinned to `d89fe69da8880eba58429ab1fea1d34bc921d5a2`. Initialize it with:
 
 ```sh
 git submodule update --init --recursive
@@ -11,6 +11,13 @@ Gradle `includeBuild` isolates its project names from the store's domain,
 localdata and remoteapi modules. CI initializes the same gitlink. Kotlin/KSP and
 Hilt are aligned with the broker's Kotlin 2.2 metadata. The host now requires
 Android 11 (API 30), as specified by AUTH-1 and the broker library.
+
+The broker screens are reviewed for daily use in AUTH-21: LelloStore visual
+tokens, English/Italian copy, light/dark themes, 48 dp targets, large-text and
+landscape wrapping, a coarse screen-reader countdown, and cancellation after an
+expired approval returning to the caller. Synthetic screenshot fixtures live in
+LelloAuth's debug source set (`broker/src/debug/.../BrokerPreviews.kt`); they are
+not part of a release build.
 
 Production broker enrollment and approval remain disabled, including the
 exported App Link activity and the Accounts settings entry. Enabling production

@@ -92,6 +92,8 @@
     <string name="hide_technical_details">Nascondi dettagli tecnici</string>
     <string name="download_cancelled_hint">L’installazione è stata annullata. Puoi riavviarla quando vuoi.</string>
     <string name="download_permission_required">Permesso richiesto</string>
+    <string name="download_awaiting_confirmation">In attesa di conferma</string>
+    <string name="download_awaiting_confirmation_hint">Conferma l’installazione nell’installer di Android. Questa pagina si aggiorna al termine.</string>
     <string name="content_description_cancel_download">Annulla download</string>
 
     <!-- Permission Required Section -->

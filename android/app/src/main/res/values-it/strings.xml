@@ -14,6 +14,7 @@
     <string name="operation_failed">Fallito</string>
     <string name="operation_cancelled">Annullato</string>
     <string name="operation_permission_required">Permesso richiesto</string>
+    <string name="operation_awaiting_confirmation">In attesa di conferma</string>
     <plurals name="operation_updating_apps">
         <item quantity="one">Aggiornamento di %1$d app</item>
         <item quantity="many">Aggiornamento di %1$d app</item>
@@ -47,6 +48,25 @@
     <string name="notification_self_update_completed_text">L\'aggiornamento è installato e in esecuzione.</string>
     <string name="notification_unprotected_self_update_title">LelloStore aggiornato senza protezione di ripristino</string>
     <string name="notification_unprotected_self_update_text">Il companion di recupero non ha potuto preparare un ripristino (%1$s). Se questa versione non funziona, non potrà essere ripristinata automaticamente. Tocca per controllare la configurazione del recupero.</string>
+    <plurals name="notification_updates_available_stable">
+        <item quantity="one">%1$d aggiornamento stabile disponibile</item>
+        <item quantity="many">%1$d aggiornamenti stabili disponibili</item>
+        <item quantity="other">%1$d aggiornamenti stabili disponibili</item>
+    </plurals>
+    <plurals name="notification_updates_available_beta">
+        <item quantity="one">%1$d aggiornamento beta disponibile</item>
+        <item quantity="many">%1$d aggiornamenti beta disponibili</item>
+        <item quantity="other">%1$d aggiornamenti beta disponibili</item>
+    </plurals>
+    <plurals name="notification_updates_available_mixed">
+        <item quantity="one">%1$d aggiornamento stabile e beta disponibile</item>
+        <item quantity="many">%1$d aggiornamenti stabili e beta disponibili</item>
+        <item quantity="other">%1$d aggiornamenti stabili e beta disponibili</item>
+    </plurals>
+    <string name="notification_updates_available_text">Tocca per vedere e installare gli aggiornamenti</string>
+    <string name="notification_operation_outcome_installed">Installato</string>
+    <string name="notification_operation_outcome_failed">Installazione non riuscita: %1$s</string>
+    <string name="notification_operation_outcome_failed_no_reason">Installazione non riuscita</string>
     <!-- Credential type lellostore.device_token -->
     <string name="credential_device_token_title">Creare un token dispositivo?</string>
     <string name="credential_device_token_message">%1$s chiede un token dispositivo LelloStore per “%2$s”. Il dispositivo potrà installare e aggiornare le app del tuo store.</string>
