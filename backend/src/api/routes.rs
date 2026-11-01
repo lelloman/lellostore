@@ -7,7 +7,7 @@ use simple_server::web::{
 };
 
 use super::{events, handlers, static_files, AppState};
-use crate::auth::{auth_middleware, AuthState};
+use crate::auth::{auth_middleware, require_auth_ready, AuthSlot};
 use crate::metrics::track_metrics;
 
 pub fn create_router(state: AppState) -> Router {
@@ -52,10 +52,17 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
         );
 
     router = router.merge(crate::notifications::api::routes());
-    // Device enrollment is unauthenticated: the device has no credential yet.
-    // Requests are small, and creation is quota-limited per source address.
-    // Without authentication nobody could approve, so it is not offered.
-    if state.auth.is_some() {
+    if allow_unauthenticated_for_tests && !state.auth.is_ready() {
+        router = router.nest("/api", public_routes());
+    } else {
+        // Authentication is mandatory. The routes are always mounted, and
+        // fail closed with 503 until OIDC initialization succeeds, which may
+        // happen after startup (see `auth::init_auth_until_ready`).
+        let auth = state.auth.clone();
+        // Device enrollment is unauthenticated: the device has no credential
+        // yet. Requests are small, and creation is quota-limited per source
+        // address. Without authentication nobody could approve, so it is
+        // refused until authentication is ready.
         router = router.merge(
             Router::new()
                 .route(
@@ -66,25 +73,16 @@ fn create_router_inner(state: AppState, allow_unauthenticated_for_tests: bool) -
                     "/api/device-enrollments/poll",
                     post(super::device_enrollments::poll),
                 )
-                .layer(simple_server::body_limit::BodyLimit::max(4096)),
+                .layer(simple_server::body_limit::BodyLimit::max(4096))
+                .layer(middleware::from_fn_with_state(
+                    auth.clone(),
+                    require_auth_ready,
+                )),
         );
-    }
-
-    // Add protected routes if auth is configured
-    if let Some(auth_state) = &state.auth {
         // User routes require authentication (any valid user)
-        router = router.nest("/api", user_routes(auth_state.clone()));
+        router = router.nest("/api", user_routes(auth.clone()));
         // Admin routes require authentication AND admin role
-        router = router.nest(
-            "/api/admin",
-            admin_routes(auth_state.clone(), max_upload_size),
-        );
-    } else if allow_unauthenticated_for_tests {
-        router = router.nest("/api", public_routes());
-    } else {
-        // Authentication is mandatory. If initialization failed, keep health
-        // and static assets available but never expose catalog contents.
-        router = router.nest("/api", Router::new().fallback(handlers::auth_unavailable));
+        router = router.nest("/api/admin", admin_routes(auth, max_upload_size));
     }
 
     // Add static file serving for embedded frontend
@@ -113,7 +111,7 @@ fn public_routes() -> Router<AppState> {
 }
 
 /// User API routes (requires authentication, any valid user)
-fn user_routes(auth_state: AuthState) -> Router<AppState> {
+fn user_routes(auth_state: AuthSlot) -> Router<AppState> {
     Router::new()
         .route(
             "/apps/{package_name}/acquisitions",
@@ -144,7 +142,7 @@ fn user_routes(auth_state: AuthState) -> Router<AppState> {
 /// `POST /apps/{package}/publications`, `GET /apps/{package}/distribution`,
 /// `POST /apps/{package}/contracts/{contract}/vpks`,
 /// `POST /apps/{package}/vpks/{id}/publish` and `GET /uploads/{id}`.
-fn admin_routes(auth_state: AuthState, max_upload_size: u64) -> Router<AppState> {
+fn admin_routes(auth_state: AuthSlot, max_upload_size: u64) -> Router<AppState> {
     let multipart_body_limit = max_upload_size
         .saturating_add(1024 * 1024)
         .min(usize::MAX as u64) as usize;

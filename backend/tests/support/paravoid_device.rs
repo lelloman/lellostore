@@ -24,9 +24,13 @@ async fn store_backed_https_bootstrap_revocation_and_repair() {
     let config = scratch.path().join("signing.json");
     std::fs::write(&config, json!({"version":1,"baseUrl":"https://127.0.0.1:18765/","headKeys":{"head":"head.der"},"grantKeys":{"grant":"grant.der"},"activeHeadKey":"head","activeGrantKey":"grant"}).to_string()).unwrap();
     let signing = Arc::new(OnlineSigning::load(&config).unwrap());
-    let (ctx, oidc) =
-        super::create_auth_test_context_options(Default::default(), Some(signing), Some(&sdk))
-            .await;
+    let (ctx, oidc) = super::create_auth_test_context_options(
+        Default::default(),
+        Some(signing),
+        Some(&sdk),
+        None,
+    )
+    .await;
     let worker = UploadService::new(
         StorageService::new(ctx.storage_path.clone()),
         ApkParser::new(sdk.join("build-tools/36.0.0/aapt2")),

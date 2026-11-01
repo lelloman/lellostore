@@ -131,7 +131,7 @@ async fn create_test_context_inner(
         paravoid_signing: signing,
         db: pool.clone(),
         config: Arc::new(config),
-        auth: None, // No auth for tests by default
+        auth: lellostore_backend::auth::AuthSlot::empty(), // No auth for tests by default
         upload_service,
         storage,
         catalog_events: Default::default(),

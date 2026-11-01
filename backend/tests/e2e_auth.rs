@@ -54,16 +54,87 @@ async fn independent_stores_reject_each_others_tokens_even_for_identical_subject
     }
 }
 
+/// An issuer that is unreachable at startup must not leave the store without
+/// authentication: routes answer 503 until initialization succeeds, then work
+/// without a restart.
+#[tokio::test]
+async fn authentication_that_initializes_after_startup_brings_routes_online() {
+    use lellostore_backend::auth::{init_auth_until_ready, AuthSlot};
+    let slot = AuthSlot::empty();
+    let (ctx, oidc) =
+        create_auth_test_context_options(Default::default(), None, None, Some(slot.clone())).await;
+    let server = TestServer::new(ctx.router);
+    let token = oidc.get_admin_token();
+
+    for path in ["/api/me", "/api/apps", "/api/admin/apps"] {
+        let response = server
+            .get(path)
+            .header("Authorization", &format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status_code(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{path}"
+        );
+        let body: serde_json::Value = response.json().unwrap();
+        assert_eq!(body["message"], "Authentication service is unavailable");
+    }
+    let enrollment = server
+        .post("/api/device-enrollments")
+        .header("Content-Type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(enrollment.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+
+    init_auth_until_ready(
+        slot.clone(),
+        oidc.issuer_url(),
+        "lellostore".into(),
+        "realm_access.roles".into(),
+        "admin".into(),
+        ctx.pool.clone(),
+    )
+    .await;
+    assert!(slot.is_ready());
+
+    for path in ["/api/me", "/api/apps", "/api/admin/apps"] {
+        let response = server
+            .get(path)
+            .header("Authorization", &format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status_code(), StatusCode::OK, "{path}");
+    }
+    let anonymous = server.get("/api/me").send().await.unwrap();
+    assert_eq!(anonymous.status_code(), StatusCode::UNAUTHORIZED);
+    let enrollment = server
+        .post("/api/device-enrollments")
+        .header("Content-Type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(enrollment.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
 async fn create_auth_test_context_with_events(
     catalog_events: lellostore_backend::api::events::CatalogEventHub,
 ) -> (TestContext, MockOidc) {
-    create_auth_test_context_options(catalog_events, None, None).await
+    create_auth_test_context_options(catalog_events, None, None, None).await
 }
 
+/// `auth_slot`, when given, is used as is instead of a slot filled up front,
+/// so a test can control when authentication becomes available.
 async fn create_auth_test_context_options(
     catalog_events: lellostore_backend::api::events::CatalogEventHub,
     signing: Option<Arc<lellostore_backend::paravoid::signing::OnlineSigning>>,
     sdk: Option<&std::path::Path>,
+    auth_slot: Option<lellostore_backend::auth::AuthSlot>,
 ) -> (TestContext, MockOidc) {
     use lellostore_backend::api::{routes::create_router, AppState};
     use lellostore_backend::auth::{AuthState, JwksCache, TokenValidator};
@@ -168,7 +239,7 @@ async fn create_auth_test_context_options(
         paravoid_signing: signing,
         db: pool.clone(),
         config: Arc::new(config),
-        auth: Some(auth_state),
+        auth: auth_slot.unwrap_or_else(|| lellostore_backend::auth::AuthSlot::ready(auth_state)),
         upload_service,
         storage,
         catalog_events,

@@ -54,7 +54,7 @@ pub fn bearer(headers: &HeaderMap) -> Result<&str> {
         .ok_or_else(Error::unauthorized)
 }
 pub async fn claims(state: &AppState, token: &str) -> Result<TokenClaims> {
-    let auth = state.auth.as_ref().ok_or_else(Error::unauthorized)?;
+    let auth = state.auth.get().ok_or_else(Error::auth_unavailable)?;
     let c = auth
         .validator
         .validate(token)
@@ -68,7 +68,7 @@ pub async fn claims(state: &AppState, token: &str) -> Result<TokenClaims> {
 async fn admin(state: &AppState, headers: &HeaderMap) -> Result<String> {
     broker(state)?;
     let c = claims(state, bearer(headers)?).await?;
-    let auth = state.auth.as_ref().ok_or_else(Error::unauthorized)?;
+    let auth = state.auth.get().ok_or_else(Error::auth_unavailable)?;
     if !crate::auth::User::from_claims(&c, &auth.role_claim_path, &auth.admin_role).is_admin {
         return Err(Error::denied());
     }

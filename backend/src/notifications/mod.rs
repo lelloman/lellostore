@@ -29,6 +29,12 @@ impl Error {
             "Notification credential required".into(),
         )
     }
+    pub fn auth_unavailable() -> Self {
+        Self(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Authentication service is unavailable".into(),
+        )
+    }
     pub fn conflict(message: &str) -> Self {
         Self(StatusCode::CONFLICT, message.into())
     }

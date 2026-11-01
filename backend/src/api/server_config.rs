@@ -72,7 +72,7 @@ pub async fn get(State(state): State<AppState>) -> Response {
                 push: config.notifications_enabled,
                 paravoid: state.paravoid_signing.is_some(),
                 // Approval needs an administrator, so it needs authentication.
-                device_enrollment: state.auth.is_some(),
+                device_enrollment: state.auth.is_ready(),
             },
         }),
     )

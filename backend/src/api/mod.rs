@@ -15,7 +15,7 @@ pub mod uploads;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
-use crate::auth::AuthState;
+use crate::auth::AuthSlot;
 use crate::config::Config;
 use crate::services::{StorageService, UploadService};
 
@@ -26,7 +26,8 @@ pub struct AppState {
     pub paravoid_signing: Option<Arc<crate::paravoid::signing::OnlineSigning>>,
     pub db: SqlitePool,
     pub config: Arc<Config>,
-    pub auth: Option<AuthState>,
+    /// Filled once OIDC discovery succeeds; see [`AuthSlot`].
+    pub auth: AuthSlot,
     pub upload_service: Arc<UploadService>,
     pub storage: Arc<StorageService>,
     pub catalog_events: events::CatalogEventHub,

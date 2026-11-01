@@ -33,10 +33,22 @@ pub enum AuthError {
 
     #[error("Authenticated user directory unavailable: {0}")]
     UserRegistryUnavailable(String),
+
+    #[error("Authentication service is unavailable")]
+    Unavailable,
 }
 
 impl simple_server::web::IntoRejectionResponse for AuthError {
     fn into_rejection_response(self) -> simple_server::web::RejectionResponse {
+        if matches!(self, AuthError::Unavailable) {
+            return rejection(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &json!({
+                    "error": "Service Unavailable",
+                    "message": "Authentication service is unavailable"
+                }),
+            );
+        }
         let (status, message) = match &self {
             AuthError::MissingToken
             | AuthError::InvalidAuthHeader
@@ -52,19 +64,26 @@ impl simple_server::web::IntoRejectionResponse for AuthError {
             | AuthError::UserRegistryUnavailable(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error")
             }
+            AuthError::Unavailable => unreachable!("handled above"),
         };
 
-        let body = json!({ "error": message });
-        let mut response = simple_server::web::RejectionResponse::new(
-            serde_json::to_vec(&body).expect("auth error is serializable"),
-        );
-        *response.status_mut() = status;
-        response.headers_mut().insert(
-            simple_server::web::http::header::CONTENT_TYPE,
-            simple_server::web::HeaderValue::from_static("application/json"),
-        );
-        response
+        rejection(status, &json!({ "error": message }))
     }
+}
+
+fn rejection(
+    status: StatusCode,
+    body: &serde_json::Value,
+) -> simple_server::web::RejectionResponse {
+    let mut response = simple_server::web::RejectionResponse::new(
+        serde_json::to_vec(body).expect("auth error is serializable"),
+    );
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        simple_server::web::http::header::CONTENT_TYPE,
+        simple_server::web::HeaderValue::from_static("application/json"),
+    );
+    response
 }
 
 impl IntoResponse for AuthError {

@@ -94,35 +94,22 @@ async fn run() -> Result<(), BoxError> {
 
     tracing::info!("Services initialized");
 
-    // Initialize authentication (optional - skip if issuer URL is placeholder)
-    let auth_state = if config.oidc.issuer_url != "https://example.com" {
-        match auth::init_auth(
-            &config.oidc.issuer_url,
-            &config.oidc.audience,
-            &config.oidc.role_claim_path,
-            &config.oidc.admin_role,
-        )
-        .await
-        {
-            Ok(auth) => {
-                tracing::info!(
-                    "Authentication initialized with issuer: {}",
-                    config.oidc.issuer_url
-                );
-                Some(auth.with_user_registry(db.clone()))
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to initialize authentication: {}. API routes will remain unavailable.",
-                    e
-                );
-                None
-            }
-        }
+    // Initialize authentication in the background. The store serves health
+    // and static assets right away; authenticated routes answer 503 until
+    // the issuer has been reached, however long that takes.
+    let auth_state = auth::AuthSlot::empty();
+    if config.oidc.issuer_url != "https://example.com" {
+        tokio::spawn(auth::init_auth_until_ready(
+            auth_state.clone(),
+            config.oidc.issuer_url.clone(),
+            config.oidc.audience.clone(),
+            config.oidc.role_claim_path.clone(),
+            config.oidc.admin_role.clone(),
+            db.clone(),
+        ));
     } else {
         tracing::warn!("OIDC not configured (using default issuer). API routes are unavailable.");
-        None
-    };
+    }
 
     // An explicitly configured but invalid authority is a startup error. Never
     // silently fall back to unsigned metadata or newly generated trust keys.

@@ -171,16 +171,6 @@ pub fn health_check(
     Json(json!({ "status": "healthy" })).into_response()
 }
 
-pub async fn auth_unavailable() -> (StatusCode, Json<Value>) {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({
-            "error": "Service Unavailable",
-            "message": "Authentication service is unavailable"
-        })),
-    )
-}
-
 #[derive(Debug, Serialize)]
 pub struct CurrentUserResponse {
     pub subject: String,

@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 
 use super::error::AuthError;
 use super::user::User;
-use super::AuthState;
+use super::{AuthSlot, AuthState};
 
 /// Extract Bearer token from Authorization header
 #[cfg(test)]
@@ -119,15 +119,32 @@ async fn authenticate_device_token(
 }
 
 /// Authentication middleware that validates tokens and attaches User to request
+///
+/// Fails with 503 while authentication is still initializing.
 pub async fn auth_middleware(
-    State(auth): State<AuthState>,
+    State(slot): State<AuthSlot>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, AuthError> {
+    let auth = slot.get().cloned().ok_or(AuthError::Unavailable)?;
     let (mut parts, body) = request.into_parts();
     let user = authenticated_access(auth).evaluate(&parts).await?;
     parts.extensions.insert(user);
     Ok(next.run(Request::from_parts(parts, body)).await)
+}
+
+/// Refuse a request with 503 while authentication is still initializing,
+/// without requiring a credential (for unauthenticated routes that only make
+/// sense once administrators can sign in).
+pub async fn require_auth_ready(
+    State(slot): State<AuthSlot>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, AuthError> {
+    if !slot.is_ready() {
+        return Err(AuthError::Unavailable);
+    }
+    Ok(next.run(request).await)
 }
 
 #[cfg(test)]

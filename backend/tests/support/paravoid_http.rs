@@ -187,6 +187,7 @@ async fn signed_shell_to_authenticated_http_delivery() {
             Default::default(),
             Some(signing.clone()),
             Some(&sdk),
+            None,
         )
         .await;
         let worker = UploadService::new(

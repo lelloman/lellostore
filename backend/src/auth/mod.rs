@@ -19,12 +19,12 @@ pub use discovery::{fetch_discovery, OidcDiscovery};
 pub use error::AuthError;
 pub use extractors::{AdminOrPublisher, AdminUser, AuthenticatedUser};
 pub use jwks::JwksCache;
-pub use middleware::auth_middleware;
+pub use middleware::{auth_middleware, require_auth_ready};
 pub use user::{PublishScope, User};
 pub use validator::{TokenClaims, TokenValidator};
 
 use sqlx::SqlitePool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const OIDC_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -63,6 +63,87 @@ impl AuthState {
     pub fn with_user_registry(mut self, pool: SqlitePool) -> Self {
         self.user_registry = Some(pool);
         self
+    }
+}
+
+/// Authentication state that becomes available once OIDC discovery succeeds.
+///
+/// The store starts serving before the issuer is reachable. Until the slot is
+/// filled, every authenticated route fails closed with 503; afterwards it is
+/// fixed for the lifetime of the process.
+#[derive(Clone, Default)]
+pub struct AuthSlot(Arc<OnceLock<AuthState>>);
+
+impl AuthSlot {
+    /// A slot that is never filled: authentication stays unavailable.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// A slot that is already filled.
+    pub fn ready(auth: AuthState) -> Self {
+        let slot = Self::default();
+        slot.fill(auth);
+        slot
+    }
+
+    pub fn get(&self) -> Option<&AuthState> {
+        self.0.get()
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.0.get().is_some()
+    }
+
+    /// Fill the slot. Returns false if it was already filled.
+    pub fn fill(&self, auth: AuthState) -> bool {
+        self.0.set(auth).is_ok()
+    }
+}
+
+const BACKGROUND_INITIAL_DELAY: Duration = Duration::from_secs(1);
+const BACKGROUND_MAX_DELAY: Duration = Duration::from_secs(60);
+
+/// Keep retrying OIDC discovery until it succeeds, then fill `slot`.
+///
+/// Waits start at one second and double up to a one-minute cap, so an issuer
+/// that is down when the store boots is picked up shortly after it returns,
+/// without a restart.
+pub async fn init_auth_until_ready(
+    slot: AuthSlot,
+    issuer_url: String,
+    audience: String,
+    role_claim_path: String,
+    admin_role: String,
+    user_registry: SqlitePool,
+) {
+    let mut delay = BACKGROUND_INITIAL_DELAY;
+    let mut attempt: u64 = 1;
+    loop {
+        match init_auth_with_retries(&issuer_url, &audience, &role_claim_path, &admin_role, 0, 0)
+            .await
+        {
+            Ok(auth) => {
+                slot.fill(auth.with_user_registry(user_registry));
+                tracing::info!(
+                    "Authentication initialized with issuer: {} (attempt {})",
+                    issuer_url,
+                    attempt
+                );
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    "Authentication unavailable (attempt {}): {}. Retrying in {}s.",
+                    attempt,
+                    error,
+                    delay.as_secs()
+                );
+            }
+        }
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).min(BACKGROUND_MAX_DELAY);
+        attempt += 1;
     }
 }
 

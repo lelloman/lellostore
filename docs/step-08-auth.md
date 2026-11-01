@@ -13,8 +13,9 @@ Compatibility settings accept only exact `Bearer ` and `bearer ` prefixes and
 select the first Authorization header if repeated. Missing headers and malformed,
 empty or invalid tokens retain the existing 401 JSON response. Valid non-admin
 tokens retain 403 on admin routes; registry failures retain 500. `/health`, static
-assets and signed Paravoid delivery stay outside the OIDC gate. When OIDC startup
-fails, protected routes remain unavailable. The application still owns issuer,
+assets and signed Paravoid delivery stay outside the OIDC gate. OIDC discovery runs in the
+background and retries until the issuer is reachable (backoff capped at one
+minute); until then protected routes and device enrollment answer 503. The application still owns issuer,
 audience, signature, expiry, role extraction, registry writes and error rendering.
 Resource-specific acquisition, publication and delivery authorization remains in
 application database transactions. The shared Tower `AuthLayer` is not mounted
