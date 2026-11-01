@@ -85,9 +85,17 @@ RUN python3 -m venv /opt/dvpk && \
     /opt/dvpk/bin/pip install --no-cache-dir --only-binary=:all: bsdiff4==1.2.6
 
 # Download bundletool for AAB support
+# GitHub release downloads can stall mid-transfer. Abort a transfer that drops
+# below 1 KiB/s for 30s and retry, instead of hanging for minutes and failing
+# the build; the checksum pins the jar to the expected release.
 ARG BUNDLETOOL_VERSION=1.17.2
-RUN curl -L -o /usr/local/lib/bundletool.jar \
-    "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+ARG BUNDLETOOL_SHA256=2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae
+RUN curl --fail --location --silent --show-error \
+        --retry 5 --retry-all-errors --retry-delay 5 \
+        --connect-timeout 20 --speed-limit 1024 --speed-time 30 \
+        -o /usr/local/lib/bundletool.jar \
+        "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
+    echo "${BUNDLETOOL_SHA256}  /usr/local/lib/bundletool.jar" | sha256sum -c -
 
 # Create non-root user for security
 RUN useradd -r -s /bin/false -d /app lellostore
